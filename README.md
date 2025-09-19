@@ -74,3 +74,12 @@ date,production,sales,inventory
 - Set `DATABASE_URL` and optional `DB_SCHEMA` config vars.
 - Use `Procfile` entries such as `web: uvicorn app.main:app --host=0.0.0.0 --port=${PORT}`.
 - Alembic migrations can be executed with `heroku run alembic upgrade head`.
+
+
+## 起動
+
+cd .\backend\
+uvicorn app.main:app --reload
+
+npm i
+npm run dev
