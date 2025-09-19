@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select, update
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
 from .. import models, schemas
@@ -16,8 +16,7 @@ router = APIRouter()
 @router.get("/", response_model=list[schemas.SessionRead])
 def list_sessions(db: DBSession = Depends(get_db)) -> list[schemas.SessionRead]:
     query = select(models.Session).order_by(models.Session.created_at.desc())
-    sessions = db.scalars(query).all()
-    return sessions
+    return db.scalars(query).all()
 
 
 @router.post("/", response_model=schemas.SessionRead, status_code=status.HTTP_201_CREATED)
@@ -34,7 +33,7 @@ def create_session(
 def _get_session_or_404(db: DBSession, session_id: str) -> models.Session:
     try:
         UUID(session_id)
-    except ValueError as exc:  # pragma: no cover - sanity check
+    except ValueError as exc:  # sanity check
         raise HTTPException(status_code=404, detail="session not found") from exc
 
     session = db.get(models.Session, session_id)
@@ -61,20 +60,36 @@ def update_session(
     return session
 
 
-@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_session(session_id: str, db: DBSession = Depends(get_db)) -> None:
-    _get_session_or_404(db, session_id)
-    db.execute(delete(models.PSIRecord).where(models.PSIRecord.session_id == session_id))
-    db.execute(delete(models.Session).where(models.Session.id == session_id))
+@router.delete(
+    "/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,  # 204 はボディ無し
+)
+def delete_session(session_id: str, db: DBSession = Depends(get_db)) -> Response:
+    session = _get_session_or_404(db, session_id)
+    db.delete(session)
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/{session_id}/leader", response_model=schemas.SessionRead)
 def set_leader(session_id: str, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
-    session = _get_session_or_404(db, session_id)
-    db.execute(update(models.Session).values(is_leader=False))
-    session.is_leader = True
-    db.add(session)
-    db.commit()
-    db.refresh(session)
+    # 先に存在確認
+    _ = _get_session_or_404(db, session_id)
+
+    # すべての is_leader を False に → 指定のセッションを True に
+    with db.begin():
+        db.execute(update(models.Session).values(is_leader=False))
+        result = db.execute(
+            update(models.Session)
+            .where(models.Session.id == session_id)
+            .values(is_leader=True)
+            .returning(models.Session.id)
+        ).first()
+        if not result:
+            # あり得ないが念のため
+            raise HTTPException(status_code=404, detail="session not found")
+
+    # 反映後のセッションを返す
+    session = db.get(models.Session, session_id)
     return session
