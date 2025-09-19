@@ -54,6 +54,16 @@ class DailyPSI(BaseModel):
     movable_stock: float | None = None
 
 
+class ChannelDailyPSI(BaseModel):
+    """Daily PSI metrics grouped by SKU, warehouse, and channel."""
+
+    sku_code: str
+    sku_name: str | None = None
+    warehouse_name: str
+    channel: str
+    daily: list[DailyPSI]
+
+
 class PSIUploadResult(BaseModel):
     """Upload summary returned after processing a PSI CSV file."""
 

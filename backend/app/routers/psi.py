@@ -6,6 +6,7 @@ import io
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -207,7 +208,7 @@ async def upload_csv_for_session(
     )
 
 
-@router.get("/{session_id}/daily", response_model=list[schemas.DailyPSI])
+@router.get("/{session_id}/daily", response_model=list[schemas.ChannelDailyPSI])
 def daily_psi(
     *,
     session_id: UUID,
@@ -215,8 +216,8 @@ def daily_psi(
     warehouse_name: str | None = None,
     channel: str | None = None,
     db: DBSession = Depends(get_db),
-) -> list[schemas.DailyPSI]:
-    """Return aggregated PSI metrics for the selected session.
+) -> list[schemas.ChannelDailyPSI]:
+    """Return aggregated PSI metrics grouped by SKU and channel.
 
     Args:
         session_id: Identifier of the session whose PSI data should be aggregated.
@@ -260,26 +261,32 @@ def daily_psi(
         lowered = channel.lower()
         query = query.where(func.lower(base_alias.channel).like(f"%{lowered}%"))
 
-    query = query.order_by(base_alias.date.asc())
+    query = query.order_by(
+        base_alias.sku_code.asc(),
+        base_alias.warehouse_name.asc(),
+        base_alias.channel.asc(),
+        base_alias.date.asc(),
+    )
 
     rows = db.execute(query).all()
     if not rows:
         return []
 
     zero = Decimal("0")
-    aggregates: dict[date, dict[str, Decimal]] = defaultdict(
-        lambda: {
-            "stock_at_anchor": zero,
-            "inbound_qty": zero,
-            "outbound_qty": zero,
-            "net_flow": zero,
-            "stock_closing": zero,
-            "safety_stock": zero,
-            "movable_stock": zero,
-        }
+    grouped: dict[tuple[str, str, str], dict[str, Any]] = defaultdict(
+        lambda: {"sku_name": None, "records": []}
     )
 
+    def _to_optional_float(value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
     for base_row, edit_row in rows:
+        key = (base_row.sku_code, base_row.warehouse_name, base_row.channel)
+        bucket = grouped[key]
+        bucket["sku_name"] = base_row.sku_name or bucket["sku_name"]
+
         inbound = (
             edit_row.inbound_qty if edit_row and edit_row.inbound_qty is not None else base_row.inbound_qty
         )
@@ -292,7 +299,9 @@ def daily_psi(
 
         inbound_val = inbound if inbound is not None else zero
         outbound_val = outbound if outbound is not None else zero
-        stock_at_anchor = base_row.stock_at_anchor if base_row.stock_at_anchor is not None else zero
+
+        stock_anchor_raw = base_row.stock_at_anchor
+        stock_anchor_for_calc = stock_anchor_raw if stock_anchor_raw is not None else zero
 
         has_flow_edit = bool(
             edit_row
@@ -308,7 +317,7 @@ def daily_psi(
             net_flow = base_row.net_flow or zero
 
         if has_flow_edit or base_row.stock_closing is None:
-            stock_closing = stock_at_anchor + inbound_val - outbound_val
+            stock_closing = stock_anchor_for_calc + inbound_val - outbound_val
         else:
             stock_closing = base_row.stock_closing or zero
 
@@ -318,28 +327,32 @@ def daily_psi(
         else:
             movable_stock = base_row.movable_stock or zero
 
-        bucket = aggregates[base_row.date]
-        bucket["stock_at_anchor"] += stock_at_anchor
-        bucket["inbound_qty"] += inbound_val
-        bucket["outbound_qty"] += outbound_val
-        bucket["net_flow"] += net_flow
-        bucket["stock_closing"] += stock_closing
-        bucket["safety_stock"] += safety_val
-        bucket["movable_stock"] += movable_stock
-
-    def _to_float(value: Decimal) -> float:
-        return float(value)
-
-    return [
-        schemas.DailyPSI(
-            date=record_date,
-            stock_at_anchor=_to_float(values["stock_at_anchor"]),
-            inbound_qty=_to_float(values["inbound_qty"]),
-            outbound_qty=_to_float(values["outbound_qty"]),
-            net_flow=_to_float(values["net_flow"]),
-            stock_closing=_to_float(values["stock_closing"]),
-            safety_stock=_to_float(values["safety_stock"]),
-            movable_stock=_to_float(values["movable_stock"]),
+        bucket["records"].append(
+            schemas.DailyPSI(
+                date=base_row.date,
+                stock_at_anchor=_to_optional_float(stock_anchor_raw),
+                inbound_qty=float(inbound_val),
+                outbound_qty=float(outbound_val),
+                net_flow=float(net_flow),
+                stock_closing=float(stock_closing),
+                safety_stock=float(safety_val),
+                movable_stock=float(movable_stock),
+            )
         )
-        for record_date, values in sorted(aggregates.items(), key=lambda item: item[0])
-    ]
+
+    result: list[schemas.ChannelDailyPSI] = []
+    for (sku, warehouse, channel_name), values in sorted(
+        grouped.items(), key=lambda item: item[0]
+    ):
+        daily_records = sorted(values["records"], key=lambda record: record.date)
+        result.append(
+            schemas.ChannelDailyPSI(
+                sku_code=sku,
+                sku_name=values["sku_name"],
+                warehouse_name=warehouse,
+                channel=channel_name,
+                daily=daily_records,
+            )
+        )
+
+    return result
