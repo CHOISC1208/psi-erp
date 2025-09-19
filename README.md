@@ -56,7 +56,7 @@ npm install
 npm run dev
 ```
 
-The Vite dev server runs on http://localhost:5173. Configure the backend URL with `VITE_API_BASE_URL` if needed.
+The Vite dev server runs on http://localhost:5173. Configure the backend URL with `VITE_API_BASE_URL` (or the legacy `VITE_API_BASE`) if needed.
 
 ## CSV format
 
