@@ -1,6 +1,10 @@
 {
   "name": "psi-erp-root",
   "private": true,
+  "engines": {
+    "node": "20.x",
+    "npm": ">=10"
+  },
   "scripts": {
     "heroku-postbuild": "cd frontend && npm ci --include=dev && npm run build && rm -rf ../backend/static && mkdir -p ../backend/static && cp -r dist/* ../backend/static/"
   }
