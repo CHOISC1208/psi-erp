@@ -2,6 +2,6 @@
   "name": "psi-erp-root",
   "private": true,
   "scripts": {
-    "heroku-postbuild": "cd frontend && npm ci && npm run build && rm -rf ../backend/static && mkdir -p ../backend/static && cp -r dist/* ../backend/static/"
+    "heroku-postbuild": "cd frontend && npm ci --include=dev && npm run build && rm -rf ../backend/static && mkdir -p ../backend/static && cp -r dist/* ../backend/static/"
   }
 }
