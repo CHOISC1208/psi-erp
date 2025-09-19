@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
 
 from app.config import settings
 
@@ -18,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "sessions",
-        sa.Column("id", sa.String(length=36), primary_key=True, nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("title", sa.Text(), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("is_leader", sa.Boolean(), nullable=False, server_default=sa.text("false")),
@@ -44,8 +45,8 @@ def upgrade() -> None:
 
     op.create_table(
         "psi_records",
-        sa.Column("id", sa.String(length=36), primary_key=True, nullable=False),
-        sa.Column("session_id", sa.String(length=36), nullable=True),
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+        sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("record_date", sa.Date(), nullable=False),
         sa.Column("production", sa.Numeric(12, 2), nullable=False),
         sa.Column("sales", sa.Numeric(12, 2), nullable=False),

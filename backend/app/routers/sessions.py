@@ -30,12 +30,7 @@ def create_session(
     return session
 
 
-def _get_session_or_404(db: DBSession, session_id: str) -> models.Session:
-    try:
-        UUID(session_id)
-    except ValueError as exc:  # sanity check
-        raise HTTPException(status_code=404, detail="session not found") from exc
-
+def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
     session = db.get(models.Session, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -43,13 +38,13 @@ def _get_session_or_404(db: DBSession, session_id: str) -> models.Session:
 
 
 @router.get("/{session_id}", response_model=schemas.SessionRead)
-def get_session(session_id: str, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
+def get_session(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
     return _get_session_or_404(db, session_id)
 
 
 @router.put("/{session_id}", response_model=schemas.SessionRead)
 def update_session(
-    session_id: str, payload: schemas.SessionUpdate, db: DBSession = Depends(get_db)
+    session_id: UUID, payload: schemas.SessionUpdate, db: DBSession = Depends(get_db)
 ) -> schemas.SessionRead:
     session = _get_session_or_404(db, session_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
@@ -65,7 +60,7 @@ def update_session(
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,  # 204 はボディ無し
 )
-def delete_session(session_id: str, db: DBSession = Depends(get_db)) -> Response:
+def delete_session(session_id: UUID, db: DBSession = Depends(get_db)) -> Response:
     session = _get_session_or_404(db, session_id)
     db.delete(session)
     db.commit()
@@ -73,7 +68,7 @@ def delete_session(session_id: str, db: DBSession = Depends(get_db)) -> Response
 
 
 @router.patch("/{session_id}/leader", response_model=schemas.SessionRead)
-def set_leader(session_id: str, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
+def set_leader(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
     # 先に存在確認
     _ = _get_session_or_404(db, session_id)
 

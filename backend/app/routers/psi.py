@@ -6,6 +6,7 @@ import io
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import delete, func, select
@@ -60,7 +61,7 @@ def _parse_decimal(raw_value: str | None, column: str) -> Decimal | None:
         ) from exc
 
 
-def _get_session_or_404(db: DBSession, session_id: str) -> models.Session:
+def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
     """Return the session or raise a 404 error.
 
     Args:
@@ -83,7 +84,7 @@ def _get_session_or_404(db: DBSession, session_id: str) -> models.Session:
 @router.post("/{session_id}/upload", response_model=schemas.PSIUploadResult)
 async def upload_csv_for_session(
     *,
-    session_id: str,
+    session_id: UUID,
     file: UploadFile = File(...),
     db: DBSession = Depends(get_db),
 ) -> schemas.PSIUploadResult:
@@ -209,7 +210,7 @@ async def upload_csv_for_session(
 @router.get("/{session_id}/daily", response_model=list[schemas.DailyPSI])
 def daily_psi(
     *,
-    session_id: str,
+    session_id: UUID,
     sku_code: str | None = None,
     warehouse_name: str | None = None,
     channel: str | None = None,

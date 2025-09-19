@@ -6,18 +6,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import (
-    BigInteger,
-    Boolean,
-    Date,
-    DateTime,
-    ForeignKey,
-    JSON,
-    Numeric,
-    String,
-    Text,
-    func,
-)
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, JSON, Numeric, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from .config import settings
@@ -64,8 +54,8 @@ class Session(Base, SchemaMixin, TimestampMixin):
 
     __tablename__ = "sessions"
 
-    id: Mapped[str] = mapped_column(
-        String(length=36), primary_key=True, default=lambda: str(uuid.uuid4())
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -100,8 +90,8 @@ class PSIBase(Base, SchemaMixin):
     __tablename__ = "psi_base"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    session_id: Mapped[str] = mapped_column(
-        String(length=36),
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
         ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -133,8 +123,8 @@ class PSIEdit(Base, SchemaMixin, TimestampMixin):
     __tablename__ = "psi_edits"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    session_id: Mapped[str] = mapped_column(
-        String(length=36),
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
         ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
