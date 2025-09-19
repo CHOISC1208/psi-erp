@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useRef, useState } from "react";
 import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "../lib/api";
 import { Session } from "../types";
@@ -39,6 +40,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 export default function SessionsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [formState, setFormState] = useState<SessionFormState>({ title: "", description: "" });
   const [status, setStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [uploadStatus, setUploadStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -169,6 +171,12 @@ export default function SessionsPage() {
     uploadMutation.mutate({ file, sessionId, sessionTitle });
   };
 
+  const handleOpenPsiTable = (sessionId: string) => {
+    const params = new URLSearchParams();
+    params.set("sessionId", sessionId);
+    navigate({ pathname: "/psi", search: params.toString() });
+  };
+
   return (
     <div className="page">
       <header>
@@ -235,7 +243,17 @@ export default function SessionsPage() {
                 return (
                   <tr key={session.id}>
                     <td>
-                      <strong>{session.title}</strong>
+                      <div className="session-title">
+                        <strong>{session.title}</strong>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          onClick={() => handleOpenPsiTable(session.id)}
+                          aria-label={`Open PSI table for ${session.title}`}
+                        >
+                          ✏️
+                        </button>
+                      </div>
                       <br />
                       <small>{new Date(session.created_at).toLocaleString()}</small>
                     </td>

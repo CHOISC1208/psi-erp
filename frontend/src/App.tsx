@@ -47,6 +47,14 @@ export default function App() {
               <span className="menu-label">Sessions</span>
             </NavLink>
           </li>
+          <li>
+            <NavLink to="/psi" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">
+                📊
+              </span>
+              <span className="menu-label">PSI Table</span>
+            </NavLink>
+          </li>
           <li className={`has-children ${isMasterMenuOpen ? "open" : ""}`}>
             <button
               type="button"
@@ -76,14 +84,6 @@ export default function App() {
                 </li>
               ))}
             </ul>
-          </li>
-          <li>
-            <NavLink to="/psi" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <span className="menu-icon" aria-hidden="true">
-                📊
-              </span>
-              <span className="menu-label">PSI Table</span>
-            </NavLink>
           </li>
         </ul>
       </nav>

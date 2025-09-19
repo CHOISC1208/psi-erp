@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 
 import { api } from "../lib/api";
 import { PSIRow, Session } from "../types";
@@ -50,7 +51,8 @@ const formatNumber = (value?: number | null) => {
 };
 
 export default function PSITablePage() {
-  const [sessionId, setSessionId] = useState<string>("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sessionId, setSessionId] = useState<string>(() => searchParams.get("sessionId") ?? "");
   const [skuCode, setSkuCode] = useState<string>("");
   const [warehouseName, setWarehouseName] = useState<string>("");
   const [channel, setChannel] = useState<string>("");
@@ -60,11 +62,59 @@ export default function PSITablePage() {
     queryFn: fetchSessions,
   });
 
+  const availableSessions = sessionsQuery.data ?? [];
+  const leaderSession = useMemo(
+    () => availableSessions.find((session) => session.is_leader),
+    [availableSessions]
+  );
+
   useEffect(() => {
-    if (!sessionId && sessionsQuery.data && sessionsQuery.data.length > 0) {
-      setSessionId(sessionsQuery.data[0].id);
+    const paramSessionId = searchParams.get("sessionId") ?? "";
+    if (paramSessionId && paramSessionId !== sessionId) {
+      setSessionId(paramSessionId);
     }
-  }, [sessionId, sessionsQuery.data]);
+  }, [searchParams, sessionId]);
+
+  useEffect(() => {
+    if (!availableSessions.length) {
+      return;
+    }
+
+    if (sessionId) {
+      const isValid = availableSessions.some((session) => session.id === sessionId);
+      if (!isValid) {
+        const fallback = leaderSession ?? availableSessions[0];
+        setSessionId(fallback.id);
+        if ((searchParams.get("sessionId") ?? "") !== fallback.id) {
+          const params = new URLSearchParams(searchParams);
+          params.set("sessionId", fallback.id);
+          setSearchParams(params, { replace: true });
+        }
+      }
+      return;
+    }
+
+    const fallback = leaderSession ?? availableSessions[0];
+    if (fallback) {
+      setSessionId(fallback.id);
+      if ((searchParams.get("sessionId") ?? "") !== fallback.id) {
+        const params = new URLSearchParams(searchParams);
+        params.set("sessionId", fallback.id);
+        setSearchParams(params, { replace: true });
+      }
+    }
+  }, [availableSessions, leaderSession, searchParams, sessionId, setSearchParams]);
+
+  const handleSessionChange = (value: string) => {
+    setSessionId(value);
+    const params = new URLSearchParams(searchParams);
+    if (value) {
+      params.set("sessionId", value);
+    } else {
+      params.delete("sessionId");
+    }
+    setSearchParams(params);
+  };
 
   const psiQuery = useQuery({
     queryKey: ["psi-daily", sessionId, skuCode, warehouseName, channel],
@@ -80,14 +130,18 @@ export default function PSITablePage() {
       </header>
 
       <section>
-        <div className="form-grid">
+        <div className="filters-row">
           <label>
             Session
-            <select value={sessionId} onChange={(event) => setSessionId(event.target.value)} disabled={sessionsQuery.isLoading}>
+            <select
+              value={sessionId}
+              onChange={(event) => handleSessionChange(event.target.value)}
+              disabled={sessionsQuery.isLoading}
+            >
               <option value="" disabled>
                 Select a session
               </option>
-              {sessionsQuery.data?.map((session) => (
+              {availableSessions.map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.title}
                 </option>
