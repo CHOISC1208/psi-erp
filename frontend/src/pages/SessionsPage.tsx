@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../lib/api";
@@ -10,13 +11,30 @@ interface SessionFormState {
 }
 
 const fetchSessions = async (): Promise<Session[]> => {
-  const { data } = await api.get<Session[]>("/sessions");
+  const { data } = await api.get<Session[]>("/sessions/");
   return data;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (axios.isAxiosError(error)) {
+    const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
+    if (detail) {
+      return detail;
+    }
+    if (error.message) {
+      return error.message;
+    }
+  } else if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
 };
 
 export default function SessionsPage() {
   const queryClient = useQueryClient();
   const [formState, setFormState] = useState<SessionFormState>({ title: "", description: "" });
+  const [status, setStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const sessionsQuery = useQuery({
     queryKey: ["sessions"],
@@ -25,7 +43,7 @@ export default function SessionsPage() {
 
   const createSession = useMutation({
     mutationFn: async (payload: SessionFormState) => {
-      const { data } = await api.post<Session>("/sessions", {
+      const { data } = await api.post<Session>("/sessions/", {
         title: payload.title,
         description: payload.description?.trim() ? payload.description.trim() : undefined,
       });
@@ -33,7 +51,14 @@ export default function SessionsPage() {
     },
     onSuccess: () => {
       setFormState({ title: "", description: "" });
+      setStatus({ type: "success", text: "Session created successfully." });
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+    onError: (error) => {
+      setStatus({ type: "error", text: getErrorMessage(error, "Unable to create session. Try again.") });
+    },
+    onMutate: () => {
+      setStatus(null);
     },
   });
 
@@ -42,7 +67,14 @@ export default function SessionsPage() {
       await api.delete(`/sessions/${sessionId}`);
     },
     onSuccess: () => {
+      setStatus({ type: "success", text: "Session deleted." });
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+    onError: (error) => {
+      setStatus({ type: "error", text: getErrorMessage(error, "Unable to delete session. Try again.") });
+    },
+    onMutate: () => {
+      setStatus(null);
     },
   });
 
@@ -52,7 +84,14 @@ export default function SessionsPage() {
       return data;
     },
     onSuccess: () => {
+      setStatus({ type: "success", text: "Leader updated." });
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+    onError: (error) => {
+      setStatus({ type: "error", text: getErrorMessage(error, "Unable to update leader. Try again.") });
+    },
+    onMutate: () => {
+      setStatus(null);
     },
   });
 
@@ -97,13 +136,21 @@ export default function SessionsPage() {
             {createSession.isPending ? "Saving..." : "Create"}
           </button>
         </form>
-        {createSession.isError && <p className="error">Unable to create session. Try again.</p>}
       </section>
 
       <section>
         <h2>Existing Sessions</h2>
         {sessionsQuery.isLoading && <p>Loading sessions...</p>}
-        {sessionsQuery.isError && <p className="error">Failed to load sessions.</p>}
+        {sessionsQuery.isError && (
+          <p role="alert" className="error">
+            {getErrorMessage(sessionsQuery.error, "Failed to load sessions.")}
+          </p>
+        )}
+        {status && (
+          <p role="status" className={status.type === "error" ? "error" : "success"}>
+            {status.text}
+          </p>
+        )}
         {sessionsQuery.data && sessionsQuery.data.length > 0 ? (
           <table className="table">
             <thead>
