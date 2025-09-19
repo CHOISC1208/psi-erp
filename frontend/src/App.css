@@ -3,6 +3,15 @@
   line-height: 1.5;
   color: #1f2933;
   background-color: #f5f7fa;
+  --psi-col-sku-width: clamp(12ch, 18ch, 24ch);
+  --psi-col-sku-name-width: clamp(12ch, 20ch, 28ch);
+  --psi-col-warehouse-width: clamp(12ch, 18ch, 26ch);
+  --psi-col-channel-width: clamp(10ch, 16ch, 24ch);
+  --psi-col-div-width: clamp(10ch, 14ch, 20ch);
+  --psi-col-offset-sku-name: var(--psi-col-sku-width);
+  --psi-col-offset-warehouse: calc(var(--psi-col-offset-sku-name) + var(--psi-col-sku-name-width));
+  --psi-col-offset-channel: calc(var(--psi-col-offset-warehouse) + var(--psi-col-warehouse-width));
+  --psi-col-offset-div: calc(var(--psi-col-offset-channel) + var(--psi-col-channel-width));
 }
 
 body {
@@ -154,11 +163,19 @@ body {
 
 input,
 select,
+textarea,
 button {
   font: inherit;
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   border: 1px solid #cbd5e1;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  background: #ffffff;
 }
 
 button {
@@ -272,27 +289,32 @@ button.icon-button:focus-visible {
 
 .psi-table .col-sku {
   left: 0;
-  min-width: 220px;
+  min-width: var(--psi-col-sku-width);
+  width: var(--psi-col-sku-width);
 }
 
 .psi-table .col-sku-name {
-  left: 220px;
-  min-width: 240px;
+  left: var(--psi-col-offset-sku-name);
+  min-width: var(--psi-col-sku-name-width);
+  width: var(--psi-col-sku-name-width);
 }
 
 .psi-table .col-warehouse {
-  left: 460px;
-  min-width: 220px;
+  left: var(--psi-col-offset-warehouse);
+  min-width: var(--psi-col-warehouse-width);
+  width: var(--psi-col-warehouse-width);
 }
 
 .psi-table .col-channel {
-  left: 680px;
-  min-width: 160px;
+  left: var(--psi-col-offset-channel);
+  min-width: var(--psi-col-channel-width);
+  width: var(--psi-col-channel-width);
 }
 
 .psi-table .col-div {
-  left: 840px;
-  min-width: 180px;
+  left: var(--psi-col-offset-div);
+  min-width: var(--psi-col-div-width);
+  width: var(--psi-col-div-width);
   font-weight: 600;
 }
 
@@ -320,10 +342,39 @@ button.icon-button:focus-visible {
   background: #ffffff;
 }
 
+.psi-edit-input.edited {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+.psi-edit-input.edited:focus {
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.25);
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.psi-table-wrapper {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.psi-table-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.psi-table-messages {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: flex-end;
 }
 
 .numeric {
@@ -336,6 +387,44 @@ button.icon-button:focus-visible {
 
 .success {
   color: #047857;
+}
+
+.session-summary {
+  background: #ffffff;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.session-summary .dates-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.session-summary strong {
+  display: inline-block;
+  min-width: 4.5rem;
+}
+
+.session-summary label {
+  display: grid;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.session-summary textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.session-summary-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .master-guidance {
