@@ -187,13 +187,17 @@ async def upload_csv_for_session(
     if not rows_to_insert:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV contained no rows")
 
-    with db.begin():
+    try:
         db.execute(
             delete(models.PSIBase)
             .where(models.PSIBase.session_id == session_id)
             .where(models.PSIBase.date.in_(affected_dates))
         )
         db.add_all(rows_to_insert)
+        db.commit()
+    except Exception:  # pragma: no cover - defensive transaction handling
+        db.rollback()
+        raise
 
     return schemas.PSIUploadResult(
         rows_imported=len(rows_to_insert),
