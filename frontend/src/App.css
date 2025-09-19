@@ -14,33 +14,97 @@ body {
   min-height: 100vh;
 }
 
+
 .sidebar {
-  width: 220px;
-  padding: 2rem 1.5rem;
+  width: 240px;
+  padding: 1.5rem;
   background: #111827;
   color: #f9fafb;
+  transition: width 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.sidebar ul {
+.sidebar.collapsed {
+  width: 64px;
+  padding: 1.5rem 0.75rem;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sidebar-toggle {
+  background: transparent;
+  border: 1px solid #374151;
+  color: inherit;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.sidebar-menu,
+.submenu {
   list-style: none;
   padding: 0;
-  margin: 1.5rem 0 0;
+  margin: 0;
   display: grid;
   gap: 0.5rem;
 }
 
-.sidebar a {
+.sidebar-menu {
+  margin-top: 0.5rem;
+}
+
+.sidebar a,
+.submenu-toggle {
   color: inherit;
   text-decoration: none;
   padding: 0.5rem 0.75rem;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   border-radius: 0.375rem;
   transition: background-color 0.15s ease;
+  background: transparent;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.menu-icon {
+  width: 1.5rem;
+  display: inline-flex;
+  justify-content: center;
 }
 
 .sidebar a.active,
-.sidebar a:hover {
+.sidebar a:hover,
+.submenu-toggle:hover {
   background-color: #374151;
+}
+
+.sidebar.collapsed .app-title,
+.sidebar.collapsed .menu-label {
+  display: none;
+}
+
+.sidebar.collapsed .submenu {
+  display: none;
+}
+
+.has-children .submenu {
+  display: none;
+  padding-left: 0.75rem;
+}
+
+.has-children.open .submenu {
+  display: grid;
 }
 
 .app-title {
@@ -135,4 +199,12 @@ button[disabled] {
 
 .success {
   color: #047857;
+}
+
+.master-guidance {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
 }
