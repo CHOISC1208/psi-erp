@@ -6,8 +6,24 @@ import { api } from "../lib/api";
 import { Session } from "../types";
 
 const fetchSessions = async (): Promise<Session[]> => {
-  const { data } = await api.get<Session[]>("/sessions");
+  const { data } = await api.get<Session[]>("/sessions/");
   return data;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (axios.isAxiosError(error)) {
+    const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
+    if (detail) {
+      return detail;
+    }
+    if (error.message) {
+      return error.message;
+    }
+  } else if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
 };
 
 interface UploadResult {
@@ -112,7 +128,9 @@ export default function UploadPage() {
         </form>
 
         {sessionsQuery.isLoading && <p>Loading sessions...</p>}
-        {sessionsQuery.isError && <p className="error">Unable to load sessions.</p>}
+        {sessionsQuery.isError && (
+          <p className="error">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
+        )}
         {message && <p>{message}</p>}
       </section>
     </div>

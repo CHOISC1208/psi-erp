@@ -132,3 +132,7 @@ button[disabled] {
 .error {
   color: #b91c1c;
 }
+
+.success {
+  color: #047857;
+}

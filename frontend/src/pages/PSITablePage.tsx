@@ -1,12 +1,29 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../lib/api";
 import { PSIRow, Session } from "../types";
 
 const fetchSessions = async (): Promise<Session[]> => {
-  const { data } = await api.get<Session[]>("/sessions");
+  const { data } = await api.get<Session[]>("/sessions/");
   return data;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (axios.isAxiosError(error)) {
+    const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
+    if (detail) {
+      return detail;
+    }
+    if (error.message) {
+      return error.message;
+    }
+  } else if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
 };
 
 const fetchDailyPsi = async (
@@ -100,12 +117,14 @@ export default function PSITablePage() {
         </div>
 
         {sessionsQuery.isLoading && <p>Loading sessions...</p>}
-        {sessionsQuery.isError && <p className="error">Unable to load sessions.</p>}
+        {sessionsQuery.isError && (
+          <p className="error">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
+        )}
       </section>
 
       <section>
         {psiQuery.isLoading && sessionId && <p>Loading PSI data...</p>}
-        {psiQuery.isError && <p className="error">Unable to load PSI data.</p>}
+        {psiQuery.isError && <p className="error">{getErrorMessage(psiQuery.error, "Unable to load PSI data.")}</p>}
         {psiQuery.data && psiQuery.data.length > 0 ? (
           <table className="table">
             <thead>
