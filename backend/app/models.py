@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    JSON,
     Numeric,
     String,
     Text,
@@ -75,6 +77,18 @@ class Session(Base, SchemaMixin, TimestampMixin):
     psi_edits: Mapped[list["PSIEdit"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
+
+
+class MasterRecord(Base, SchemaMixin, TimestampMixin):
+    """Generic master data record stored as flexible JSON payloads."""
+
+    __tablename__ = "master_records"
+
+    id: Mapped[str] = mapped_column(
+        String(length=36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    master_type: Mapped[str] = mapped_column(String(length=64), index=True, nullable=False)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class PSIBase(Base, SchemaMixin):

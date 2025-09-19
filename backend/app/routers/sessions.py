@@ -78,17 +78,18 @@ def set_leader(session_id: str, db: DBSession = Depends(get_db)) -> schemas.Sess
     _ = _get_session_or_404(db, session_id)
 
     # すべての is_leader を False に → 指定のセッションを True に
-    with db.begin():
-        db.execute(update(models.Session).values(is_leader=False))
-        result = db.execute(
-            update(models.Session)
-            .where(models.Session.id == session_id)
-            .values(is_leader=True)
-            .returning(models.Session.id)
-        ).first()
-        if not result:
-            # あり得ないが念のため
-            raise HTTPException(status_code=404, detail="session not found")
+    db.execute(update(models.Session).values(is_leader=False))
+    result = db.execute(
+        update(models.Session)
+        .where(models.Session.id == session_id)
+        .values(is_leader=True)
+        .returning(models.Session.id)
+    ).first()
+    if not result:
+        # あり得ないが念のため
+        raise HTTPException(status_code=404, detail="session not found")
+
+    db.commit()
 
     # 反映後のセッションを返す
     session = db.get(models.Session, session_id)
