@@ -8,21 +8,29 @@ from pydantic import BaseModel, Field
 
 
 class SessionBase(BaseModel):
+    """Shared attributes for session write models."""
+
     title: Annotated[str, Field(min_length=1, max_length=255)]
     description: str | None = None
 
 
 class SessionCreate(SessionBase):
+    """Schema for creating a session."""
+
     pass
 
 
 class SessionUpdate(BaseModel):
+    """Schema for updating mutable session fields."""
+
     title: Annotated[str, Field(min_length=1, max_length=255)] | None = None
     description: str | None = None
     is_leader: bool | None = None
 
 
 class SessionRead(SessionBase):
+    """Session data returned by the API."""
+
     id: str
     is_leader: bool
     created_at: datetime
@@ -32,15 +40,21 @@ class SessionRead(SessionBase):
 
 
 class DailyPSI(BaseModel):
+    """Aggregated PSI metrics for a single day."""
+
     date: date
-    production: float
-    sales: float
-    net_change: float
-    projected_inventory: float
-    reported_inventory: float | None = None
+    stock_at_anchor: float | None = None
+    inbound_qty: float | None = None
+    outbound_qty: float | None = None
+    net_flow: float | None = None
+    stock_closing: float | None = None
+    safety_stock: float | None = None
+    movable_stock: float | None = None
 
 
 class PSIUploadResult(BaseModel):
+    """Upload summary returned after processing a PSI CSV file."""
+
     rows_imported: int
-    session_id: str | None
+    session_id: str
     dates: list[date]
