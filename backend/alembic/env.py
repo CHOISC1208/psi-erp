@@ -1,3 +1,4 @@
+# alembic/env.py
 """Alembic environment configuration."""
 from __future__ import annotations
 
@@ -11,7 +12,6 @@ from sqlalchemy import engine_from_config, pool, text
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from dotenv import load_dotenv
-
 load_dotenv()
 
 from app.config import settings
@@ -21,37 +21,49 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# --- 追加: URL正規化ヘルパ ---
+def _normalize_db_url(url: str | None) -> str | None:
+    if not url:
+        return url
+    # Herokuは postgres:// を渡す → SQLAlchemyは postgresql(+driver) を要求
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    return url
+
+DB_URL = _normalize_db_url(settings.database_url)
+
+# alembic.ini の設定を上書き
+config.set_main_option("sqlalchemy.url", DB_URL or "")
 
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-
     context.configure(
-        url=settings.database_url,
+        url=DB_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
         include_schemas=True,
         version_table_schema=settings.db_schema,
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-
     configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = settings.database_url
+    configuration["sqlalchemy.url"] = DB_URL
     connectable = engine_from_config(configuration, prefix="sqlalchemy.", poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
-        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {settings.db_schema}"))
-        connection.execute(text(f"SET search_path TO {settings.db_schema}, public"))
+        # スキーマが指定されている場合のみ作成＆search_path設定
+        if settings.db_schema:
+            schema = settings.db_schema
+            connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+            connection.execute(text(f'SET search_path TO "{schema}", public'))
 
         context.configure(
             connection=connection,
@@ -60,7 +72,6 @@ def run_migrations_online() -> None:
             include_schemas=True,
             version_table_schema=settings.db_schema,
         )
-
         with context.begin_transaction():
             context.run_migrations()
 
