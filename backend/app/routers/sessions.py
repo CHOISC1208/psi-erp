@@ -1,49 +1,80 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy.orm import Session as DB
-from sqlalchemy import text
+"""Session related API routes."""
+from __future__ import annotations
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete, select, update
+from sqlalchemy.orm import Session as DBSession
+
+from .. import models, schemas
 from ..deps import get_db
 
 router = APIRouter()
 
-class SessionIn(BaseModel):
-    title: str
-    description: str | None = None
 
-@router.get("")
-def list_sessions(db: DB = Depends(get_db)):
-    # シンプルにSQLでもOK（public.sessions 前提）
-    rows = db.execute(text("""
-        SELECT id, title, description, is_leader, created_at, updated_at
-        FROM public.sessions
-        ORDER BY created_at DESC
-    """)).mappings().all()
-    return [dict(r) for r in rows]
+@router.get("/", response_model=list[schemas.SessionRead])
+def list_sessions(db: DBSession = Depends(get_db)) -> list[schemas.SessionRead]:
+    query = select(models.Session).order_by(models.Session.created_at.desc())
+    sessions = db.scalars(query).all()
+    return sessions
 
-@router.post("")
-def create_session(payload: SessionIn, db: DB = Depends(get_db)):
-    # idはDB側でtext主キーなのでPython側で生成
-    from uuid import uuid4
-    sid = str(uuid4())
-    db.execute(text("""
-        INSERT INTO public.sessions (id, title, description, is_leader)
-        VALUES (:id, :title, :description, FALSE)
-    """), {"id": sid, "title": payload.title, "description": payload.description})
+
+@router.post("/", response_model=schemas.SessionRead, status_code=status.HTTP_201_CREATED)
+def create_session(
+    payload: schemas.SessionCreate, db: DBSession = Depends(get_db)
+) -> schemas.SessionRead:
+    session = models.Session(title=payload.title, description=payload.description)
+    db.add(session)
     db.commit()
-    row = db.execute(text("""
-        SELECT id, title, description, is_leader, created_at, updated_at
-        FROM public.sessions WHERE id=:id
-    """), {"id": sid}).mappings().one()
-    return dict(row)
+    db.refresh(session)
+    return session
 
-@router.patch("/{session_id}/leader")
-def set_leader(session_id: str, db: DB = Depends(get_db)):
-    # 既存Leaderを落として、指定をLeaderに
-    with db.begin():
-        db.execute(text("""UPDATE public.sessions SET is_leader = FALSE WHERE is_leader = TRUE"""))
-        n = db.execute(text("""
-            UPDATE public.sessions SET is_leader = TRUE WHERE id = :id
-        """), {"id": session_id}).rowcount
-        if n == 0:
-            raise HTTPException(status_code=404, detail="session not found")
-    return {"ok": True}
+
+def _get_session_or_404(db: DBSession, session_id: str) -> models.Session:
+    try:
+        UUID(session_id)
+    except ValueError as exc:  # pragma: no cover - sanity check
+        raise HTTPException(status_code=404, detail="session not found") from exc
+
+    session = db.get(models.Session, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    return session
+
+
+@router.get("/{session_id}", response_model=schemas.SessionRead)
+def get_session(session_id: str, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
+    return _get_session_or_404(db, session_id)
+
+
+@router.put("/{session_id}", response_model=schemas.SessionRead)
+def update_session(
+    session_id: str, payload: schemas.SessionUpdate, db: DBSession = Depends(get_db)
+) -> schemas.SessionRead:
+    session = _get_session_or_404(db, session_id)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(session, field, value)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_session(session_id: str, db: DBSession = Depends(get_db)) -> None:
+    _get_session_or_404(db, session_id)
+    db.execute(delete(models.PSIRecord).where(models.PSIRecord.session_id == session_id))
+    db.execute(delete(models.Session).where(models.Session.id == session_id))
+    db.commit()
+
+
+@router.patch("/{session_id}/leader", response_model=schemas.SessionRead)
+def set_leader(session_id: str, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
+    session = _get_session_or_404(db, session_id)
+    db.execute(update(models.Session).values(is_leader=False))
+    session.is_leader = True
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
