@@ -58,7 +58,7 @@ class PSIUploadResult(BaseModel):
     """Upload summary returned after processing a PSI CSV file."""
 
     rows_imported: int
-    session_id: str
+    session_id: UUID
     dates: list[date]
 
 
