@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import psi, sessions
+from .routers import masters, psi, sessions
 
 app = FastAPI(title="GEN-like PSI API")
 
@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
+app.include_router(masters.router, prefix="/masters", tags=["masters"])
 app.include_router(psi.router, prefix="/psi", tags=["psi"])
 
 

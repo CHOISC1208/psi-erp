@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Annotated, Any
 from uuid import UUID
-from typing import Annotated
 
 from pydantic import BaseModel, Field
 
@@ -60,3 +60,32 @@ class PSIUploadResult(BaseModel):
     rows_imported: int
     session_id: str
     dates: list[date]
+
+
+class MasterRecordBase(BaseModel):
+    """Shared attributes for master record write models."""
+
+    data: dict[str, Any]
+
+
+class MasterRecordCreate(MasterRecordBase):
+    """Schema for creating a master record."""
+
+    pass
+
+
+class MasterRecordUpdate(BaseModel):
+    """Schema for updating a master record."""
+
+    data: dict[str, Any]
+
+
+class MasterRecordRead(MasterRecordBase):
+    """Master record data returned by the API."""
+
+    id: UUID
+    master_type: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

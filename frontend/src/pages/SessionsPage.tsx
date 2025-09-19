@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useRef, useState } from "react";
 import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -8,6 +8,12 @@ import { Session } from "../types";
 interface SessionFormState {
   title: string;
   description?: string;
+}
+
+interface UploadVariables {
+  file: File;
+  sessionId: string;
+  sessionTitle: string;
 }
 
 const fetchSessions = async (): Promise<Session[]> => {
@@ -35,21 +41,15 @@ export default function SessionsPage() {
   const queryClient = useQueryClient();
   const [formState, setFormState] = useState<SessionFormState>({ title: "", description: "" });
   const [status, setStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [selectedSession, setSelectedSession] = useState<string>("");
   const [uploadStatus, setUploadStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [uploadingSessionId, setUploadingSessionId] = useState<string | null>(null);
 
   const sessionsQuery = useQuery({
     queryKey: ["sessions"],
     queryFn: fetchSessions,
   });
 
-  useEffect(() => {
-    if (!selectedSession && sessionsQuery.data && sessionsQuery.data.length > 0) {
-      setSelectedSession(sessionsQuery.data[0].id);
-    }
-  }, [selectedSession, sessionsQuery.data]);
-
-  const createSession = useMutation({
+  const createSession = useMutation<Session, unknown, SessionFormState>({
     mutationFn: async (payload: SessionFormState) => {
       const { data } = await api.post<Session>("/sessions/", {
         title: payload.title,
@@ -70,7 +70,7 @@ export default function SessionsPage() {
     },
   });
 
-  const deleteSession = useMutation({
+  const deleteSession = useMutation<void, unknown, string>({
     mutationFn: async (sessionId: string) => {
       await api.delete(`/sessions/${sessionId}`);
     },
@@ -86,7 +86,7 @@ export default function SessionsPage() {
     },
   });
 
-  const makeLeader = useMutation({
+  const makeLeader = useMutation<Session, unknown, string>({
     mutationFn: async (sessionId: string) => {
       const { data } = await api.patch<Session>(`/sessions/${sessionId}/leader`, {});
       return data;
@@ -103,8 +103,13 @@ export default function SessionsPage() {
     },
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: async ({ file, sessionId }: { file: File; sessionId: string }) => {
+  const uploadMutation = useMutation<
+    unknown,
+    unknown,
+    UploadVariables,
+    { sessionTitle: string }
+  >({
+    mutationFn: async ({ file, sessionId }: UploadVariables) => {
       const formData = new FormData();
       formData.append("file", file);
 
@@ -124,21 +129,26 @@ export default function SessionsPage() {
         throw error;
       }
     },
-    onSuccess: () => {
-      setUploadStatus({ type: "success", text: "Upload successful." });
+    onMutate: ({ sessionId, sessionTitle }: UploadVariables) => {
+      setUploadStatus(null);
+      setUploadingSessionId(sessionId);
+      return { sessionTitle };
     },
-    onError: (error) => {
-      if (axios.isAxiosError(error)) {
-        setUploadStatus({
-          type: "error",
-          text: error.response?.data?.detail ?? "Upload failed. Check the CSV file and try again.",
-        });
+    onSuccess: (_data, _variables, context) => {
+      if (context?.sessionTitle) {
+        setUploadStatus({ type: "success", text: `Uploaded CSV for ${context.sessionTitle}.` });
       } else {
-        setUploadStatus({ type: "error", text: "Upload failed. Check the CSV file and try again." });
+        setUploadStatus({ type: "success", text: "Upload completed." });
       }
     },
-    onMutate: () => {
-      setUploadStatus(null);
+    onError: (error) => {
+      setUploadStatus({
+        type: "error",
+        text: getErrorMessage(error, "Upload failed. Check the CSV file and try again."),
+      });
+    },
+    onSettled: () => {
+      setUploadingSessionId(null);
     },
   });
 
@@ -151,23 +161,12 @@ export default function SessionsPage() {
     });
   };
 
-  const handleUploadSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const fileInput = event.currentTarget.elements.namedItem("file") as HTMLInputElement | null;
-    const file = fileInput?.files?.[0];
-
+  const handleUploadForSession = (sessionId: string, sessionTitle: string, file: File | null) => {
     if (!file) {
-      setUploadStatus({ type: "error", text: "Select a CSV file to upload." });
       return;
     }
 
-    if (!selectedSession) {
-      setUploadStatus({ type: "error", text: "Choose a session before uploading." });
-      return;
-    }
-
-    uploadMutation.mutate({ file, sessionId: selectedSession });
-    event.currentTarget.reset();
+    uploadMutation.mutate({ file, sessionId, sessionTitle });
   };
 
   return (
@@ -228,79 +227,90 @@ export default function SessionsPage() {
               </tr>
             </thead>
             <tbody>
-              {sessionsQuery.data.map((session) => (
-                <tr key={session.id}>
-                  <td>
-                    <strong>{session.title}</strong>
-                    <br />
-                    <small>{new Date(session.created_at).toLocaleString()}</small>
-                  </td>
-                  <td>{session.description || "—"}</td>
-                  <td>{session.is_leader ? "⭐" : ""}</td>
-                  <td className="actions">
-                    <button
-                      type="button"
-                      onClick={() => makeLeader.mutate(session.id)}
-                      disabled={makeLeader.isPending || session.is_leader}
-                    >
-                      {session.is_leader ? "Leader" : makeLeader.isPending ? "Updating..." : "Make Leader"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteSession.mutate(session.id)}
-                      disabled={deleteSession.isPending}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {sessionsQuery.data.map((session) => {
+                const isMakingLeader = makeLeader.isPending && makeLeader.variables === session.id;
+                const isDeleting = deleteSession.isPending && deleteSession.variables === session.id;
+                const isUploading = uploadMutation.isPending && uploadingSessionId === session.id;
+
+                return (
+                  <tr key={session.id}>
+                    <td>
+                      <strong>{session.title}</strong>
+                      <br />
+                      <small>{new Date(session.created_at).toLocaleString()}</small>
+                    </td>
+                    <td>{session.description || "—"}</td>
+                    <td>{session.is_leader ? "⭐" : ""}</td>
+                    <td className="actions">
+                      <button
+                        type="button"
+                        onClick={() => makeLeader.mutate(session.id)}
+                        disabled={session.is_leader || isMakingLeader}
+                      >
+                        {session.is_leader
+                          ? "Leader"
+                          : isMakingLeader
+                          ? "Updating..."
+                          : "Make Leader"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteSession.mutate(session.id)}
+                        disabled={isDeleting}
+                      >
+                        {isDeleting ? "Deleting..." : "Delete"}
+                      </button>
+                      <CSVUploadButton
+                        isUploading={isUploading}
+                        onFileSelected={(file) => handleUploadForSession(session.id, session.title, file)}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : (
           !sessionsQuery.isLoading && <p>No sessions yet.</p>
         )}
-      </section>
-
-      <section>
-        <h2>Upload PSI CSV</h2>
-        <p>Import PSI data directly into a session from here.</p>
-        <form onSubmit={handleUploadSubmit} className="form-grid">
-          <label>
-            Session
-            <select
-              value={selectedSession}
-              onChange={(event) => setSelectedSession(event.target.value)}
-              required
-            >
-              <option value="" disabled>
-                Select a session
-              </option>
-              {sessionsQuery.data?.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.title}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            CSV File
-            <input type="file" name="file" accept=".csv,text/csv" required />
-          </label>
-
-          <button
-            type="submit"
-            disabled={uploadMutation.isPending || sessionsQuery.isLoading || !sessionsQuery.data?.length}
-          >
-            {uploadMutation.isPending ? "Uploading..." : "Upload"}
-          </button>
-        </form>
-
         {uploadStatus && (
           <p className={uploadStatus.type === "error" ? "error" : "success"}>{uploadStatus.text}</p>
         )}
       </section>
     </div>
+  );
+}
+
+interface CSVUploadButtonProps {
+  onFileSelected: (file: File | null) => void;
+  isUploading: boolean;
+}
+
+function CSVUploadButton({ onFileSelected, isUploading }: CSVUploadButtonProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    onFileSelected(file);
+    event.target.value = "";
+  };
+
+  const handleButtonClick = () => {
+    inputRef.current?.click();
+  };
+
+  return (
+    <>
+      <input
+        type="file"
+        accept=".csv,text/csv"
+        className="visually-hidden"
+        ref={inputRef}
+        onChange={handleInputChange}
+      />
+      <button type="button" onClick={handleButtonClick} disabled={isUploading} aria-label="Upload CSV">
+        {isUploading ? "Uploading..." : "Upload CSV"}
+      </button>
+    </>
   );
 }

@@ -17,3 +17,11 @@ export interface PSIRow {
   safety_stock?: number | null;
   movable_stock?: number | null;
 }
+
+export interface MasterRecord {
+  id: string;
+  master_type: string;
+  data: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
