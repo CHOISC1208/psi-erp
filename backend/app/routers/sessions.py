@@ -13,16 +13,18 @@ from ..deps import get_db
 router = APIRouter()
 
 
-@router.get("/", response_model=list[schemas.SessionRead])
+@router.get("", response_model=list[schemas.SessionRead])
 def list_sessions(db: DBSession = Depends(get_db)) -> list[schemas.SessionRead]:
+    """セッション一覧を返す"""
     query = select(models.Session).order_by(models.Session.created_at.desc())
     return db.scalars(query).all()
 
 
-@router.post("/", response_model=schemas.SessionRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.SessionRead, status_code=status.HTTP_201_CREATED)
 def create_session(
     payload: schemas.SessionCreate, db: DBSession = Depends(get_db)
 ) -> schemas.SessionRead:
+    """新しいセッションを作成"""
     session = models.Session(title=payload.title, description=payload.description)
     db.add(session)
     db.commit()
@@ -31,6 +33,7 @@ def create_session(
 
 
 def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
+    """存在しない場合は 404 を返す内部関数"""
     session = db.get(models.Session, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -39,6 +42,7 @@ def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
 
 @router.get("/{session_id}", response_model=schemas.SessionRead)
 def get_session(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
+    """セッション詳細を取得"""
     return _get_session_or_404(db, session_id)
 
 
@@ -46,6 +50,7 @@ def get_session(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.Se
 def update_session(
     session_id: UUID, payload: schemas.SessionUpdate, db: DBSession = Depends(get_db)
 ) -> schemas.SessionRead:
+    """セッションを更新"""
     session = _get_session_or_404(db, session_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(session, field, value)
@@ -61,6 +66,7 @@ def update_session(
     response_class=Response,  # 204 はボディ無し
 )
 def delete_session(session_id: UUID, db: DBSession = Depends(get_db)) -> Response:
+    """セッションを削除"""
     session = _get_session_or_404(db, session_id)
     db.delete(session)
     db.commit()
@@ -69,6 +75,7 @@ def delete_session(session_id: UUID, db: DBSession = Depends(get_db)) -> Respons
 
 @router.patch("/{session_id}/leader", response_model=schemas.SessionRead)
 def set_leader(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.SessionRead:
+    """リーダーセッションを設定（他はすべて False に）"""
     # 先に存在確認
     _ = _get_session_or_404(db, session_id)
 
@@ -81,7 +88,6 @@ def set_leader(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.Ses
         .returning(models.Session.id)
     ).first()
     if not result:
-        # あり得ないが念のため
         raise HTTPException(status_code=404, detail="session not found")
 
     db.commit()
