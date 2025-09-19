@@ -95,3 +95,21 @@ def set_leader(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.Ses
     # 反映後のセッションを返す
     session = db.get(models.Session, session_id)
     return session
+
+
+from typing import Optional
+from sqlalchemy import select
+
+@router.get("/leader", response_model=Optional[schemas.SessionRead])
+def get_leader_session(db: DBSession = Depends(get_db)) -> Optional[schemas.SessionRead]:
+    """
+    現在のリーダーセッションを返す。
+    無ければ `null`（200）を返すので、フロントは初回作成フローに進める。
+    """
+    stmt = (
+        select(models.Session)
+        .where(models.Session.is_leader.is_(True))
+        .order_by(models.Session.updated_at.desc())
+        .limit(1)
+    )
+    return db.scalars(stmt).first()
