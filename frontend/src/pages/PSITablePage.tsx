@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
 import axios from "axios";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "../lib/api";
+import iconUrls from "../lib/iconUrls.json";
 import { PSIChannel, PSIDailyEntry, PSIEditApplyResult, PSISessionSummary, Session } from "../types";
 
 const fetchSessions = async (): Promise<Session[]> => {
@@ -237,6 +239,13 @@ export default function PSITablePage() {
   );
   const [isMetricSelectorOpen, setIsMetricSelectorOpen] = useState(false);
   const metricSelectorRef = useRef<HTMLDivElement | null>(null);
+  const [selectedChannelKey, setSelectedChannelKey] = useState<string | null>(null);
+  const tableRef = useRef<HTMLTableElement | null>(null);
+  const tableScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const topScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [tableContentWidth, setTableContentWidth] = useState(0);
+  const syncingScrollRef = useRef(false);
+  const rowGroupRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
   const sessionsQuery = useQuery({
     queryKey: ["sessions"],
@@ -392,6 +401,54 @@ export default function PSITablePage() {
     [visibleMetricKeys]
   );
 
+  const channelKeyOrder = useMemo(() => tableData.map((item) => makeChannelKey(item)), [tableData]);
+
+  useEffect(() => {
+    rowGroupRefs.current = new Array(channelKeyOrder.length).fill(null);
+  }, [channelKeyOrder.length]);
+
+  const todayIso = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  useEffect(() => {
+    if (!selectedChannelKey) {
+      return;
+    }
+    if (!tableData.some((item) => makeChannelKey(item) === selectedChannelKey)) {
+      setSelectedChannelKey(null);
+    }
+  }, [selectedChannelKey, tableData]);
+
+  useEffect(() => {
+    const table = tableRef.current;
+    if (!table) {
+      setTableContentWidth(0);
+      return;
+    }
+
+    const updateWidth = () => {
+      const containerWidth = tableScrollContainerRef.current?.clientWidth ?? 0;
+      setTableContentWidth(Math.max(table.scrollWidth, containerWidth));
+    };
+
+    updateWidth();
+
+    const resizeObserver = new ResizeObserver(updateWidth);
+    resizeObserver.observe(table);
+    if (tableScrollContainerRef.current) {
+      resizeObserver.observe(tableScrollContainerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [tableData, visibleMetrics, allDates]);
+
   const baselineMap = useMemo(() => {
     const map = new Map<string, PSIEditableDay>();
     baselineData.forEach((item) => {
@@ -460,6 +517,136 @@ export default function PSITablePage() {
       return [...previous, metricKey];
     });
   };
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedChannelKey(null);
+  }, []);
+
+  const handleTopScroll = useCallback(
+    (event: ReactUIEvent<HTMLDivElement>) => {
+      const bottom = tableScrollContainerRef.current;
+      if (!bottom) {
+        return;
+      }
+      if (syncingScrollRef.current) {
+        return;
+      }
+      syncingScrollRef.current = true;
+      bottom.scrollLeft = event.currentTarget.scrollLeft;
+      window.requestAnimationFrame(() => {
+        syncingScrollRef.current = false;
+      });
+    },
+    []
+  );
+
+  const handleBottomScroll = useCallback(
+    (event: ReactUIEvent<HTMLDivElement>) => {
+      const top = topScrollContainerRef.current;
+      if (!top) {
+        return;
+      }
+      if (syncingScrollRef.current) {
+        return;
+      }
+      syncingScrollRef.current = true;
+      top.scrollLeft = event.currentTarget.scrollLeft;
+      window.requestAnimationFrame(() => {
+        syncingScrollRef.current = false;
+      });
+    },
+    []
+  );
+
+  const scrollToDate = useCallback(
+    (targetDate: string) => {
+      const container = tableScrollContainerRef.current;
+      const table = tableRef.current;
+      if (!container || !table) {
+        return;
+      }
+
+      const headerCell = table.querySelector<HTMLTableCellElement>(`th[data-date="${targetDate}"]`);
+      if (!headerCell) {
+        return;
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const cellRect = headerCell.getBoundingClientRect();
+      const offset = cellRect.left - containerRect.left;
+      const center = offset - container.clientWidth / 2 + headerCell.clientWidth / 2;
+      const nextScrollLeft = Math.max(0, center);
+
+      const top = topScrollContainerRef.current;
+      syncingScrollRef.current = true;
+      container.scrollTo({ left: nextScrollLeft, behavior: "smooth" });
+      if (top) {
+        top.scrollTo({ left: nextScrollLeft, behavior: "smooth" });
+      }
+      window.requestAnimationFrame(() => {
+        syncingScrollRef.current = false;
+      });
+    },
+    []
+  );
+
+  const handleTodayClick = useCallback(() => {
+    scrollToDate(todayIso);
+  }, [scrollToDate, todayIso]);
+
+  const handleRowSelection = useCallback((channelKey: string) => {
+    setSelectedChannelKey(channelKey);
+  }, []);
+
+  const handleRowKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLTableRowElement>, index: number, channelKey: string) => {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        const next = rowGroupRefs.current[index + 1];
+        next?.focus();
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        const previous = rowGroupRefs.current[index - 1];
+        previous?.focus();
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setSelectedChannelKey(channelKey);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSelectedChannelKey(null);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedChannelKey(null);
+        return;
+      }
+      if ((event.key === "t" || event.key === "T") && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        scrollToDate(todayIso);
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [scrollToDate, todayIso]);
 
   const handleDownload = () => {
     if (
@@ -627,6 +814,7 @@ export default function PSITablePage() {
   const handleReset = () => {
     setApplyError(null);
     setApplySuccess(null);
+    setSelectedChannelKey(null);
     if (baselineData.length) {
       setTableData(cloneEditableChannels(baselineData));
     }
@@ -685,300 +873,414 @@ export default function PSITablePage() {
   };
 
   return (
-    <div className="page">
-      <header>
+    <div className="page psi-page">
+      <header className="psi-page-header">
         <h1>PSI Daily Table</h1>
         <p>Review the computed PSI metrics for the selected session.</p>
       </header>
 
-      <section className={`psi-controls${controlsCollapsed ? " collapsed" : ""}`}>
-        <div className="psi-controls-header">
-          <h2>Filters &amp; Description</h2>
-          <button type="button" className="collapse-toggle" onClick={() => setControlsCollapsed((previous) => !previous)}>
-            {controlsCollapsed ? "詳細を表示" : "詳細を折りたたむ"}
-          </button>
-        </div>
-        {!controlsCollapsed && (
-          <div className="psi-controls-body">
-            <div className="psi-panel psi-filter-panel">
-              <h3>フィルタ</h3>
-              <div className="psi-filter-grid">
-                <label>
-                  Session
-                  <select
-                    value={sessionId}
-                    onChange={(event) => handleSessionChange(event.target.value)}
-                    disabled={sessionsQuery.isLoading}
-                  >
-                    <option value="" disabled>
-                      Select a session
-                    </option>
-                    {availableSessions.map((session) => (
-                      <option key={session.id} value={session.id}>
-                        {session.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  SKU Code
-                  <input
-                    type="text"
-                    value={skuCode}
-                    onChange={(event) => setSkuCode(event.target.value)}
-                    placeholder="Optional"
-                  />
-                </label>
-                <label>
-                  Warehouse
-                  <input
-                    type="text"
-                    value={warehouseName}
-                    onChange={(event) => setWarehouseName(event.target.value)}
-                    placeholder="Optional"
-                  />
-                </label>
-                <label>
-                  Channel
-                  <input
-                    type="text"
-                    value={channel}
-                    onChange={(event) => setChannel(event.target.value)}
-                    placeholder="Optional"
-                  />
-                </label>
-              </div>
-              {sessionsQuery.isLoading && <p>Loading sessions...</p>}
-              {sessionsQuery.isError && (
-                <p className="error">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
-              )}
-            </div>
-            <div className="psi-panel psi-description-panel">
-              {sessionId ? (
-                <>
-                  <div className="psi-description-dates">
-                    <div>
-                      <strong>開始日</strong>
-                      <span>{sessionSummaryQuery.isLoading ? "…" : formattedStart}</span>
-                    </div>
-                    <div>
-                      <strong>終了日</strong>
-                      <span>{sessionSummaryQuery.isLoading ? "…" : formattedEnd}</span>
-                    </div>
-                  </div>
-                  {sessionSummaryQuery.isError && (
-                    <p className="error">{getErrorMessage(sessionSummaryQuery.error, "Unable to load session date range.")}</p>
-                  )}
+      <div className="psi-page-content">
+        <section className={`psi-controls${controlsCollapsed ? " collapsed" : ""}`}>
+          <div className="psi-controls-header">
+            <h2>Filters &amp; Description</h2>
+            <button type="button" className="collapse-toggle" onClick={() => setControlsCollapsed((previous) => !previous)}>
+              {controlsCollapsed ? "詳細を表示" : "詳細を折りたたむ"}
+            </button>
+          </div>
+          {!controlsCollapsed && (
+            <div className="psi-controls-body">
+              <div className="psi-panel psi-filter-panel">
+                <h3>フィルタ</h3>
+                <div className="psi-filter-grid">
                   <label>
-                    Description
-                    <textarea
-                      value={descriptionDraft}
-                      onChange={(event) => {
-                        setDescriptionDraft(event.target.value);
-                        setDescriptionSaved(false);
-                        setDescriptionError(null);
-                      }}
-                      placeholder="Add a description for this session"
+                    Session
+                    <select
+                      value={sessionId}
+                      onChange={(event) => handleSessionChange(event.target.value)}
+                      disabled={sessionsQuery.isLoading}
+                    >
+                      <option value="" disabled>
+                        Select a session
+                      </option>
+                      {availableSessions.map((session) => (
+                        <option key={session.id} value={session.id}>
+                          {session.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    SKU Code
+                    <input
+                      type="text"
+                      value={skuCode}
+                      onChange={(event) => setSkuCode(event.target.value)}
+                      placeholder="Optional"
                     />
                   </label>
-                  <div className="session-summary-actions">
-                    <button type="button" onClick={handleDescriptionSave} disabled={!isDescriptionDirty || isSavingDescription}>
-                      {isSavingDescription ? "Saving..." : "Save Description"}
-                    </button>
-                    {descriptionError && <span className="error">{descriptionError}</span>}
-                    {descriptionSaved && <span className="success">Description updated.</span>}
-                  </div>
-                  <div className="psi-session-meta">
-                    <div>
-                      <strong>作成日</strong>
-                      <span>{formattedCreatedAt}</span>
+                  <label>
+                    Warehouse
+                    <input
+                      type="text"
+                      value={warehouseName}
+                      onChange={(event) => setWarehouseName(event.target.value)}
+                      placeholder="Optional"
+                    />
+                  </label>
+                  <label>
+                    Channel
+                    <input
+                      type="text"
+                      value={channel}
+                      onChange={(event) => setChannel(event.target.value)}
+                      placeholder="Optional"
+                    />
+                  </label>
+                </div>
+                {sessionsQuery.isLoading && <p>Loading sessions...</p>}
+                {sessionsQuery.isError && (
+                  <p className="error">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
+                )}
+              </div>
+              <div className="psi-panel psi-description-panel">
+                {sessionId ? (
+                  <>
+                    <div className="psi-description-dates">
+                      <div>
+                        <strong>開始日</strong>
+                        <span>{sessionSummaryQuery.isLoading ? "…" : formattedStart}</span>
+                      </div>
+                      <div>
+                        <strong>終了日</strong>
+                        <span>{sessionSummaryQuery.isLoading ? "…" : formattedEnd}</span>
+                      </div>
                     </div>
-                    <div>
-                      <strong>更新日</strong>
-                      <span>{formattedUpdatedAt}</span>
+                    {sessionSummaryQuery.isError && (
+                      <p className="error">{getErrorMessage(sessionSummaryQuery.error, "Unable to load session date range.")}</p>
+                    )}
+                    <label>
+                      Description
+                      <textarea
+                        value={descriptionDraft}
+                        onChange={(event) => {
+                          setDescriptionDraft(event.target.value);
+                          setDescriptionSaved(false);
+                          setDescriptionError(null);
+                        }}
+                        placeholder="Add a description for this session"
+                      />
+                    </label>
+                    <div className="session-summary-actions">
+                      <button
+                        type="button"
+                        className="psi-button secondary"
+                        onClick={handleDescriptionSave}
+                        disabled={!isDescriptionDirty || isSavingDescription}
+                        aria-label={isSavingDescription ? "説明を保存中" : "説明を保存"}
+                      >
+                        <img src={iconUrls.save} alt="" aria-hidden="true" className="psi-button-icon" />
+                        <span>{isSavingDescription ? "保存中…" : "保存"}</span>
+                      </button>
+                      {descriptionError && <span className="error">{descriptionError}</span>}
+                      {descriptionSaved && <span className="success">Description updated.</span>}
                     </div>
-                  </div>
-                </>
-              ) : (
-                <p>Select a session to view its details.</p>
-              )}
+                    <div className="psi-session-meta">
+                      <div>
+                        <strong>作成日</strong>
+                        <span>{formattedCreatedAt}</span>
+                      </div>
+                      <div>
+                        <strong>更新日</strong>
+                        <span>{formattedUpdatedAt}</span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p>Select a session to view its details.</p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </section>
-
-      <section>
-        <div className="actions">
-          <button type="button" onClick={() => psiQuery.refetch()} disabled={!sessionId || psiQuery.isFetching}>
-            Refresh
-          </button>
-          <button type="button" onClick={handleReset} disabled={!baselineData.length}>
-            Reset Table
-          </button>
-        </div>
-
-        {psiQuery.isLoading && sessionId && <p>Loading PSI data...</p>}
-        {psiQuery.isError && <p className="error">{getErrorMessage(psiQuery.error, "Unable to load PSI data.")}</p>}
-        {tableData.length > 0 ? (
-          <div className="psi-table-wrapper">
-            <div className="psi-table-toolbar">
+          )}
+          <div className="psi-toolbar" role="toolbar" aria-label="PSI data actions">
+            <div className="psi-toolbar-group">
               <button
                 type="button"
-                className="secondary"
-                onClick={handleDownload}
-                disabled={!tableData.length || !visibleMetrics.length}
-              >
-                Download CSV
-              </button>
-              <button
-                type="button"
+                className="psi-button primary"
                 onClick={handleApply}
                 disabled={!sessionId || !hasPendingChanges || isApplying}
               >
-                {isApplying ? "Applying..." : "Apply"}
+                <img src={iconUrls.apply} alt="" aria-hidden="true" className="psi-button-icon" />
+                <span>{isApplying ? "Applying…" : "適用"}</span>
               </button>
             </div>
-            {(applyError || applySuccess) && (
-              <div className="psi-table-messages">
-                {applyError && <span className="error">{applyError}</span>}
-                {applySuccess && <span className="success">{applySuccess}</span>}
+            <div className="psi-toolbar-group">
+              <button
+                type="button"
+                className="psi-button secondary"
+                onClick={() => psiQuery.refetch()}
+                disabled={!sessionId || psiQuery.isFetching}
+              >
+                <img src={iconUrls.refresh} alt="" aria-hidden="true" className="psi-button-icon" />
+                <span>更新</span>
+              </button>
+              <button
+                type="button"
+                className="psi-button secondary"
+                onClick={handleReset}
+                disabled={!baselineData.length}
+              >
+                <img src={iconUrls.reset} alt="" aria-hidden="true" className="psi-button-icon" />
+                <span>リセット</span>
+              </button>
+            </div>
+            <div className="psi-toolbar-spacer" aria-hidden="true" />
+            <button
+              type="button"
+              className="psi-button today"
+              onClick={handleTodayClick}
+              aria-label="今日の列へ移動"
+            >
+              <img src={iconUrls.today} alt="" aria-hidden="true" className="psi-button-icon" />
+              <span>今日へ</span>
+            </button>
+          </div>
+        </section>
+
+        <section className="psi-table-section">
+          {psiQuery.isLoading && sessionId && <p className="psi-table-status">Loading PSI data...</p>}
+          {psiQuery.isError && (
+            <p className="psi-table-status error">{getErrorMessage(psiQuery.error, "Unable to load PSI data.")}</p>
+          )}
+          {tableData.length > 0 ? (
+            <div className="psi-table-wrapper">
+              <div className="psi-table-toolbar">
+                <div className="psi-table-toolbar-group">
+                  <button
+                    type="button"
+                    className="psi-button secondary"
+                    onClick={handleDownload}
+                    disabled={!tableData.length || !visibleMetrics.length}
+                    aria-label="CSVをダウンロード"
+                  >
+                    <img src={iconUrls.downloadCsv} alt="" aria-hidden="true" className="psi-button-icon" />
+                    <span>CSV</span>
+                  </button>
+                  {selectedChannelKey && (
+                    <button
+                      type="button"
+                      className="psi-button secondary"
+                      onClick={handleClearSelection}
+                      aria-label="選択を解除"
+                    >
+                      <img src={iconUrls.clear} alt="" aria-hidden="true" className="psi-button-icon" />
+                      <span>選択解除</span>
+                    </button>
+                  )}
+                </div>
+                {(applyError || applySuccess) && (
+                  <div className="psi-table-messages">
+                    {applyError && <span className="error">{applyError}</span>}
+                    {applySuccess && <span className="success">{applySuccess}</span>}
+                  </div>
+                )}
               </div>
-            )}
-            <div className="psi-table-container">
-              <table className="psi-table">
-                <thead>
-                  <tr>
-                    <th className="sticky-col col-sku">sku_code</th>
-                    <th className="sticky-col col-sku-name">sku_name</th>
-                    <th className="sticky-col col-warehouse">warehouse_name</th>
-                    <th className="sticky-col col-channel">channel</th>
-                    <th className="sticky-col col-div">
-                      <div className="metric-header" ref={metricSelectorRef}>
-                        <button
-                          type="button"
-                          className="metric-toggle"
-                          onClick={() => setIsMetricSelectorOpen((previous) => !previous)}
-                          aria-expanded={isMetricSelectorOpen}
-                        >
-                          div
-                        </button>
-                        {isMetricSelectorOpen && (
-                          <div className="metric-selector">
-                            <p className="metric-selector-title">表示する指標</p>
-                            <div className="metric-selector-options">
-                              {metricDefinitions.map((metric) => {
-                                const key = metric.key as MetricKey;
-                                const checked = visibleMetricKeys.includes(key);
-                                const disabled = checked && visibleMetricKeys.length === 1;
-                                return (
-                                  <label key={metric.key}>
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={disabled}
-                                      onChange={() => toggleMetricVisibility(key)}
-                                    />
-                                    {metric.label}
-                                  </label>
-                                );
-                              })}
-                            </div>
+              <div className="psi-table-scroll-area">
+                <div
+                  className="psi-scrollbar psi-scrollbar-top"
+                  ref={topScrollContainerRef}
+                  onScroll={handleTopScroll}
+                  role="presentation"
+                >
+                  <div className="psi-scrollbar-filler" style={{ width: `${tableContentWidth}px` }} />
+                </div>
+                <div
+                  className="psi-table-container"
+                  ref={tableScrollContainerRef}
+                  onScroll={handleBottomScroll}
+                >
+                  <table className="psi-table" ref={tableRef}>
+                    <thead>
+                      <tr>
+                        <th className="sticky-col col-sku">sku_code</th>
+                        <th className="sticky-col col-sku-name">sku_name</th>
+                        <th className="sticky-col col-warehouse">warehouse_name</th>
+                        <th className="sticky-col col-channel">channel</th>
+                        <th className="sticky-col col-div">
+                          <div className="metric-header" ref={metricSelectorRef}>
+                            <button
+                              type="button"
+                              className="metric-toggle"
+                              onClick={() => setIsMetricSelectorOpen((previous) => !previous)}
+                              aria-expanded={isMetricSelectorOpen}
+                            >
+                              div
+                            </button>
+                            {isMetricSelectorOpen && (
+                              <div className="metric-selector">
+                                <p className="metric-selector-title">表示する指標</p>
+                                <div className="metric-selector-options">
+                                  {metricDefinitions.map((metric) => {
+                                    const key = metric.key as MetricKey;
+                                    const checked = visibleMetricKeys.includes(key);
+                                    const disabled = checked && visibleMetricKeys.length === 1;
+                                    return (
+                                      <label key={metric.key}>
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          disabled={disabled}
+                                          onChange={() => toggleMetricVisibility(key)}
+                                        />
+                                        {metric.label}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </th>
-                    {allDates.map((date) => (
-                      <th key={date} className="date-header">
-                        {formatDisplayDate(date)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableData.map((item) => {
-                    const channelKey = makeChannelKey(item);
-                    const rowSpan = Math.max(visibleMetrics.length, 1);
-                    const dateMap = new Map(item.daily.map((entry) => [entry.date, entry]));
+                        </th>
+                        {allDates.map((date) => (
+                          <th
+                            key={date}
+                            className={`date-header${date === todayIso ? " today-column" : ""}`}
+                            data-date={date}
+                          >
+                            {formatDisplayDate(date)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableData.map((item, channelIndex) => {
+                        const channelKey = makeChannelKey(item);
+                        const rowSpan = Math.max(visibleMetrics.length, 1);
+                        const dateMap = new Map(item.daily.map((entry) => [entry.date, entry]));
 
-                    if (!visibleMetrics.length) {
-                      return null;
-                    }
+                        if (!visibleMetrics.length) {
+                          return null;
+                        }
 
-                    return visibleMetrics.map((metric, metricIndex) => (
-                      <tr key={`${channelKey}-${metric.key}`}>
-                        {metricIndex === 0 && (
-                          <>
-                            <td className="sticky-col col-sku" rowSpan={rowSpan}>
-                              {item.sku_code}
-                            </td>
-                            <td className="sticky-col col-sku-name" rowSpan={rowSpan}>
-                              {item.sku_name ?? "—"}
-                            </td>
-                            <td className="sticky-col col-warehouse" rowSpan={rowSpan}>
-                              {item.warehouse_name}
-                            </td>
-                            <td className="sticky-col col-channel" rowSpan={rowSpan}>
-                              {item.channel}
-                            </td>
-                          </>
-                        )}
-                        <td className="sticky-col col-div psi-metric-name">{metric.label}</td>
-                        {allDates.map((date) => {
-                          const entry = dateMap.get(date);
-                          const cellKey = `${channelKey}-${metric.key}-${date}`;
+                        const isSelected = selectedChannelKey === channelKey;
 
-                          if (!entry) {
-                            return (
-                              <td key={cellKey} className="numeric">
-                                —
-                              </td>
-                            );
-                          }
-
-                          const value = entry[metric.key];
-
-                          if (isEditableMetric(metric)) {
-                            const baselineEntry = baselineMap.get(makeCellKey(channelKey, date));
-                            const baselineValue = baselineEntry ? baselineEntry[metric.key] ?? null : null;
-                            const currentValue = value ?? null;
-                            const isEdited = !valuesEqual(currentValue, baselineValue);
-
-                            return (
-                              <td key={cellKey} className="numeric">
-                                <input
-                                  type="text"
-                                  className={`psi-edit-input${isEdited ? " edited" : ""}`}
-                                  value={currentValue ?? ""}
-                                  onChange={(event) =>
-                                    handleEditableChange(channelKey, date, metric.key, event.target.value)
-                                  }
-                                  inputMode="decimal"
-                                  onPaste={(event) => {
-                                    event.preventDefault();
-                                    handlePasteValues(channelKey, date, metric.key, event.clipboardData.getData("text"));
-                                  }}
-                                />
-                              </td>
-                            );
-                          }
+                        return visibleMetrics.map((metric, metricIndex) => {
+                          const isFirstMetricRow = metricIndex === 0;
 
                           return (
-                            <td key={cellKey} className="numeric">
-                              {formatNumber(value)}
-                            </td>
+                            <tr
+                              key={`${channelKey}-${metric.key}`}
+                              className={`psi-table-row${isSelected ? " selected" : ""}`}
+                              onClick={() => handleRowSelection(channelKey)}
+                              tabIndex={isFirstMetricRow ? 0 : -1}
+                              ref={
+                                isFirstMetricRow
+                                  ? (element) => {
+                                      rowGroupRefs.current[channelIndex] = element ?? null;
+                                    }
+                                  : undefined
+                              }
+                              onKeyDown={
+                                isFirstMetricRow
+                                  ? (event) => handleRowKeyDown(event, channelIndex, channelKey)
+                                  : undefined
+                              }
+                              aria-selected={isSelected}
+                            >
+                              {isFirstMetricRow && (
+                                <>
+                                  <td className={`sticky-col col-sku${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
+                                    {item.sku_code}
+                                  </td>
+                                  <td
+                                    className={`sticky-col col-sku-name${isSelected ? " selected" : ""}`}
+                                    rowSpan={rowSpan}
+                                  >
+                                    {item.sku_name ?? "—"}
+                                  </td>
+                                  <td
+                                    className={`sticky-col col-warehouse${isSelected ? " selected" : ""}`}
+                                    rowSpan={rowSpan}
+                                  >
+                                    {item.warehouse_name}
+                                  </td>
+                                  <td
+                                    className={`sticky-col col-channel${isSelected ? " selected" : ""}`}
+                                    rowSpan={rowSpan}
+                                  >
+                                    {item.channel}
+                                  </td>
+                                </>
+                              )}
+                              <td className={`sticky-col col-div psi-metric-name${isSelected ? " selected" : ""}`}>
+                                {metric.label}
+                              </td>
+                              {allDates.map((date) => {
+                                const entry = dateMap.get(date);
+                                const cellKey = `${channelKey}-${metric.key}-${date}`;
+                                const todayClass = date === todayIso ? " today-column" : "";
+
+                                if (!entry) {
+                                  return (
+                                    <td key={cellKey} className={`numeric${todayClass}`}>
+                                      —
+                                    </td>
+                                  );
+                                }
+
+                                const value = entry[metric.key];
+
+                                if (isEditableMetric(metric)) {
+                                  const baselineEntry = baselineMap.get(makeCellKey(channelKey, date));
+                                  const baselineValue = baselineEntry ? baselineEntry[metric.key] ?? null : null;
+                                  const currentValue = value ?? null;
+                                  const isEdited = !valuesEqual(currentValue, baselineValue);
+
+                                  return (
+                                    <td key={cellKey} className={`numeric${todayClass}`}>
+                                      <input
+                                        type="text"
+                                        className={`psi-edit-input${isEdited ? " edited" : ""}`}
+                                        value={currentValue ?? ""}
+                                        onChange={(event) =>
+                                          handleEditableChange(channelKey, date, metric.key, event.target.value)
+                                        }
+                                        inputMode="decimal"
+                                        onPaste={(event) => {
+                                          event.preventDefault();
+                                          handlePasteValues(
+                                            channelKey,
+                                            date,
+                                            metric.key,
+                                            event.clipboardData.getData("text")
+                                          );
+                                        }}
+                                      />
+                                    </td>
+                                  );
+                                }
+
+                                return (
+                                  <td key={cellKey} className={`numeric${todayClass}`}>
+                                    {formatNumber(value)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
                           );
-                        })}
-                      </tr>
-                    ));
-                  })}
-                </tbody>
-              </table>
+                        });
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </div>
-        ) : (
-          sessionId && !psiQuery.isLoading && <p>No PSI data for the current filters.</p>
-        )}
-      </section>
+          ) : (
+            sessionId && !psiQuery.isLoading && (
+              <p className="psi-table-status">No PSI data for the current filters.</p>
+            )
+          )}
+        </section>
+      </div>
     </div>
   );
 }
