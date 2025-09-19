@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
 import axios from "axios";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -246,6 +246,8 @@ export default function PSITablePage() {
   const [tableContentWidth, setTableContentWidth] = useState(0);
   const syncingScrollRef = useRef(false);
   const rowGroupRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+  const controlsRef = useRef<HTMLElement | null>(null);
+  const tableScrollAreaRef = useRef<HTMLDivElement | null>(null);
 
   const sessionsQuery = useQuery({
     queryKey: ["sessions"],
@@ -358,6 +360,46 @@ export default function PSITablePage() {
   useEffect(() => {
     setLastAppliedAt(null);
   }, [sessionId]);
+
+  useLayoutEffect(() => {
+    const scrollAreaElement = tableScrollAreaRef.current;
+    if (!scrollAreaElement) {
+      return;
+    }
+
+    const updateHeaderOffset = () => {
+      const controlsElement = controlsRef.current;
+      const controlsHeight = controlsElement?.getBoundingClientRect().height ?? 0;
+      scrollAreaElement.style.setProperty("--psi-table-header-offset", `${controlsHeight}px`);
+    };
+
+    updateHeaderOffset();
+
+    const resizeObservers: ResizeObserver[] = [];
+
+    if (typeof ResizeObserver !== "undefined") {
+      const controlsElement = controlsRef.current;
+      if (controlsElement) {
+        const observer = new ResizeObserver(() => {
+          updateHeaderOffset();
+        });
+        observer.observe(controlsElement);
+        resizeObservers.push(observer);
+      }
+    }
+
+    const handleWindowResize = () => {
+      updateHeaderOffset();
+    };
+
+    window.addEventListener("resize", handleWindowResize);
+
+    return () => {
+      resizeObservers.forEach((observer) => observer.disconnect());
+      window.removeEventListener("resize", handleWindowResize);
+      scrollAreaElement.style.removeProperty("--psi-table-header-offset");
+    };
+  }, [controlsCollapsed, tableData.length]);
 
   useEffect(() => {
     if (controlsCollapsed) {
@@ -880,7 +922,7 @@ export default function PSITablePage() {
       </header>
 
       <div className="psi-page-content">
-        <section className={`psi-controls${controlsCollapsed ? " collapsed" : ""}`}>
+        <section ref={controlsRef} className={`psi-controls${controlsCollapsed ? " collapsed" : ""}`}>
           <div className="psi-controls-header">
             <h2>Filters &amp; Description</h2>
             <button type="button" className="collapse-toggle" onClick={() => setControlsCollapsed((previous) => !previous)}>
@@ -1084,7 +1126,7 @@ export default function PSITablePage() {
                   </div>
                 )}
               </div>
-              <div className="psi-table-scroll-area">
+              <div className="psi-table-scroll-area" ref={tableScrollAreaRef}>
                 <div
                   className="psi-scrollbar psi-scrollbar-top"
                   ref={topScrollContainerRef}
