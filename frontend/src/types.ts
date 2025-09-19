@@ -26,6 +26,17 @@ export interface PSIChannel {
   daily: PSIDailyEntry[];
 }
 
+export interface PSISessionSummary {
+  session_id: string;
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
+export interface PSIEditApplyResult {
+  applied: number;
+  log_entries: number;
+}
+
 export interface MasterRecord {
   id: string;
   master_type: string;

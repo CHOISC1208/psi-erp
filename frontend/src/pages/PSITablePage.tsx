@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "../lib/api";
-import { PSIChannel, PSIDailyEntry, Session } from "../types";
+import { PSIChannel, PSIDailyEntry, PSIEditApplyResult, PSISessionSummary, Session } from "../types";
 
 const fetchSessions = async (): Promise<Session[]> => {
   const { data } = await api.get<Session[]>("/sessions/");
@@ -39,6 +39,29 @@ const fetchDailyPsi = async (
   const { data } = await api.get<PSIChannel[]>(`/psi/${sessionId}/daily`, {
     params,
   });
+  return data;
+};
+
+const fetchSessionSummary = async (sessionId: string): Promise<PSISessionSummary> => {
+  const { data } = await api.get<PSISessionSummary>(`/psi/${sessionId}/summary`);
+  return data;
+};
+
+interface PSIEditUpdatePayload {
+  sku_code: string;
+  warehouse_name: string;
+  channel: string;
+  date: string;
+  inbound_qty?: number | null;
+  outbound_qty?: number | null;
+  safety_stock?: number | null;
+}
+
+const applyPsiEdits = async (
+  sessionId: string,
+  edits: PSIEditUpdatePayload[]
+): Promise<PSIEditApplyResult> => {
+  const { data } = await api.post<PSIEditApplyResult>(`/psi/${sessionId}/edits/apply`, { edits });
   return data;
 };
 
@@ -162,13 +185,41 @@ const prepareEditableData = (data: PSIChannel[]): PSIEditableChannel[] =>
 const makeChannelKey = (channel: { sku_code: string; warehouse_name: string; channel: string }) =>
   `${channel.sku_code}__${channel.warehouse_name}__${channel.channel}`;
 
+const cloneEditableChannels = (channels: PSIEditableChannel[]): PSIEditableChannel[] =>
+  channels.map((channel) => ({
+    ...channel,
+    daily: channel.daily.map((entry) => ({ ...entry })),
+  }));
+
+const makeCellKey = (channelKey: string, date: string) => `${channelKey}__${date}`;
+
+const valuesEqual = (a: number | null | undefined, b: number | null | undefined) => {
+  if (a === null || a === undefined) {
+    return b === null || b === undefined;
+  }
+  if (b === null || b === undefined) {
+    return false;
+  }
+  return Math.abs(a - b) < 1e-9;
+};
+
 export default function PSITablePage() {
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [sessionId, setSessionId] = useState<string>(() => searchParams.get("sessionId") ?? "");
   const [skuCode, setSkuCode] = useState<string>("");
   const [warehouseName, setWarehouseName] = useState<string>("");
   const [channel, setChannel] = useState<string>("");
   const [tableData, setTableData] = useState<PSIEditableChannel[]>([]);
+  const [baselineData, setBaselineData] = useState<PSIEditableChannel[]>([]);
+  const [isApplying, setIsApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applySuccess, setApplySuccess] = useState<string | null>(null);
+  const [descriptionDraft, setDescriptionDraft] = useState<string>("");
+  const [originalDescription, setOriginalDescription] = useState<string>("");
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
+  const [descriptionSaved, setDescriptionSaved] = useState(false);
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
 
   const sessionsQuery = useQuery({
     queryKey: ["sessions"],
@@ -179,6 +230,10 @@ export default function PSITablePage() {
   const leaderSession = useMemo(
     () => availableSessions.find((session) => session.is_leader),
     [availableSessions]
+  );
+  const selectedSession = useMemo(
+    () => availableSessions.find((session) => session.id === sessionId) ?? null,
+    [availableSessions, sessionId]
   );
 
   useEffect(() => {
@@ -220,6 +275,10 @@ export default function PSITablePage() {
 
   const handleSessionChange = (value: string) => {
     setSessionId(value);
+    setApplyError(null);
+    setApplySuccess(null);
+    setDescriptionError(null);
+    setDescriptionSaved(false);
     const params = new URLSearchParams(searchParams);
     if (value) {
       params.set("sessionId", value);
@@ -235,13 +294,38 @@ export default function PSITablePage() {
     enabled: Boolean(sessionId),
   });
 
+  const sessionSummaryQuery = useQuery({
+    queryKey: ["psi-session-summary", sessionId],
+    queryFn: () => fetchSessionSummary(sessionId),
+    enabled: Boolean(sessionId),
+  });
+
   useEffect(() => {
     if (psiQuery.data) {
-      setTableData(prepareEditableData(psiQuery.data));
+      const prepared = prepareEditableData(psiQuery.data);
+      const cloned = cloneEditableChannels(prepared);
+      setBaselineData(cloned);
+      setTableData(cloneEditableChannels(prepared));
     } else {
+      setBaselineData([]);
       setTableData([]);
     }
+    setApplyError(null);
+    setApplySuccess(null);
   }, [psiQuery.data]);
+
+  useEffect(() => {
+    if (selectedSession) {
+      const description = selectedSession.description ?? "";
+      setDescriptionDraft(description);
+      setOriginalDescription(description);
+    } else {
+      setDescriptionDraft("");
+      setOriginalDescription("");
+    }
+    setDescriptionError(null);
+    setDescriptionSaved(false);
+  }, [selectedSession]);
 
   const allDates = useMemo(() => {
     const dateSet = new Set<string>();
@@ -253,7 +337,60 @@ export default function PSITablePage() {
     return Array.from(dateSet).sort(compareDateStrings);
   }, [tableData]);
 
+  const baselineMap = useMemo(() => {
+    const map = new Map<string, PSIEditableDay>();
+    baselineData.forEach((item) => {
+      const channelKey = makeChannelKey(item);
+      item.daily.forEach((entry) => {
+        map.set(makeCellKey(channelKey, entry.date), entry);
+      });
+    });
+    return map;
+  }, [baselineData]);
+
+  const pendingEdits = useMemo(() => {
+    const edits: PSIEditUpdatePayload[] = [];
+
+    tableData.forEach((item) => {
+      const channelKey = makeChannelKey(item);
+
+      item.daily.forEach((entry) => {
+        const baselineEntry = baselineMap.get(makeCellKey(channelKey, entry.date));
+        let changed = false;
+        const diff: PSIEditUpdatePayload = {
+          sku_code: item.sku_code,
+          warehouse_name: item.warehouse_name,
+          channel: item.channel,
+          date: entry.date,
+        };
+
+        (["inbound_qty", "outbound_qty", "safety_stock"] as EditableField[]).forEach((field) => {
+          const currentValue = entry[field] ?? null;
+          const baselineValue = baselineEntry ? baselineEntry[field] ?? null : null;
+          if (!valuesEqual(currentValue, baselineValue)) {
+            diff[field] = currentValue;
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          edits.push(diff);
+        }
+      });
+    });
+
+    return edits;
+  }, [baselineMap, tableData]);
+
+  const hasPendingChanges = pendingEdits.length > 0;
+  const isDescriptionDirty = descriptionDraft !== originalDescription;
+  const summaryData = sessionSummaryQuery.data;
+  const formattedStart = summaryData?.start_date ? formatDisplayDate(summaryData.start_date) : "—";
+  const formattedEnd = summaryData?.end_date ? formatDisplayDate(summaryData.end_date) : "—";
+
   const handleEditableChange = (channelKey: string, date: string, field: EditableField, rawValue: string) => {
+    setApplyError(null);
+    setApplySuccess(null);
     setTableData((previous) =>
       previous.map((item) => {
         if (makeChannelKey(item) !== channelKey) {
@@ -265,11 +402,12 @@ export default function PSITablePage() {
             return entry;
           }
 
-          if (rawValue === "") {
+          const trimmed = rawValue.trim();
+          if (trimmed === "") {
             return { ...entry, [field]: null };
           }
 
-          const parsed = Number(rawValue);
+          const parsed = Number(trimmed);
           if (!Number.isFinite(parsed)) {
             return entry;
           }
@@ -282,9 +420,128 @@ export default function PSITablePage() {
     );
   };
 
+  const handlePasteValues = useCallback(
+    (channelKey: string, date: string, field: EditableField, clipboardText: string) => {
+      if (!clipboardText) {
+        return;
+      }
+
+      const startIndex = allDates.indexOf(date);
+      if (startIndex === -1) {
+        return;
+      }
+
+      const values = clipboardText
+        .replace(/\r/g, "")
+        .split(/\n/)
+        .flatMap((row) => row.split(/\t/))
+        .map((token) => token.trim());
+
+      if (!values.length) {
+        return;
+      }
+
+      setApplyError(null);
+      setApplySuccess(null);
+
+      setTableData((previous) =>
+        previous.map((item) => {
+          if (makeChannelKey(item) !== channelKey) {
+            return item;
+          }
+
+          const updatedDaily = item.daily.map((entry) => ({ ...entry }));
+          let pointer = startIndex;
+
+          values.forEach((token) => {
+            if (pointer >= allDates.length) {
+              return;
+            }
+
+            const targetDate = allDates[pointer];
+            pointer += 1;
+
+            const entryIndex = updatedDaily.findIndex((dailyEntry) => dailyEntry.date === targetDate);
+            if (entryIndex === -1) {
+              return;
+            }
+
+            if (token === "") {
+              updatedDaily[entryIndex] = { ...updatedDaily[entryIndex], [field]: null };
+              return;
+            }
+
+            const parsed = Number(token);
+            if (!Number.isFinite(parsed)) {
+              return;
+            }
+
+            updatedDaily[entryIndex] = { ...updatedDaily[entryIndex], [field]: parsed };
+          });
+
+          return recomputeChannel({ ...item, daily: updatedDaily });
+        })
+      );
+    },
+    [allDates]
+  );
+
   const handleReset = () => {
-    if (psiQuery.data) {
-      setTableData(prepareEditableData(psiQuery.data));
+    setApplyError(null);
+    setApplySuccess(null);
+    if (baselineData.length) {
+      setTableData(cloneEditableChannels(baselineData));
+    }
+  };
+
+  const handleApply = async () => {
+    if (!sessionId || !hasPendingChanges) {
+      return;
+    }
+
+    setIsApplying(true);
+    setApplyError(null);
+    setApplySuccess(null);
+
+    try {
+      const response = await applyPsiEdits(sessionId, pendingEdits);
+      setBaselineData(cloneEditableChannels(tableData));
+      setApplySuccess(
+        `Applied ${response.applied} change${response.applied === 1 ? "" : "s"}. Logged ${response.log_entries} entr${
+          response.log_entries === 1 ? "y" : "ies"
+        }.`
+      );
+      await psiQuery.refetch();
+    } catch (error) {
+      setApplyError(getErrorMessage(error, "Failed to apply edits."));
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleDescriptionSave = async () => {
+    if (!sessionId || !isDescriptionDirty) {
+      return;
+    }
+
+    setIsSavingDescription(true);
+    setDescriptionError(null);
+    setDescriptionSaved(false);
+
+    try {
+      const { data } = await api.put<Session>(`/sessions/${sessionId}`, {
+        description: descriptionDraft || null,
+      });
+      setDescriptionDraft(data.description ?? "");
+      setOriginalDescription(data.description ?? "");
+      setDescriptionSaved(true);
+      queryClient.setQueryData<Session[]>(["sessions"], (current) =>
+        current?.map((session) => (session.id === data.id ? data : session)) ?? current
+      );
+    } catch (error) {
+      setDescriptionError(getErrorMessage(error, "Failed to update description."));
+    } finally {
+      setIsSavingDescription(false);
     }
   };
 
@@ -342,12 +599,49 @@ export default function PSITablePage() {
         )}
       </section>
 
+      {sessionId && (
+        <section className="session-summary">
+          <div className="dates-row">
+            <div>
+              <strong>開始日</strong>
+              <span>{sessionSummaryQuery.isLoading ? "…" : formattedStart}</span>
+            </div>
+            <div>
+              <strong>終了日</strong>
+              <span>{sessionSummaryQuery.isLoading ? "…" : formattedEnd}</span>
+            </div>
+          </div>
+          {sessionSummaryQuery.isError && (
+            <p className="error">{getErrorMessage(sessionSummaryQuery.error, "Unable to load session date range.")}</p>
+          )}
+          <label>
+            Description
+            <textarea
+              value={descriptionDraft}
+              onChange={(event) => {
+                setDescriptionDraft(event.target.value);
+                setDescriptionSaved(false);
+                setDescriptionError(null);
+              }}
+              placeholder="Add a description for this session"
+            />
+          </label>
+          <div className="session-summary-actions">
+            <button type="button" onClick={handleDescriptionSave} disabled={!isDescriptionDirty || isSavingDescription}>
+              {isSavingDescription ? "Saving..." : "Save Description"}
+            </button>
+            {descriptionError && <span className="error">{descriptionError}</span>}
+            {descriptionSaved && <span className="success">Description updated.</span>}
+          </div>
+        </section>
+      )}
+
       <section>
         <div className="actions">
           <button type="button" onClick={() => psiQuery.refetch()} disabled={!sessionId || psiQuery.isFetching}>
             Refresh
           </button>
-          <button type="button" onClick={handleReset} disabled={!psiQuery.data}>
+          <button type="button" onClick={handleReset} disabled={!baselineData.length}>
             Reset Table
           </button>
         </div>
@@ -355,87 +649,114 @@ export default function PSITablePage() {
         {psiQuery.isLoading && sessionId && <p>Loading PSI data...</p>}
         {psiQuery.isError && <p className="error">{getErrorMessage(psiQuery.error, "Unable to load PSI data.")}</p>}
         {tableData.length > 0 ? (
-          <div className="psi-table-container">
-            <table className="psi-table">
-              <thead>
-                <tr>
-                  <th className="sticky-col col-sku">sku_code</th>
-                  <th className="sticky-col col-sku-name">sku_name</th>
-                  <th className="sticky-col col-warehouse">warehouse_name</th>
-                  <th className="sticky-col col-channel">channel</th>
-                  <th className="sticky-col col-div">div</th>
-                  {allDates.map((date) => (
-                    <th key={date} className="date-header">
-                      {formatDisplayDate(date)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tableData.map((item) => {
-                  const channelKey = makeChannelKey(item);
-                  const rowSpan = metricDefinitions.length;
-                  const dateMap = new Map(item.daily.map((entry) => [entry.date, entry]));
+          <div className="psi-table-wrapper">
+            <div className="psi-table-toolbar">
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={!sessionId || !hasPendingChanges || isApplying}
+              >
+                {isApplying ? "Applying..." : "Apply"}
+              </button>
+            </div>
+            {(applyError || applySuccess) && (
+              <div className="psi-table-messages">
+                {applyError && <span className="error">{applyError}</span>}
+                {applySuccess && <span className="success">{applySuccess}</span>}
+              </div>
+            )}
+            <div className="psi-table-container">
+              <table className="psi-table">
+                <thead>
+                  <tr>
+                    <th className="sticky-col col-sku">sku_code</th>
+                    <th className="sticky-col col-sku-name">sku_name</th>
+                    <th className="sticky-col col-warehouse">warehouse_name</th>
+                    <th className="sticky-col col-channel">channel</th>
+                    <th className="sticky-col col-div">div</th>
+                    {allDates.map((date) => (
+                      <th key={date} className="date-header">
+                        {formatDisplayDate(date)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableData.map((item) => {
+                    const channelKey = makeChannelKey(item);
+                    const rowSpan = metricDefinitions.length;
+                    const dateMap = new Map(item.daily.map((entry) => [entry.date, entry]));
 
-                  return metricDefinitions.map((metric, metricIndex) => (
-                    <tr key={`${channelKey}-${metric.key}`}>
-                      {metricIndex === 0 && (
-                        <>
-                          <td className="sticky-col col-sku" rowSpan={rowSpan}>
-                            {item.sku_code}
-                          </td>
-                          <td className="sticky-col col-sku-name" rowSpan={rowSpan}>
-                            {item.sku_name ?? "—"}
-                          </td>
-                          <td className="sticky-col col-warehouse" rowSpan={rowSpan}>
-                            {item.warehouse_name}
-                          </td>
-                          <td className="sticky-col col-channel" rowSpan={rowSpan}>
-                            {item.channel}
-                          </td>
-                        </>
-                      )}
-                      <td className="sticky-col col-div psi-metric-name">{metric.label}</td>
-                      {allDates.map((date) => {
-                        const entry = dateMap.get(date);
-                        const cellKey = `${channelKey}-${metric.key}-${date}`;
+                    return metricDefinitions.map((metric, metricIndex) => (
+                      <tr key={`${channelKey}-${metric.key}`}>
+                        {metricIndex === 0 && (
+                          <>
+                            <td className="sticky-col col-sku" rowSpan={rowSpan}>
+                              {item.sku_code}
+                            </td>
+                            <td className="sticky-col col-sku-name" rowSpan={rowSpan}>
+                              {item.sku_name ?? "—"}
+                            </td>
+                            <td className="sticky-col col-warehouse" rowSpan={rowSpan}>
+                              {item.warehouse_name}
+                            </td>
+                            <td className="sticky-col col-channel" rowSpan={rowSpan}>
+                              {item.channel}
+                            </td>
+                          </>
+                        )}
+                        <td className="sticky-col col-div psi-metric-name">{metric.label}</td>
+                        {allDates.map((date) => {
+                          const entry = dateMap.get(date);
+                          const cellKey = `${channelKey}-${metric.key}-${date}`;
 
-                        if (!entry) {
+                          if (!entry) {
+                            return (
+                              <td key={cellKey} className="numeric">
+                                —
+                              </td>
+                            );
+                          }
+
+                          const value = entry[metric.key];
+
+                          if (isEditableMetric(metric)) {
+                            const baselineEntry = baselineMap.get(makeCellKey(channelKey, date));
+                            const baselineValue = baselineEntry ? baselineEntry[metric.key] ?? null : null;
+                            const currentValue = value ?? null;
+                            const isEdited = !valuesEqual(currentValue, baselineValue);
+
+                            return (
+                              <td key={cellKey} className="numeric">
+                                <input
+                                  type="text"
+                                  className={`psi-edit-input${isEdited ? " edited" : ""}`}
+                                  value={currentValue ?? ""}
+                                  onChange={(event) =>
+                                    handleEditableChange(channelKey, date, metric.key, event.target.value)
+                                  }
+                                  inputMode="decimal"
+                                  onPaste={(event) => {
+                                    event.preventDefault();
+                                    handlePasteValues(channelKey, date, metric.key, event.clipboardData.getData("text"));
+                                  }}
+                                />
+                              </td>
+                            );
+                          }
+
                           return (
                             <td key={cellKey} className="numeric">
-                              —
+                              {formatNumber(value)}
                             </td>
                           );
-                        }
-
-                        const value = entry[metric.key];
-
-                        if (isEditableMetric(metric)) {
-                          return (
-                            <td key={cellKey} className="numeric">
-                              <input
-                                type="number"
-                                className="psi-edit-input"
-                                value={value ?? ""}
-                                onChange={(event) => handleEditableChange(channelKey, date, metric.key, event.target.value)}
-                                step="0.01"
-                                inputMode="decimal"
-                              />
-                            </td>
-                          );
-                        }
-
-                        return (
-                          <td key={cellKey} className="numeric">
-                            {formatNumber(value)}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ));
-                })}
-              </tbody>
-            </table>
+                        })}
+                      </tr>
+                    ));
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
           sessionId && !psiQuery.isLoading && <p>No PSI data for the current filters.</p>

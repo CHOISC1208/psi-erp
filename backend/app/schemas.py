@@ -72,6 +72,39 @@ class PSIUploadResult(BaseModel):
     dates: list[date]
 
 
+class PSIEditEntry(BaseModel):
+    """Single PSI edit submitted from the UI."""
+
+    sku_code: str
+    warehouse_name: str
+    channel: str
+    date: date
+    inbound_qty: float | None = None
+    outbound_qty: float | None = None
+    safety_stock: float | None = None
+
+
+class PSIEditApplyRequest(BaseModel):
+    """Payload describing the edits to apply."""
+
+    edits: list[PSIEditEntry]
+
+
+class PSIEditApplyResult(BaseModel):
+    """Summary response after persisting manual PSI edits."""
+
+    applied: int
+    log_entries: int
+
+
+class PSISessionSummary(BaseModel):
+    """High-level information about the available PSI data for a session."""
+
+    session_id: UUID
+    start_date: date | None = None
+    end_date: date | None = None
+
+
 class MasterRecordBase(BaseModel):
     """Shared attributes for master record write models."""
 

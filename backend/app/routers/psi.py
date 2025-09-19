@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session as DBSession
 
 from .. import models, schemas
@@ -80,6 +80,24 @@ def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return session
+
+
+def _to_decimal(value: float | None) -> Decimal | None:
+    """Convert optional floats to :class:`~decimal.Decimal` values."""
+
+    if value is None:
+        return None
+    return Decimal(str(value))
+
+
+def _decimal_equal(a: Decimal | None, b: Decimal | None) -> bool:
+    """Return whether two optional decimals represent the same value."""
+
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    return a == b
 
 
 @router.post("/{session_id}/upload", response_model=schemas.PSIUploadResult)
@@ -356,3 +374,164 @@ def daily_psi(
         )
 
     return result
+
+
+@router.get("/{session_id}/summary", response_model=schemas.PSISessionSummary)
+def session_summary(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.PSISessionSummary:
+    """Return date range information for the specified session."""
+
+    _get_session_or_404(db, session_id)
+
+    min_date, max_date = db.execute(
+        select(func.min(models.PSIBase.date), func.max(models.PSIBase.date))
+        .where(models.PSIBase.session_id == session_id)
+    ).one()
+
+    return schemas.PSISessionSummary(
+        session_id=session_id,
+        start_date=min_date,
+        end_date=max_date,
+    )
+
+
+@router.post("/{session_id}/edits/apply", response_model=schemas.PSIEditApplyResult)
+def apply_edits(
+    *, session_id: UUID, payload: schemas.PSIEditApplyRequest, db: DBSession = Depends(get_db)
+) -> schemas.PSIEditApplyResult:
+    """Persist manual PSI overrides and record the audit log."""
+
+    _get_session_or_404(db, session_id)
+
+    if not payload.edits:
+        return schemas.PSIEditApplyResult(applied=0, log_entries=0)
+
+    conditions = [
+        and_(
+            models.PSIEdit.sku_code == edit.sku_code,
+            models.PSIEdit.warehouse_name == edit.warehouse_name,
+            models.PSIEdit.channel == edit.channel,
+            models.PSIEdit.date == edit.date,
+        )
+        for edit in payload.edits
+    ]
+
+    existing_rows: list[models.PSIEdit] = []
+    if conditions:
+        query = (
+            select(models.PSIEdit)
+            .where(models.PSIEdit.session_id == session_id)
+            .where(or_(*conditions))
+        )
+        existing_rows = list(db.scalars(query))
+
+    existing_map: dict[
+        tuple[str, str, str, date], models.PSIEdit | None
+    ] = {
+        (row.sku_code, row.warehouse_name, row.channel, row.date): row for row in existing_rows
+    }
+
+    logs: list[models.PSIEditLog] = []
+    applied_count = 0
+
+    for edit in payload.edits:
+        key = (edit.sku_code, edit.warehouse_name, edit.channel, edit.date)
+        current = existing_map.get(key)
+
+        new_values = {
+            "inbound_qty": _to_decimal(edit.inbound_qty),
+            "outbound_qty": _to_decimal(edit.outbound_qty),
+            "safety_stock": _to_decimal(edit.safety_stock),
+        }
+
+        if current is None:
+            if all(value is None for value in new_values.values()):
+                continue
+
+            current = models.PSIEdit(
+                session_id=session_id,
+                sku_code=edit.sku_code,
+                warehouse_name=edit.warehouse_name,
+                channel=edit.channel,
+                date=edit.date,
+                **new_values,
+            )
+            db.add(current)
+            existing_map[key] = current
+            applied_count += 1
+
+            for field, new_value in new_values.items():
+                if new_value is None:
+                    continue
+                logs.append(
+                    models.PSIEditLog(
+                        session_id=session_id,
+                        sku_code=edit.sku_code,
+                        warehouse_name=edit.warehouse_name,
+                        channel=edit.channel,
+                        date=edit.date,
+                        field=field,
+                        old_value=None,
+                        new_value=new_value,
+                        edited_by=None,
+                    )
+                )
+            continue
+
+        if all(value is None for value in new_values.values()):
+            had_values = False
+            for field in new_values:
+                old_value = getattr(current, field)
+                if _decimal_equal(old_value, None):
+                    continue
+                had_values = True
+                logs.append(
+                    models.PSIEditLog(
+                        session_id=session_id,
+                        sku_code=edit.sku_code,
+                        warehouse_name=edit.warehouse_name,
+                        channel=edit.channel,
+                        date=edit.date,
+                        field=field,
+                        old_value=old_value,
+                        new_value=None,
+                        edited_by=None,
+                    )
+                )
+            if had_values:
+                applied_count += 1
+            db.delete(current)
+            existing_map[key] = None
+            continue
+
+        changed = False
+        for field, new_value in new_values.items():
+            old_value = getattr(current, field)
+            if _decimal_equal(old_value, new_value):
+                continue
+            setattr(current, field, new_value)
+            logs.append(
+                models.PSIEditLog(
+                    session_id=session_id,
+                    sku_code=edit.sku_code,
+                    warehouse_name=edit.warehouse_name,
+                    channel=edit.channel,
+                    date=edit.date,
+                    field=field,
+                    old_value=old_value,
+                    new_value=new_value,
+                    edited_by=None,
+                )
+            )
+            changed = True
+
+        if changed:
+            applied_count += 1
+            if all(getattr(current, field) is None for field in new_values):
+                db.delete(current)
+                existing_map[key] = None
+
+    if logs:
+        db.add_all(logs)
+    db.commit()
+
+    return schemas.PSIEditApplyResult(applied=applied_count, log_entries=len(logs))
