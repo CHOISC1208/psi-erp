@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from uuid import UUID
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -31,7 +32,8 @@ class SessionUpdate(BaseModel):
 class SessionRead(SessionBase):
     """Session data returned by the API."""
 
-    id: str
+    #id: str
+    id: UUID
     is_leader: bool
     created_at: datetime
     updated_at: datetime
