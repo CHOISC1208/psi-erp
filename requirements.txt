@@ -30,3 +30,5 @@ websockets==15.0.1
 gunicorn==21.2.0
 uvicorn[standard]==0.30.6   # なければ入れておくと安心
 psycopg[binary]==3.2.3
+
+##
