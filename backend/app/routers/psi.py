@@ -158,19 +158,40 @@ async def upload_csv_for_session(
 
     rows_to_insert: list[models.PSIBase] = []
     affected_dates: set[date] = set()
+    rows_by_key: dict[tuple[str, str, str, date], models.PSIBase] = {}
+
     for raw_row in reader:
         if not raw_row or not any(raw_row.values()):
             continue
 
         try:
-            row_date = datetime.strptime(
-                raw_row[header_map["date"]], "%Y-%m-%d"
-            ).date()
-        except (ValueError, KeyError) as exc:
+            raw_date = raw_row[header_map["date"]]
+        except KeyError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or missing date (expected YYYY-MM-DD)",
+                detail="Invalid or missing date (expected YYYY-MM-DD or YYYY/MM/DD)",
             ) from exc
+
+        if raw_date is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or missing date (expected YYYY-MM-DD or YYYY/MM/DD)",
+            )
+
+        raw_date_text = raw_date.strip()
+        row_date: date | None = None
+        for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+            try:
+                row_date = datetime.strptime(raw_date_text, fmt).date()
+                break
+            except ValueError:
+                continue
+
+        if row_date is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or missing date (expected YYYY-MM-DD or YYYY/MM/DD)",
+            )
 
         sku_code_value = raw_row.get(header_map["sku_code"], "").strip()
         warehouse_value = raw_row.get(header_map["warehouse_name"], "").strip()
@@ -185,24 +206,38 @@ async def upload_csv_for_session(
             raw_row.get(sku_name_key, "").strip() if sku_name_key else ""
         ) or None
 
-        rows_to_insert.append(
-            models.PSIBase(
-                session_id=session_id,
-                sku_code=sku_code_value,
-                sku_name=sku_name_value,
-                warehouse_name=warehouse_value,
-                channel=channel_value,
-                date=row_date,
-                stock_at_anchor=_parse_decimal(raw_row.get(header_map["stock_at_anchor"]), "stock_at_anchor"),
-                inbound_qty=_parse_decimal(raw_row.get(header_map["inbound_qty"]), "inbound_qty"),
-                outbound_qty=_parse_decimal(raw_row.get(header_map["outbound_qty"]), "outbound_qty"),
-                net_flow=_parse_decimal(raw_row.get(header_map["net_flow"]), "net_flow"),
-                stock_closing=_parse_decimal(raw_row.get(header_map["stock_closing"]), "stock_closing"),
-                safety_stock=_parse_decimal(raw_row.get(header_map["safety_stock"]), "safety_stock"),
-                movable_stock=_parse_decimal(raw_row.get(header_map["movable_stock"]), "movable_stock"),
-            )
+        key = (sku_code_value, warehouse_value, channel_value, row_date)
+
+        rows_by_key[key] = models.PSIBase(
+            session_id=session_id,
+            sku_code=sku_code_value,
+            sku_name=sku_name_value,
+            warehouse_name=warehouse_value,
+            channel=channel_value,
+            date=row_date,
+            stock_at_anchor=_parse_decimal(
+                raw_row.get(header_map["stock_at_anchor"]), "stock_at_anchor"
+            ),
+            inbound_qty=_parse_decimal(
+                raw_row.get(header_map["inbound_qty"]), "inbound_qty"
+            ),
+            outbound_qty=_parse_decimal(
+                raw_row.get(header_map["outbound_qty"]), "outbound_qty"
+            ),
+            net_flow=_parse_decimal(raw_row.get(header_map["net_flow"]), "net_flow"),
+            stock_closing=_parse_decimal(
+                raw_row.get(header_map["stock_closing"]), "stock_closing"
+            ),
+            safety_stock=_parse_decimal(
+                raw_row.get(header_map["safety_stock"]), "safety_stock"
+            ),
+            movable_stock=_parse_decimal(
+                raw_row.get(header_map["movable_stock"]), "movable_stock"
+            ),
         )
         affected_dates.add(row_date)
+
+    rows_to_insert = list(rows_by_key.values())
 
     if not rows_to_insert:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV contained no rows")
