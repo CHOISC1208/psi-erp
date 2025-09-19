@@ -508,7 +508,8 @@ button.icon-button:focus-visible {
 
 .psi-table-container {
   flex: 1;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   background: var(--surface-panel);
   border-radius: 0.75rem;
   border: 1px solid var(--border-default);
@@ -545,7 +546,7 @@ button.icon-button:focus-visible {
 
 .psi-table thead th {
   position: sticky;
-  top: 0;
+  top: var(--psi-table-header-offset, 0);
   background: var(--surface-table-header);
   font-weight: 700;
   font-size: 0.8rem;
@@ -642,6 +643,7 @@ button.icon-button:focus-visible {
   z-index: 7;
   background: var(--surface-sticky-col);
   box-shadow: 1px 0 0 var(--border-default);
+  top: var(--psi-table-header-offset, 0);
 }
 
 .psi-table .col-sku {
