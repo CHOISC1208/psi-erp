@@ -24,6 +24,7 @@ type SelectionOverlayMetrics = {
   height: number;
   left: number;
   width: number;
+  borderColor: string;
 };
 
 type Props = {
@@ -255,6 +256,11 @@ const PSISummaryTable = memo(function PSISummaryTable({
 
     const containerRect = container.getBoundingClientRect();
     const gridRect = gridElement.getBoundingClientRect();
+    const gridComputedStyle = window.getComputedStyle(gridElement);
+    const selectionOutlineColor = gridComputedStyle
+      .getPropertyValue("--psi-grid-selection-outline")
+      .trim();
+    const borderColor = selectionOutlineColor || "rgba(250, 204, 21, 0.8)";
     const firstRowRect = selectedRows[0].getBoundingClientRect();
     const lastRowRect = selectedRows[selectedRows.length - 1].getBoundingClientRect();
 
@@ -264,6 +270,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
       height: lastRowRect.bottom - firstRowRect.top + outlineOffset * 2,
       left: gridRect.left - containerRect.left - outlineOffset,
       width: gridRect.width + outlineOffset * 2,
+      borderColor,
     };
 
     setSelectionOverlay((previous) => {
@@ -272,7 +279,8 @@ const PSISummaryTable = memo(function PSISummaryTable({
         Math.abs(previous.top - overlayMetrics.top) < 0.5 &&
         Math.abs(previous.height - overlayMetrics.height) < 0.5 &&
         Math.abs(previous.left - overlayMetrics.left) < 0.5 &&
-        Math.abs(previous.width - overlayMetrics.width) < 0.5
+        Math.abs(previous.width - overlayMetrics.width) < 0.5 &&
+        previous.borderColor === overlayMetrics.borderColor
       ) {
         return previous;
       }
@@ -449,6 +457,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
             left: `${selectionOverlay.left}px`,
             width: `${selectionOverlay.width}px`,
             height: `${selectionOverlay.height}px`,
+            borderColor: selectionOverlay.borderColor,
           }}
         />
       )}
