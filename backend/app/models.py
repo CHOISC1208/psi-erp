@@ -20,6 +20,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from .config import settings
@@ -210,3 +211,17 @@ class ChannelTransfer(Base, SchemaMixin, TimestampMixin):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     session: Mapped[Session] = relationship(back_populates="channel_transfers")
+
+
+def ensure_channel_transfers_table(bind: Engine | Connection) -> None:
+    """Create the channel transfers table when it does not exist.
+
+    The application historically operated without the ``channel_transfers``
+    table.  Newer builds expect the table to be present which can trigger
+    ``UndefinedTable`` errors when the database has not been migrated yet.
+    Using ``checkfirst`` keeps the call idempotent while ensuring we can
+    safely execute queries relying on the table.
+    """
+
+    table = ChannelTransfer.__table__
+    table.create(bind=bind, checkfirst=True)

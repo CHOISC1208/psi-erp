@@ -18,6 +18,13 @@ from ..deps import get_db
 
 router = APIRouter()
 
+def _ensure_channel_transfer_table(db: DBSession) -> None:
+    """Create the channel transfers table when migrations haven't run."""
+
+    bind = db.get_bind()
+    if bind is not None:
+        models.ensure_channel_transfers_table(bind)
+
 
 def _normalise_header(header: str) -> str:
     """Normalize CSV header names for lookups.
@@ -284,6 +291,7 @@ def daily_psi(
     """
 
     _get_session_or_404(db, session_id)
+    _ensure_channel_transfer_table(db)
 
     base_alias = models.PSIBase
     edit_alias = models.PSIEdit

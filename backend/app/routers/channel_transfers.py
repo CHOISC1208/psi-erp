@@ -18,6 +18,13 @@ from ..deps import get_db
 
 router = APIRouter()
 
+def _ensure_channel_transfer_table(db: DBSession) -> None:
+    """Guarantee the channel transfers table exists before querying."""
+
+    bind = db.get_bind()
+    if bind is not None:
+        models.ensure_channel_transfers_table(bind)
+
 
 def _get_transfer_or_404(
     db: DBSession,
@@ -29,6 +36,8 @@ def _get_transfer_or_404(
     from_channel: str,
     to_channel: str,
 ) -> models.ChannelTransfer:
+    _ensure_channel_transfer_table(db)
+
     transfer = db.get(
         models.ChannelTransfer,
         (session_id, sku_code, warehouse_name, transfer_date, from_channel, to_channel),
@@ -50,6 +59,8 @@ def list_channel_transfers(
     db: DBSession = Depends(get_db),
 ) -> list[schemas.ChannelTransferRead]:
     """List channel transfer records matching the provided filters."""
+
+    _ensure_channel_transfer_table(db)
 
     query = select(models.ChannelTransfer)
 
@@ -135,6 +146,8 @@ def export_channel_transfers(
 ) -> StreamingResponse:
     """Export channel transfers as a CSV stream using the provided filters."""
 
+    _ensure_channel_transfer_table(db)
+
     query = select(models.ChannelTransfer).where(
         models.ChannelTransfer.session_id == session_id
     )
@@ -210,6 +223,8 @@ def create_channel_transfer(
     payload: schemas.ChannelTransferCreate, db: DBSession = Depends(get_db)
 ) -> schemas.ChannelTransferRead:
     """Create a new channel transfer entry."""
+
+    _ensure_channel_transfer_table(db)
 
     session = db.get(models.Session, payload.session_id)
     if session is None:
