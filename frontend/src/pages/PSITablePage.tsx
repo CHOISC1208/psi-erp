@@ -1282,6 +1282,7 @@ export default function PSITablePage() {
                                       <input
                                         type="text"
                                         className={`psi-edit-input${isEdited ? " edited" : ""}`}
+                                        style={{ width: "100%" }}
                                         value={currentValue ?? ""}
                                         onChange={(event) =>
                                           handleEditableChange(channelKey, date, metric.key, event.target.value)
