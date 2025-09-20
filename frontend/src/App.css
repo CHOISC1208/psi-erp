@@ -1609,6 +1609,13 @@ button.danger {
   gap: 24px;
 }
 
+.channel-move-modal__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .channel-move-modal__summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
