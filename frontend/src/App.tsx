@@ -5,6 +5,7 @@ import SessionsPage from "./pages/SessionsPage";
 import PSITablePage from "./pages/PSITablePage";
 import MasterPage from "./pages/MasterPage";
 import "./App.css";
+import "./styles/psi-sticky.css";
 
 export default function App() {
   const location = useLocation();

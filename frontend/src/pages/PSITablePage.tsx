@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import axios from "axios";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -9,15 +9,7 @@ import { PSIChannel, PSIDailyEntry, PSIEditApplyResult, Session } from "../types
 import PSITableContent from "../components/PSITableContent";
 import PSITableControls from "../components/PSITableControls";
 import { useDailyPsiQuery, useSessionSummaryQuery, useSessionsQuery } from "../hooks/usePsiQueries";
-import {
-  EditableField,
-  MetricDefinition,
-  MetricKey,
-  PSIEditableChannel,
-  PSIEditableDay,
-  isEditableMetric,
-  metricDefinitions,
-} from "./psiTableTypes";
+import { EditableField, MetricDefinition, MetricKey, PSIEditableChannel, PSIEditableDay, metricDefinitions } from "./psiTableTypes";
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -184,8 +176,6 @@ export default function PSITablePage() {
   const tableRef = useRef<HTMLTableElement | null>(null);
   const tableScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const topScrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const [tableContentWidth, setTableContentWidth] = useState(0);
-  const syncingScrollRef = useRef(false);
   const rowGroupRefs = useRef<(HTMLTableRowElement | null)[]>([]);
   const controlsRef = useRef<HTMLElement | null>(null);
   const tableScrollAreaRef = useRef<HTMLDivElement | null>(null);
@@ -400,31 +390,6 @@ export default function PSITablePage() {
     }
   }, [selectedChannelKey, tableData]);
 
-  useEffect(() => {
-    const table = tableRef.current;
-    if (!table) {
-      setTableContentWidth(0);
-      return;
-    }
-
-    const updateWidth = () => {
-      const containerWidth = tableScrollContainerRef.current?.clientWidth ?? 0;
-      setTableContentWidth(Math.max(table.scrollWidth, containerWidth));
-    };
-
-    updateWidth();
-
-    const resizeObserver = new ResizeObserver(updateWidth);
-    resizeObserver.observe(table);
-    if (tableScrollContainerRef.current) {
-      resizeObserver.observe(tableScrollContainerRef.current);
-    }
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [tableData, visibleMetrics, allDates]);
-
   const baselineMap = useMemo(() => {
     const map = new Map<string, PSIEditableDay>();
     baselineData.forEach((item) => {
@@ -498,42 +463,6 @@ export default function PSITablePage() {
     setSelectedChannelKey(null);
   }, []);
 
-  const handleTopScroll = useCallback(
-    (event: ReactUIEvent<HTMLDivElement>) => {
-      const bottom = tableScrollContainerRef.current;
-      if (!bottom) {
-        return;
-      }
-      if (syncingScrollRef.current) {
-        return;
-      }
-      syncingScrollRef.current = true;
-      bottom.scrollLeft = event.currentTarget.scrollLeft;
-      window.requestAnimationFrame(() => {
-        syncingScrollRef.current = false;
-      });
-    },
-    []
-  );
-
-  const handleBottomScroll = useCallback(
-    (event: ReactUIEvent<HTMLDivElement>) => {
-      const top = topScrollContainerRef.current;
-      if (!top) {
-        return;
-      }
-      if (syncingScrollRef.current) {
-        return;
-      }
-      syncingScrollRef.current = true;
-      top.scrollLeft = event.currentTarget.scrollLeft;
-      window.requestAnimationFrame(() => {
-        syncingScrollRef.current = false;
-      });
-    },
-    []
-  );
-
   const scrollToDate = useCallback(
     (targetDate: string) => {
       const container = tableScrollContainerRef.current;
@@ -553,15 +482,9 @@ export default function PSITablePage() {
       const center = offset - container.clientWidth / 2 + headerCell.clientWidth / 2;
       const nextScrollLeft = Math.max(0, center);
 
-      const top = topScrollContainerRef.current;
-      syncingScrollRef.current = true;
       container.scrollTo({ left: nextScrollLeft, behavior: "smooth" });
-      if (top) {
-        top.scrollTo({ left: nextScrollLeft, behavior: "smooth" });
-      }
-      window.requestAnimationFrame(() => {
-        syncingScrollRef.current = false;
-      });
+      const top = topScrollContainerRef.current;
+      top?.scrollTo({ left: nextScrollLeft, behavior: "smooth" });
     },
     []
   );
@@ -569,10 +492,6 @@ export default function PSITablePage() {
   const handleTodayClick = useCallback(() => {
     scrollToDate(todayIso);
   }, [scrollToDate, todayIso]);
-
-  const handleRowSelection = useCallback((channelKey: string) => {
-    setSelectedChannelKey(channelKey);
-  }, []);
 
   const handleRowKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLTableRowElement>, index: number, channelKey: string) => {
@@ -915,16 +834,14 @@ export default function PSITablePage() {
           allDates={allDates}
           todayIso={todayIso}
           formatDisplayDate={formatDisplayDate}
-          tableContentWidth={tableContentWidth}
           tableRef={tableRef}
           tableScrollContainerRef={tableScrollContainerRef}
           topScrollContainerRef={topScrollContainerRef}
           tableScrollAreaRef={tableScrollAreaRef}
-          onTopScroll={handleTopScroll}
-          onBottomScroll={handleBottomScroll}
           onDownload={handleDownload}
           canDownload={Boolean(tableData.length && visibleMetrics.length)}
           selectedChannelKey={selectedChannelKey}
+          setSelectedChannelKey={setSelectedChannelKey}
           onClearSelection={handleClearSelection}
           applyError={applyError}
           applySuccess={applySuccess}
@@ -932,11 +849,9 @@ export default function PSITablePage() {
           onEditableChange={handleEditableChange}
           onPasteValues={handlePasteValues}
           formatNumber={formatNumber}
-          isEditableMetric={isEditableMetric}
           makeChannelKey={makeChannelKey}
           makeCellKey={makeCellKey}
           valuesEqual={valuesEqual}
-          onRowSelection={handleRowSelection}
           rowGroupRefs={rowGroupRefs}
           onRowKeyDown={handleRowKeyDown}
         />
