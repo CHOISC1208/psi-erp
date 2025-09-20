@@ -1,8 +1,10 @@
-import { ForwardedRef, forwardRef } from "react";
+import { ForwardedRef, forwardRef, useEffect, useMemo, useState } from "react";
 import { UseQueryResult } from "@tanstack/react-query";
 
 import iconUrls from "../lib/iconUrls.json";
-import { PSISessionSummary, Session } from "../types";
+import { PSIChannel, PSISessionSummary, Session } from "../types";
+import PSISummaryTable from "./PSISummaryTable";
+import { buildSummary } from "../utils/psiSummary";
 
 interface PSITableControlsProps {
   isCollapsed: boolean;
@@ -17,6 +19,7 @@ interface PSITableControlsProps {
   onWarehouseNameChange: (value: string) => void;
   channel: string;
   onChannelChange: (value: string) => void;
+  psiData: PSIChannel[] | undefined;
   sessionSummaryQuery: UseQueryResult<PSISessionSummary, unknown>;
   formattedStart: string;
   formattedEnd: string;
@@ -38,6 +41,8 @@ interface PSITableControlsProps {
   onTodayClick: () => void;
   hasBaselineData: boolean;
   getErrorMessage: (error: unknown, fallback: string) => string;
+  selectedSku: string | null;
+  onSelectSku: (sku: string | null) => void;
 }
 
 const PSITableControls = forwardRef(function PSITableControls(
@@ -54,6 +59,7 @@ const PSITableControls = forwardRef(function PSITableControls(
     onWarehouseNameChange,
     channel,
     onChannelChange,
+    psiData,
     sessionSummaryQuery,
     formattedStart,
     formattedEnd,
@@ -75,9 +81,49 @@ const PSITableControls = forwardRef(function PSITableControls(
     onTodayClick,
     hasBaselineData,
     getErrorMessage,
+    selectedSku,
+    onSelectSku,
   }: PSITableControlsProps,
   ref: ForwardedRef<HTMLElement>
 ) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 3;
+
+  const start = sessionSummaryQuery.data?.start_date ?? undefined;
+  const end = sessionSummaryQuery.data?.end_date ?? undefined;
+
+  const summaryAll = useMemo(
+    () => buildSummary(psiData ?? [], start, end),
+    [psiData, start, end]
+  );
+
+  const sorted = useMemo(
+    () => [...summaryAll].sort((a, b) => a.sku_code.localeCompare(b.sku_code)),
+    [summaryAll]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const page = Math.min(currentPage, totalPages);
+  const startIndex = (page - 1) * pageSize;
+  const pageRows = useMemo(() => sorted.slice(startIndex, startIndex + pageSize), [sorted, startIndex]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sessionId, skuCode, warehouseName, channel]);
+
+  useEffect(() => {
+    if (!selectedSku) {
+      return;
+    }
+    const visible = new Set(pageRows.map((row) => row.sku_code));
+    if (!visible.has(selectedSku)) {
+      onSelectSku(null);
+    }
+  }, [pageRows, selectedSku, onSelectSku]);
+
+  const goPrev = () => setCurrentPage((previous) => Math.max(1, previous - 1));
+  const goNext = () => setCurrentPage((previous) => Math.min(totalPages, previous + 1));
+
   return (
     <section ref={ref} className={`psi-controls${isCollapsed ? " collapsed" : ""}`}>
       <div className="psi-controls-header">
@@ -139,6 +185,32 @@ const PSITableControls = forwardRef(function PSITableControls(
             {sessionsQuery.isLoading && <p>Loading sessions...</p>}
             {sessionsQuery.isError && (
               <p className="error">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
+            )}
+          </div>
+          <div className="psi-summary-card">
+            <div className="psi-summary-header">
+              <h3>集計（3 SKU / ページ）</h3>
+              <div className="psi-pager">
+                <button type="button" onClick={goPrev} disabled={page <= 1 || sorted.length === 0}>
+                  ‹ 前へ
+                </button>
+                <span>
+                  {sorted.length === 0 ? "0 / 0" : `${page} / ${totalPages}`}
+                </span>
+                <button type="button" onClick={goNext} disabled={page >= totalPages || sorted.length === 0}>
+                  次へ ›
+                </button>
+              </div>
+            </div>
+            {sorted.length > 0 ? (
+              <PSISummaryTable
+                rows={pageRows}
+                onSelectSku={onSelectSku}
+                selectedSku={selectedSku}
+                channelOrder={["online", "retail", "wholesale"]}
+              />
+            ) : (
+              <p className="psi-summary-empty">該当する集計データがありません。</p>
             )}
           </div>
           <div className="psi-panel psi-description-panel">

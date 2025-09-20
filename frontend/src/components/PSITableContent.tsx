@@ -11,6 +11,8 @@ interface PSITableContentProps {
   isError: boolean;
   errorMessage: string | null;
   tableData: PSIEditableChannel[];
+  hasAnyData: boolean;
+  selectedSku: string | null;
   visibleMetrics: MetricDefinition[];
   metricDefinitions: MetricDefinition[];
   visibleMetricKeys: MetricKey[];
@@ -49,6 +51,8 @@ const PSITableContent = ({
   isError,
   errorMessage,
   tableData,
+  hasAnyData,
+  selectedSku,
   visibleMetrics,
   metricDefinitions,
   visibleMetricKeys,
@@ -80,11 +84,15 @@ const PSITableContent = ({
   rowGroupRefs,
   onRowKeyDown,
 }: PSITableContentProps) => {
+  const hasTableRows = tableData.length > 0;
+  const showSelectionPlaceholder = !selectedSku && hasAnyData;
+  const showNoDataMessage = !hasAnyData && sessionId && !isLoading;
+
   return (
     <section className="psi-table-section">
       {isLoading && sessionId && <p className="psi-table-status">Loading PSI data...</p>}
       {isError && <p className="psi-table-status error">{errorMessage}</p>}
-      {tableData.length > 0 ? (
+      {hasTableRows ? (
         <div className="psi-table-wrapper">
           <div className="psi-table-toolbar">
             <div className="psi-table-toolbar-group">
@@ -147,8 +155,10 @@ const PSITableContent = ({
             />
           </div>
         </div>
+      ) : showSelectionPlaceholder ? (
+        <p className="psi-table-status">上段の集計からSKUを選択してください。</p>
       ) : (
-        sessionId && !isLoading && <p className="psi-table-status">No PSI data for the current filters.</p>
+        showNoDataMessage && <p className="psi-table-status">No PSI data for the current filters.</p>
       )}
     </section>
   );
