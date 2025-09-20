@@ -284,12 +284,17 @@ const PSITableContent = ({
           key: date,
           name: formatDisplayDate(date),
           width: 132,
-          className: (row: PSIGridRow) =>
-            classNames(
+          className: (row: PSIGridRow) => {
+            const cellValue = row[date] as number | null | undefined;
+            const isNegative =
+              row.metricKey === "stock_closing" && typeof cellValue === "number" && cellValue < 0;
+            return classNames(
               "psi-grid-value-cell",
               row.metricEditable && "psi-grid-cell-editable",
-              isToday && "psi-grid-cell-today"
-            ),
+              isToday && "psi-grid-cell-today",
+              row.metricKey === "stock_closing" && isNegative && "psi-grid-stock-warning"
+            );
+          },
           headerCellClass: classNames("psi-grid-date-header", isToday && "psi-grid-header-today"),
           renderCell: ({ row }) => formatNumber(row[date] as number | null | undefined),
           renderEditCell: (props) => <NumberEditor {...props} />,
