@@ -4,6 +4,7 @@ export type MetricKey =
   | "stock_at_anchor"
   | "inbound_qty"
   | "outbound_qty"
+  | "channel_move"
   | "net_flow"
   | "stock_closing"
   | "safety_stock"
@@ -65,6 +66,7 @@ export const metricDefinitions: MetricDefinition[] = [
   { key: "stock_at_anchor", label: "stock_at_anchor" },
   { key: "inbound_qty", label: "inbound_qty", editable: true },
   { key: "outbound_qty", label: "outbound_qty", editable: true },
+  { key: "channel_move", label: "channel_move" },
   { key: "net_flow", label: "net_flow" },
   { key: "stock_closing", label: "stock_closing" },
   { key: "safety_stock", label: "safety_stock", editable: true },

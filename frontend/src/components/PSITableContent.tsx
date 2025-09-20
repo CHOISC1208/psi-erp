@@ -35,7 +35,11 @@ interface PSITableContentProps {
   makeChannelKey: (channel: { sku_code: string; warehouse_name: string; channel: string }) => string;
   onEditableChange: (channelKey: string, date: string, field: EditableField, rawValue: string) => void;
   onRegisterScrollToDate?: (handler: (date: string) => void) => (() => void) | void;
-  onChannelCellClick?: (row: PSIGridRow) => void;
+  onChannelCellClick?: (selection: {
+    channelKey: string;
+    date: string;
+    row: PSIGridMetricRow;
+  }) => void;
 }
 
 const editableFields: EditableField[] = ["inbound_qty", "outbound_qty", "safety_stock"];
@@ -568,11 +572,19 @@ const PSITableContent = ({
         return;
       }
 
-      if (args.column.key === "channel") {
-        onChannelCellClick?.(args.row);
+      if (args.row.rowType === "metric" && args.row.metricKey === "channel_move") {
+        const columnKey = args.column.key;
+        if (allDates.includes(columnKey)) {
+          const metricRow = args.row;
+          onChannelCellClick?.({
+            channelKey: metricRow.channelKey,
+            date: columnKey,
+            row: metricRow,
+          });
+        }
       }
     },
-    [onChannelCellClick, toggleChannelCollapse]
+    [allDates, onChannelCellClick, toggleChannelCollapse]
   );
 
   const scrollToDate = useCallback(

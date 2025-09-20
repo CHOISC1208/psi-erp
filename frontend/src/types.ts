@@ -12,6 +12,7 @@ export interface PSIDailyEntry {
   stock_at_anchor?: number | null;
   inbound_qty?: number | null;
   outbound_qty?: number | null;
+  channel_move?: number | null;
   net_flow?: number | null;
   stock_closing?: number | null;
   safety_stock?: number | null;
@@ -35,6 +36,25 @@ export interface PSISessionSummary {
 export interface PSIEditApplyResult {
   applied: number;
   log_entries: number;
+}
+
+export interface ChannelTransferIdentifier {
+  session_id: string;
+  sku_code: string;
+  warehouse_name: string;
+  transfer_date: string;
+  from_channel: string;
+  to_channel: string;
+}
+
+export interface ChannelTransferCreate extends ChannelTransferIdentifier {
+  qty: number;
+  note?: string | null;
+}
+
+export interface ChannelTransfer extends ChannelTransferCreate {
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MasterRecord {

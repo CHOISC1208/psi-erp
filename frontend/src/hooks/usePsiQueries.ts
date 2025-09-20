@@ -1,7 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { api } from "../lib/api";
-import { PSIChannel, PSISessionSummary, Session } from "../types";
+import {
+  ChannelTransfer,
+  ChannelTransferCreate,
+  ChannelTransferIdentifier,
+  PSIChannel,
+  PSISessionSummary,
+  Session,
+} from "../types";
 
 const fetchSessions = async (): Promise<Session[]> => {
   const { data } = await api.get<Session[]>("/sessions/");
@@ -28,6 +35,36 @@ const fetchSessionSummary = async (sessionId: string): Promise<PSISessionSummary
   return data;
 };
 
+const fetchChannelTransfers = async (sessionId: string): Promise<ChannelTransfer[]> => {
+  if (!sessionId) {
+    return [];
+  }
+  const { data } = await api.get<ChannelTransfer[]>("/channel-transfers/", {
+    params: { session_id: sessionId },
+  });
+  return data;
+};
+
+const createChannelTransfer = async (
+  payload: ChannelTransferCreate
+): Promise<ChannelTransfer> => {
+  const { data } = await api.post<ChannelTransfer>("/channel-transfers/", payload);
+  return data;
+};
+
+const deleteChannelTransfer = async (
+  identifier: ChannelTransferIdentifier
+): Promise<void> => {
+  const { session_id, sku_code, warehouse_name, transfer_date, from_channel, to_channel } = identifier;
+  await api.delete(
+    `/channel-transfers/${encodeURIComponent(session_id)}/${encodeURIComponent(
+      sku_code
+    )}/${encodeURIComponent(warehouse_name)}/${encodeURIComponent(transfer_date)}/${encodeURIComponent(
+      from_channel
+    )}/${encodeURIComponent(to_channel)}`
+  );
+};
+
 export const useSessionsQuery = () =>
   useQuery({
     queryKey: ["sessions"],
@@ -49,4 +86,26 @@ export const useSessionSummaryQuery = (sessionId: string) =>
     queryKey: ["psi-session-summary", sessionId],
     queryFn: () => fetchSessionSummary(sessionId),
     enabled: Boolean(sessionId),
+  });
+
+export const channelTransfersQueryKey = (sessionId: string) => [
+  "channel-transfers",
+  sessionId,
+];
+
+export const useChannelTransfersQuery = (sessionId: string) =>
+  useQuery({
+    queryKey: channelTransfersQueryKey(sessionId),
+    queryFn: () => fetchChannelTransfers(sessionId),
+    enabled: Boolean(sessionId),
+  });
+
+export const useCreateChannelTransferMutation = () =>
+  useMutation({
+    mutationFn: createChannelTransfer,
+  });
+
+export const useDeleteChannelTransferMutation = () =>
+  useMutation({
+    mutationFn: deleteChannelTransfer,
   });
