@@ -173,6 +173,7 @@ export default function PSITablePage() {
   const [isMetricSelectorOpen, setIsMetricSelectorOpen] = useState(false);
   const metricSelectorRef = useRef<HTMLDivElement | null>(null);
   const [selectedChannelKey, setSelectedChannelKey] = useState<string | null>(null);
+  const [selectedSku, setSelectedSku] = useState<string | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
   const tableScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const topScrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -352,22 +353,36 @@ export default function PSITablePage() {
     };
   }, [isMetricSelectorOpen]);
 
+  useEffect(() => {
+    if (!selectedSku) {
+      return;
+    }
+    if (!tableData.some((item) => item.sku_code === selectedSku)) {
+      setSelectedSku(null);
+    }
+  }, [selectedSku, tableData]);
+
+  const displayedTableData = useMemo(
+    () => (selectedSku ? tableData.filter((item) => item.sku_code === selectedSku) : []),
+    [selectedSku, tableData]
+  );
+
   const allDates = useMemo(() => {
     const dateSet = new Set<string>();
-    tableData.forEach((item) => {
+    displayedTableData.forEach((item) => {
       item.daily.forEach((entry) => {
         dateSet.add(entry.date);
       });
     });
     return Array.from(dateSet).sort(compareDateStrings);
-  }, [tableData]);
+  }, [displayedTableData]);
 
   const visibleMetrics = useMemo(
     () => metricDefinitions.filter((metric) => visibleMetricKeys.includes(metric.key as MetricKey)),
     [visibleMetricKeys]
   );
 
-  const channelKeyOrder = useMemo(() => tableData.map((item) => makeChannelKey(item)), [tableData]);
+  const channelKeyOrder = useMemo(() => displayedTableData.map((item) => makeChannelKey(item)), [displayedTableData]);
 
   useEffect(() => {
     rowGroupRefs.current = new Array(channelKeyOrder.length).fill(null);
@@ -385,10 +400,14 @@ export default function PSITablePage() {
     if (!selectedChannelKey) {
       return;
     }
-    if (!tableData.some((item) => makeChannelKey(item) === selectedChannelKey)) {
+    if (!displayedTableData.some((item) => makeChannelKey(item) === selectedChannelKey)) {
       setSelectedChannelKey(null);
     }
-  }, [selectedChannelKey, tableData]);
+  }, [selectedChannelKey, displayedTableData]);
+
+  useEffect(() => {
+    setSelectedChannelKey(null);
+  }, [selectedSku]);
 
   const baselineMap = useMemo(() => {
     const map = new Map<string, PSIEditableDay>();
@@ -545,7 +564,7 @@ export default function PSITablePage() {
 
   const handleDownload = () => {
     if (
-      !tableData.length ||
+      !displayedTableData.length ||
       !visibleMetrics.length ||
       typeof window === "undefined" ||
       typeof document === "undefined"
@@ -562,7 +581,7 @@ export default function PSITablePage() {
       ...allDates.map((date) => formatDisplayDate(date)),
     ];
 
-    const rows = tableData.flatMap((item) => {
+    const rows = displayedTableData.flatMap((item) => {
       const dateMap = new Map(item.daily.map((entry) => [entry.date, entry]));
 
       return visibleMetrics.map((metric) => {
@@ -795,6 +814,7 @@ export default function PSITablePage() {
           onWarehouseNameChange={setWarehouseName}
           channel={channel}
           onChannelChange={setChannel}
+          psiData={psiQuery.data}
           sessionSummaryQuery={sessionSummaryQuery}
           formattedStart={formattedStart}
           formattedEnd={formattedEnd}
@@ -816,6 +836,8 @@ export default function PSITablePage() {
           onTodayClick={handleTodayClick}
           hasBaselineData={baselineData.length > 0}
           getErrorMessage={getErrorMessage}
+          selectedSku={selectedSku}
+          onSelectSku={setSelectedSku}
         />
 
         <PSITableContent
@@ -823,7 +845,9 @@ export default function PSITablePage() {
           isLoading={psiQuery.isLoading}
           isError={psiQuery.isError}
           errorMessage={psiQuery.isError ? getErrorMessage(psiQuery.error, "Unable to load PSI data.") : null}
-          tableData={tableData}
+          tableData={displayedTableData}
+          hasAnyData={tableData.length > 0}
+          selectedSku={selectedSku}
           visibleMetrics={visibleMetrics}
           metricDefinitions={metricDefinitions}
           visibleMetricKeys={visibleMetricKeys}
@@ -839,7 +863,7 @@ export default function PSITablePage() {
           topScrollContainerRef={topScrollContainerRef}
           tableScrollAreaRef={tableScrollAreaRef}
           onDownload={handleDownload}
-          canDownload={Boolean(tableData.length && visibleMetrics.length)}
+          canDownload={Boolean(displayedTableData.length && visibleMetrics.length)}
           selectedChannelKey={selectedChannelKey}
           setSelectedChannelKey={setSelectedChannelKey}
           onClearSelection={handleClearSelection}

@@ -304,6 +304,81 @@ button.collapse-toggle:focus-visible {
   font-weight: 600;
 }
 
+.psi-summary-card {
+  grid-column: 1 / -1;
+  margin-top: 12px;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.psi-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.psi-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.psi-pager button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.psi-summary-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.psi-summary-table th,
+.psi-summary-table td {
+  padding: 6px 10px;
+}
+
+.psi-summary-table .numeric {
+  text-align: right;
+}
+
+.psi-summary-row {
+  cursor: pointer;
+}
+
+.psi-summary-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.psi-summary-row.is-selected {
+  outline: 2px solid var(--brand, #3b82f6);
+  outline-offset: -2px;
+}
+
+.psi-summary-sku {
+  text-align: left;
+}
+
+.psi-summary-sku-code {
+  font-weight: 600;
+}
+
+.psi-summary-sku-name {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.psi-summary-empty {
+  margin: 0;
+  color: var(--text-muted);
+}
+
 .psi-description-panel label {
   display: grid;
   gap: 0.5rem;
