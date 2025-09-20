@@ -81,6 +81,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
 }: Props) {
   const [metricFilter, setMetricFilter] = useState("");
   const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
+  const [skuHeaderElement, setSkuHeaderElement] = useState<HTMLDivElement | null>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const [selectionOverlay, setSelectionOverlay] = useState<SelectionOverlayMetrics | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -244,6 +245,10 @@ const PSISummaryTable = memo(function PSISummaryTable({
     setMetricHeaderElement(element);
   }, []);
 
+  const handleSkuHeaderRef = useCallback((element: HTMLDivElement | null) => {
+    setSkuHeaderElement(element);
+  }, []);
+
   const updateSelectionOverlay = useCallback(() => {
     const container = gridContainerRef.current;
     if (!container) {
@@ -352,6 +357,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
       name: "SKU",
       width: skuColumnWidth,
       frozen: true,
+      setHeaderRef: handleSkuHeaderRef,
       className: (row) =>
         classNames(
           "psi-grid-summary-sku-cell",
@@ -416,7 +422,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
     };
 
     return [skuColumn, metricColumn, ...channelColumns, surplusColumn, totalColumn];
-  }, [handleMetricHeaderRef, orderedChannels, valueClassName]);
+  }, [handleMetricHeaderRef, handleSkuHeaderRef, orderedChannels, valueClassName]);
 
   useEffect(() => {
     return () => {
@@ -439,19 +445,27 @@ const PSISummaryTable = memo(function PSISummaryTable({
             placeholder="フィルタ"
             aria-label="Metricをフィルタ"
           />
-          <button
-            type="button"
-            onClick={() => {
-              onSelectSku(null);
-              scheduleSelectionOverlayUpdate();
-            }}
-            disabled={!selectedSku}
-          >
-            選択解除
-          </button>
         </div>
       </div>,
       metricHeaderElement
+    );
+
+  const skuHeaderPortal =
+    skuHeaderElement &&
+    createPortal(
+      <div className="psi-grid-header-selection">
+        <button
+          type="button"
+          onClick={() => {
+            onSelectSku(null);
+            scheduleSelectionOverlayUpdate();
+          }}
+          disabled={!selectedSku}
+        >
+          選択解除
+        </button>
+      </div>,
+      skuHeaderElement
     );
 
   const handleCellClick = useCallback(
@@ -515,6 +529,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
           }}
         />
       )}
+      {skuHeaderPortal}
       {metricHeaderPortal}
       <DataGrid
         columns={columns}
