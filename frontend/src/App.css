@@ -23,10 +23,6 @@
   --psi-col-warehouse-width: clamp(10ch, 14ch, 20ch);
   --psi-col-channel-width: clamp(8ch, 12ch, 18ch);
   --psi-col-div-width: clamp(8ch, 11ch, 16ch);
-  --psi-col-offset-sku-name: var(--psi-col-sku-width);
-  --psi-col-offset-warehouse: calc(var(--psi-col-offset-sku-name) + var(--psi-col-sku-name-width));
-  --psi-col-offset-channel: calc(var(--psi-col-offset-warehouse) + var(--psi-col-warehouse-width));
-  --psi-col-offset-div: calc(var(--psi-col-offset-channel) + var(--psi-col-channel-width));
   --psi-today-bg: rgba(59, 130, 246, 0.14);
   --psi-today-header-bg: rgba(59, 130, 246, 0.18);
   --psi-today-border: rgba(96, 165, 250, 0.4);
@@ -521,6 +517,7 @@ button.icon-button:focus-visible {
   border-collapse: collapse;
   min-width: 840px;
   font-size: 0.8125rem;
+  table-layout: fixed;
 }
 
 
@@ -550,10 +547,10 @@ button.icon-button:focus-visible {
   background: var(--surface-table-header);
   font-weight: 700;
   font-size: 0.8rem;
-  z-index: 6;
   text-transform: none;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-default);
+  z-index: 3;
 }
 
 .psi-table thead th:first-child {
@@ -631,7 +628,7 @@ button.icon-button:focus-visible {
   position: sticky;
   left: 0;
   background: var(--surface-sticky-col);
-  z-index: 5;
+  z-index: 2;
   box-shadow: 1px 0 0 var(--border-default);
 }
 
@@ -640,10 +637,10 @@ button.icon-button:focus-visible {
 }
 
 .psi-table thead .sticky-col {
-  z-index: 7;
   background: var(--surface-sticky-col);
   box-shadow: 1px 0 0 var(--border-default);
   top: var(--psi-table-header-offset, 0);
+  z-index: 3;
 }
 
 .psi-table .col-sku {
@@ -653,25 +650,30 @@ button.icon-button:focus-visible {
 }
 
 .psi-table .col-sku-name {
-  left: var(--psi-col-offset-sku-name);
+  left: var(--psi-col-sku-width);
   min-width: var(--psi-col-sku-name-width);
   width: var(--psi-col-sku-name-width);
 }
 
 .psi-table .col-warehouse {
-  left: var(--psi-col-offset-warehouse);
+  left: calc(var(--psi-col-sku-width) + var(--psi-col-sku-name-width));
   min-width: var(--psi-col-warehouse-width);
   width: var(--psi-col-warehouse-width);
 }
 
 .psi-table .col-channel {
-  left: var(--psi-col-offset-channel);
+  left: calc(
+    var(--psi-col-sku-width) + var(--psi-col-sku-name-width) + var(--psi-col-warehouse-width)
+  );
   min-width: var(--psi-col-channel-width);
   width: var(--psi-col-channel-width);
 }
 
 .psi-table .col-div {
-  left: var(--psi-col-offset-div);
+  left: calc(
+    var(--psi-col-sku-width) + var(--psi-col-sku-name-width) + var(--psi-col-warehouse-width) +
+      var(--psi-col-channel-width)
+  );
   min-width: var(--psi-col-div-width);
   width: var(--psi-col-div-width);
   font-weight: 600;
