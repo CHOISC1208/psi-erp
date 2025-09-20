@@ -520,13 +520,15 @@ const PSITableContent = ({
     createPortal(
       <div className="psi-grid-header-filter">
         <span>Metric</span>
-        <input
-          type="text"
-          value={metricFilter}
-          onChange={(event) => setMetricFilter(event.target.value)}
-          placeholder="フィルタ"
-          aria-label="Metricをフィルタ"
-        />
+        <div className="psi-grid-header-filter-controls">
+          <input
+            type="text"
+            value={metricFilter}
+            onChange={(event) => setMetricFilter(event.target.value)}
+            placeholder="フィルタ"
+            aria-label="Metricをフィルタ"
+          />
+        </div>
       </div>,
       metricHeaderElement
     );

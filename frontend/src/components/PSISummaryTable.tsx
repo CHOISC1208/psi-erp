@@ -1,5 +1,13 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import DataGrid, { type Column } from "react-data-grid";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import DataGrid, { type CellClickArgs, type Column } from "react-data-grid";
 import { createPortal } from "react-dom";
 
 import { ChannelAgg, SummaryRow } from "../utils/psiSummary";
@@ -75,6 +83,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
   const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const [selectionOverlay, setSelectionOverlay] = useState<SelectionOverlayMetrics | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   const orderedChannels = useMemo(() => {
     const unique = new Set<string>();
@@ -288,9 +297,19 @@ const PSISummaryTable = memo(function PSISummaryTable({
     });
   }, []);
 
+  const scheduleSelectionOverlayUpdate = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    animationFrameRef.current = window.requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      updateSelectionOverlay();
+    });
+  }, [updateSelectionOverlay]);
+
   useLayoutEffect(() => {
-    updateSelectionOverlay();
-  }, [paddedRows, updateSelectionOverlay]);
+    scheduleSelectionOverlayUpdate();
+  }, [paddedRows, scheduleSelectionOverlayUpdate]);
 
   useLayoutEffect(() => {
     const container = gridContainerRef.current;
@@ -309,10 +328,10 @@ const PSISummaryTable = memo(function PSISummaryTable({
       if (animationFrame !== null) {
         cancelAnimationFrame(animationFrame);
       }
-      animationFrame = window.requestAnimationFrame(() => {
-        animationFrame = null;
-        updateSelectionOverlay();
-      });
+        animationFrame = window.requestAnimationFrame(() => {
+          animationFrame = null;
+          updateSelectionOverlay();
+        });
     };
 
     viewport.addEventListener("scroll", handleScrollOrResize, { passive: true });
@@ -399,30 +418,65 @@ const PSISummaryTable = memo(function PSISummaryTable({
     return [skuColumn, metricColumn, ...channelColumns, surplusColumn, totalColumn];
   }, [handleMetricHeaderRef, orderedChannels, valueClassName]);
 
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
   const metricHeaderPortal =
     metricHeaderElement &&
     createPortal(
       <div className="psi-grid-header-filter">
         <span>Metric</span>
-        <input
-          type="text"
-          value={metricFilter}
-          onChange={(event) => setMetricFilter(event.target.value)}
-          placeholder="フィルタ"
-          aria-label="Metricをフィルタ"
-        />
+        <div className="psi-grid-header-filter-controls">
+          <input
+            type="text"
+            value={metricFilter}
+            onChange={(event) => setMetricFilter(event.target.value)}
+            placeholder="フィルタ"
+            aria-label="Metricをフィルタ"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              onSelectSku(null);
+              scheduleSelectionOverlayUpdate();
+            }}
+            disabled={!selectedSku}
+          >
+            選択解除
+          </button>
+        </div>
       </div>,
       metricHeaderElement
     );
 
   const handleCellClick = useCallback(
-    ({ row }: { row: SummaryGridRow }) => {
+    ({ row, event }: CellClickArgs<SummaryGridRow>) => {
       if (row.isPlaceholder) {
         return;
       }
-      onSelectSku(row.isSelected ? null : row.sku);
+      if (event.altKey || event.metaKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        onSelectSku(row.isSelected ? null : row.sku);
+        scheduleSelectionOverlayUpdate();
+        return;
+      }
+
+      if (!row.isSelected) {
+        onSelectSku(row.sku);
+        scheduleSelectionOverlayUpdate();
+        return;
+      }
+
+      // Already selected: keep selection unchanged but refresh the overlay for immediate feedback.
+      scheduleSelectionOverlayUpdate();
     },
-    [onSelectSku]
+    [onSelectSku, scheduleSelectionOverlayUpdate]
   );
 
   const getRowClassName = useCallback(
