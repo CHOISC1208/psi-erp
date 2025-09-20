@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, union_all
 from sqlalchemy.orm import Session as DBSession
 
 from .. import models, schemas
@@ -288,8 +288,53 @@ def daily_psi(
     base_alias = models.PSIBase
     edit_alias = models.PSIEdit
 
+    transfer_incoming = (
+        select(
+            models.ChannelTransfer.session_id.label("session_id"),
+            models.ChannelTransfer.sku_code.label("sku_code"),
+            models.ChannelTransfer.warehouse_name.label("warehouse_name"),
+            models.ChannelTransfer.transfer_date.label("date"),
+            models.ChannelTransfer.to_channel.label("channel"),
+            models.ChannelTransfer.qty.label("qty"),
+        )
+        .where(models.ChannelTransfer.session_id == session_id)
+    )
+
+    transfer_outgoing = (
+        select(
+            models.ChannelTransfer.session_id.label("session_id"),
+            models.ChannelTransfer.sku_code.label("sku_code"),
+            models.ChannelTransfer.warehouse_name.label("warehouse_name"),
+            models.ChannelTransfer.transfer_date.label("date"),
+            models.ChannelTransfer.from_channel.label("channel"),
+            (-models.ChannelTransfer.qty).label("qty"),
+        )
+        .where(models.ChannelTransfer.session_id == session_id)
+    )
+
+    transfer_union = union_all(transfer_incoming, transfer_outgoing).subquery()
+
+    transfer_agg = (
+        select(
+            transfer_union.c.session_id,
+            transfer_union.c.sku_code,
+            transfer_union.c.warehouse_name,
+            transfer_union.c.date,
+            transfer_union.c.channel,
+            func.sum(transfer_union.c.qty).label("channel_move"),
+        )
+        .group_by(
+            transfer_union.c.session_id,
+            transfer_union.c.sku_code,
+            transfer_union.c.warehouse_name,
+            transfer_union.c.date,
+            transfer_union.c.channel,
+        )
+        .subquery()
+    )
+
     query = (
-        select(base_alias, edit_alias)
+        select(base_alias, edit_alias, transfer_agg.c.channel_move)
         .join(
             edit_alias,
             (edit_alias.session_id == base_alias.session_id)
@@ -297,6 +342,15 @@ def daily_psi(
             & (edit_alias.warehouse_name == base_alias.warehouse_name)
             & (edit_alias.channel == base_alias.channel)
             & (edit_alias.date == base_alias.date),
+            isouter=True,
+        )
+        .join(
+            transfer_agg,
+            (transfer_agg.c.session_id == base_alias.session_id)
+            & (transfer_agg.c.sku_code == base_alias.sku_code)
+            & (transfer_agg.c.warehouse_name == base_alias.warehouse_name)
+            & (transfer_agg.c.channel == base_alias.channel)
+            & (transfer_agg.c.date == base_alias.date),
             isouter=True,
         )
         .where(base_alias.session_id == session_id)
@@ -335,7 +389,7 @@ def daily_psi(
             return None
         return float(value)
 
-    for base_row, edit_row in rows:
+    for base_row, edit_row, transfer_move in rows:
         key = (base_row.sku_code, base_row.warehouse_name, base_row.channel)
         bucket = grouped[key]
         bucket["sku_name"] = base_row.sku_name or bucket["sku_name"]
@@ -353,6 +407,9 @@ def daily_psi(
         inbound_val = inbound if inbound is not None else zero
         outbound_val = outbound if outbound is not None else zero
 
+        channel_move_raw = transfer_move
+        channel_move_val = channel_move_raw if channel_move_raw is not None else zero
+
         stock_anchor_raw = base_row.stock_at_anchor
         stock_anchor_for_calc = stock_anchor_raw if stock_anchor_raw is not None else zero
 
@@ -364,21 +421,32 @@ def daily_psi(
             )
         )
 
-        if has_flow_edit or base_row.net_flow is None:
-            net_flow = inbound_val - outbound_val
-        else:
-            net_flow = base_row.net_flow or zero
+        recalc_flow = has_flow_edit or base_row.net_flow is None
+        recalc_closing = has_flow_edit or base_row.stock_closing is None
 
-        if has_flow_edit or base_row.stock_closing is None:
-            stock_closing = stock_anchor_for_calc + inbound_val - outbound_val
+        if recalc_flow:
+            net_flow = inbound_val - outbound_val + channel_move_val
         else:
-            stock_closing = base_row.stock_closing or zero
+            net_flow = (base_row.net_flow or zero) + channel_move_val
+
+        if recalc_closing:
+            stock_closing = (
+                stock_anchor_for_calc + inbound_val - outbound_val + channel_move_val
+            )
+        else:
+            stock_closing = (base_row.stock_closing or zero) + channel_move_val
 
         safety_val = safety if safety is not None else zero
-        if (edit_row and edit_row.safety_stock is not None) or base_row.movable_stock is None:
+        recalc_movable = (
+            (edit_row and edit_row.safety_stock is not None)
+            or base_row.movable_stock is None
+            or recalc_closing
+            or channel_move_raw is not None
+        )
+        if recalc_movable:
             movable_stock = stock_closing - safety_val
         else:
-            movable_stock = base_row.movable_stock or zero
+            movable_stock = (base_row.movable_stock or zero) + channel_move_val
 
         bucket["records"].append(
             schemas.DailyPSI(
@@ -386,6 +454,9 @@ def daily_psi(
                 stock_at_anchor=_to_optional_float(stock_anchor_raw),
                 inbound_qty=float(inbound_val),
                 outbound_qty=float(outbound_val),
+                channel_move=float(channel_move_val)
+                if channel_move_raw is not None
+                else None,
                 net_flow=float(net_flow),
                 stock_closing=float(stock_closing),
                 safety_stock=float(safety_val),
