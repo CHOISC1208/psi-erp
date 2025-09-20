@@ -19,6 +19,17 @@ export interface PSIEditableChannel extends Omit<PSIChannel, "daily"> {
   daily: PSIEditableDay[];
 }
 
+export type PSIGridRow = {
+  id: string;
+  channelKey: string;
+  sku_code: string;
+  warehouse_name: string;
+  channel: string;
+  metric: string;
+  metricKey: MetricKey;
+  metricEditable: boolean;
+} & Record<string, number | null | string | boolean>;
+
 export interface MetricDefinitionBase {
   key: MetricKey;
   label: string;

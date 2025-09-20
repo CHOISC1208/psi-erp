@@ -1,0 +1,12 @@
+{
+  "name": "react-data-grid",
+  "version": "0.0.0-local",
+  "type": "module",
+  "exports": {
+    ".": "./index.jsx",
+    "./lib/styles.css": "./lib/styles.css"
+  },
+  "main": "./index.jsx",
+  "module": "./index.jsx",
+  "types": "./index.d.ts"
+}

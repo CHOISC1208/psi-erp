@@ -987,6 +987,78 @@ button.icon-button:focus-visible {
   min-height: 0;
 }
 
+.psi-warehouse-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.5rem 0;
+}
+
+.psi-warehouse-tab {
+  flex: 1 0 calc(25% - 0.5rem);
+  min-width: 140px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #c8d1dc;
+  border-radius: 20px;
+  background-color: #ffffff;
+  color: #1f2937;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.psi-warehouse-tab.active {
+  background-color: #1f7ae0;
+  color: #ffffff;
+  border-color: #1f7ae0;
+}
+
+.psi-warehouse-tab:hover:not(.active) {
+  background-color: #f3f8ff;
+}
+
+.psi-grid-container {
+  width: 100%;
+}
+
+.psi-data-grid {
+  width: 100%;
+  background-color: transparent;
+}
+
+.psi-grid-channel-cell,
+.psi-grid-metric-cell {
+  font-weight: 600;
+  background-color: #f9fbfd;
+  justify-content: flex-start;
+}
+
+.psi-grid-value-cell {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.psi-grid-cell-editable {
+  background-color: #fdfcff;
+}
+
+.psi-grid-cell-today {
+  background-color: #fff4ce;
+}
+
+.psi-grid-header-today {
+  background-color: #ffe8a1;
+}
+
+.psi-grid-editor {
+  width: 100%;
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid #9da7b2;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
 .psi-table-toolbar {
   display: flex;
   flex-wrap: wrap;

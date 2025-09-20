@@ -1,0 +1,73 @@
+.rdg {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #fff;
+  color: #24292f;
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font-size: 14px;
+}
+
+.rdg-header {
+  background-color: #f6f8fa;
+  border-bottom: 1px solid #d0d7de;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.rdg-header-row {
+  display: grid;
+}
+
+.rdg-header-cell {
+  padding: 8px 12px;
+  font-weight: 600;
+  border-right: 1px solid #d0d7de;
+  box-sizing: border-box;
+  background-color: inherit;
+}
+
+.rdg-body {
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+.rdg-row {
+  display: grid;
+  min-height: 36px;
+  border-bottom: 1px solid #ecf1f6;
+}
+
+.rdg-cell {
+  padding: 6px 10px;
+  border-right: 1px solid #ecf1f6;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  background-color: inherit;
+}
+
+.rdg-cell:last-child,
+.rdg-header-cell:last-child {
+  border-right: none;
+}
+
+.rdg-row:nth-child(even) .rdg-cell {
+  background-color: #fbfdff;
+}
+
+.rdg-row:hover .rdg-cell {
+  background-color: #f0f6ff;
+}
+
+.rdg-cell input {
+  width: 100%;
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid #9da7b2;
+  border-radius: 4px;
+  box-sizing: border-box;
+}

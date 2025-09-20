@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -9,7 +8,7 @@ import { PSIChannel, PSIDailyEntry, PSIEditApplyResult, Session } from "../types
 import PSITableContent from "../components/PSITableContent";
 import PSITableControls from "../components/PSITableControls";
 import { useDailyPsiQuery, useSessionSummaryQuery, useSessionsQuery } from "../hooks/usePsiQueries";
-import { EditableField, MetricDefinition, MetricKey, PSIEditableChannel, PSIEditableDay, metricDefinitions } from "./psiTableTypes";
+import { EditableField, PSIEditableChannel, PSIEditableDay, PSIGridRow, metricDefinitions } from "./psiTableTypes";
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -167,19 +166,8 @@ export default function PSITablePage() {
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [controlsCollapsed, setControlsCollapsed] = useState(false);
   const [lastAppliedAt, setLastAppliedAt] = useState<string | null>(null);
-  const [visibleMetricKeys, setVisibleMetricKeys] = useState<MetricKey[]>(() =>
-    metricDefinitions.map((metric) => metric.key as MetricKey)
-  );
-  const [isMetricSelectorOpen, setIsMetricSelectorOpen] = useState(false);
-  const metricSelectorRef = useRef<HTMLDivElement | null>(null);
-  const [selectedChannelKey, setSelectedChannelKey] = useState<string | null>(null);
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
-  const tableRef = useRef<HTMLTableElement | null>(null);
-  const tableScrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const topScrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const rowGroupRefs = useRef<(HTMLTableRowElement | null)[]>([]);
-  const controlsRef = useRef<HTMLElement | null>(null);
-  const tableScrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const scrollToDateRef = useRef<(date: string) => void>(() => {});
 
   const sessionsQuery = useSessionsQuery();
 
@@ -237,7 +225,6 @@ export default function PSITablePage() {
     setDescriptionError(null);
     setDescriptionSaved(false);
     setLastAppliedAt(null);
-    setIsMetricSelectorOpen(false);
     const params = new URLSearchParams(searchParams);
     if (value) {
       params.set("sessionId", value);
@@ -286,73 +273,6 @@ export default function PSITablePage() {
     setLastAppliedAt(null);
   }, [sessionId]);
 
-  useLayoutEffect(() => {
-    const scrollAreaElement = tableScrollAreaRef.current;
-    if (!scrollAreaElement) {
-      return;
-    }
-
-    const updateHeaderOffset = () => {
-      const controlsElement = controlsRef.current;
-      const controlsHeight = controlsElement?.getBoundingClientRect().height ?? 0;
-      scrollAreaElement.style.setProperty("--psi-table-header-offset", `${controlsHeight}px`);
-    };
-
-    updateHeaderOffset();
-
-    const resizeObservers: ResizeObserver[] = [];
-
-    if (typeof ResizeObserver !== "undefined") {
-      const controlsElement = controlsRef.current;
-      if (controlsElement) {
-        const observer = new ResizeObserver(() => {
-          updateHeaderOffset();
-        });
-        observer.observe(controlsElement);
-        resizeObservers.push(observer);
-      }
-    }
-
-    const handleWindowResize = () => {
-      updateHeaderOffset();
-    };
-
-    window.addEventListener("resize", handleWindowResize);
-
-    return () => {
-      resizeObservers.forEach((observer) => observer.disconnect());
-      window.removeEventListener("resize", handleWindowResize);
-      scrollAreaElement.style.removeProperty("--psi-table-header-offset");
-    };
-  }, [controlsCollapsed, tableData.length]);
-
-  useEffect(() => {
-    if (controlsCollapsed) {
-      setIsMetricSelectorOpen(false);
-    }
-  }, [controlsCollapsed]);
-
-  useEffect(() => {
-    if (!isMetricSelectorOpen) {
-      return;
-    }
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!metricSelectorRef.current) {
-        return;
-      }
-      if (!metricSelectorRef.current.contains(event.target as Node)) {
-        setIsMetricSelectorOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isMetricSelectorOpen]);
-
   useEffect(() => {
     if (!selectedSku) {
       return;
@@ -377,16 +297,7 @@ export default function PSITablePage() {
     return Array.from(dateSet).sort(compareDateStrings);
   }, [displayedTableData]);
 
-  const visibleMetrics = useMemo(
-    () => metricDefinitions.filter((metric) => visibleMetricKeys.includes(metric.key as MetricKey)),
-    [visibleMetricKeys]
-  );
-
-  const channelKeyOrder = useMemo(() => displayedTableData.map((item) => makeChannelKey(item)), [displayedTableData]);
-
-  useEffect(() => {
-    rowGroupRefs.current = new Array(channelKeyOrder.length).fill(null);
-  }, [channelKeyOrder.length]);
+  const visibleMetrics = metricDefinitions;
 
   const todayIso = useMemo(() => {
     const now = new Date();
@@ -395,19 +306,6 @@ export default function PSITablePage() {
     const day = String(now.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }, []);
-
-  useEffect(() => {
-    if (!selectedChannelKey) {
-      return;
-    }
-    if (!displayedTableData.some((item) => makeChannelKey(item) === selectedChannelKey)) {
-      setSelectedChannelKey(null);
-    }
-  }, [selectedChannelKey, displayedTableData]);
-
-  useEffect(() => {
-    setSelectedChannelKey(null);
-  }, [selectedSku]);
 
   const baselineMap = useMemo(() => {
     const map = new Map<string, PSIEditableDay>();
@@ -466,78 +364,18 @@ export default function PSITablePage() {
       ? formatDisplayDateTime(selectedSession.updated_at)
       : "—";
 
-  const toggleMetricVisibility = (metricKey: MetricKey) => {
-    setVisibleMetricKeys((previous) => {
-      if (previous.includes(metricKey)) {
-        if (previous.length === 1) {
-          return previous;
-        }
-        return previous.filter((key) => key !== metricKey);
+  const registerScrollToDate = useCallback((handler: (date: string) => void) => {
+    scrollToDateRef.current = handler;
+    return () => {
+      if (scrollToDateRef.current === handler) {
+        scrollToDateRef.current = () => {};
       }
-      return [...previous, metricKey];
-    });
-  };
-
-  const handleClearSelection = useCallback(() => {
-    setSelectedChannelKey(null);
+    };
   }, []);
 
-  const scrollToDate = useCallback(
-    (targetDate: string) => {
-      const container = tableScrollContainerRef.current;
-      const table = tableRef.current;
-      if (!container || !table) {
-        return;
-      }
-
-      const headerCell = table.querySelector<HTMLTableCellElement>(`th[data-date="${targetDate}"]`);
-      if (!headerCell) {
-        return;
-      }
-
-      const containerRect = container.getBoundingClientRect();
-      const cellRect = headerCell.getBoundingClientRect();
-      const offset = cellRect.left - containerRect.left;
-      const center = offset - container.clientWidth / 2 + headerCell.clientWidth / 2;
-      const nextScrollLeft = Math.max(0, center);
-
-      container.scrollTo({ left: nextScrollLeft, behavior: "smooth" });
-      const top = topScrollContainerRef.current;
-      top?.scrollTo({ left: nextScrollLeft, behavior: "smooth" });
-    },
-    []
-  );
-
   const handleTodayClick = useCallback(() => {
-    scrollToDate(todayIso);
-  }, [scrollToDate, todayIso]);
-
-  const handleRowKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLTableRowElement>, index: number, channelKey: string) => {
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        const next = rowGroupRefs.current[index + 1];
-        next?.focus();
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        const previous = rowGroupRefs.current[index - 1];
-        previous?.focus();
-        return;
-      }
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        setSelectedChannelKey(channelKey);
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setSelectedChannelKey(null);
-      }
-    },
-    []
-  );
+    scrollToDateRef.current(todayIso);
+  }, [todayIso]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -545,13 +383,9 @@ export default function PSITablePage() {
     }
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSelectedChannelKey(null);
-        return;
-      }
       if ((event.key === "t" || event.key === "T") && !event.altKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
-        scrollToDate(todayIso);
+        scrollToDateRef.current(todayIso);
       }
     };
 
@@ -560,7 +394,7 @@ export default function PSITablePage() {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [scrollToDate, todayIso]);
+  }, [todayIso]);
 
   const handleDownload = () => {
     if (
@@ -627,6 +461,10 @@ export default function PSITablePage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleChannelCellClick = useCallback((row: PSIGridRow) => {
+    console.debug("Channel cell clicked", row);
+  }, []);
+
   const handleEditableChange = (channelKey: string, date: string, field: EditableField, rawValue: string) => {
     setApplyError(null);
     setApplySuccess(null);
@@ -659,76 +497,9 @@ export default function PSITablePage() {
     );
   };
 
-  const handlePasteValues = useCallback(
-    (channelKey: string, date: string, field: EditableField, clipboardText: string) => {
-      if (!clipboardText) {
-        return;
-      }
-
-      const startIndex = allDates.indexOf(date);
-      if (startIndex === -1) {
-        return;
-      }
-
-      const values = clipboardText
-        .replace(/\r/g, "")
-        .split(/\n/)
-        .flatMap((row) => row.split(/\t/))
-        .map((token) => token.trim());
-
-      if (!values.length) {
-        return;
-      }
-
-      setApplyError(null);
-      setApplySuccess(null);
-
-      setTableData((previous) =>
-        previous.map((item) => {
-          if (makeChannelKey(item) !== channelKey) {
-            return item;
-          }
-
-          const updatedDaily = item.daily.map((entry) => ({ ...entry }));
-          let pointer = startIndex;
-
-          values.forEach((token) => {
-            if (pointer >= allDates.length) {
-              return;
-            }
-
-            const targetDate = allDates[pointer];
-            pointer += 1;
-
-            const entryIndex = updatedDaily.findIndex((dailyEntry) => dailyEntry.date === targetDate);
-            if (entryIndex === -1) {
-              return;
-            }
-
-            if (token === "") {
-              updatedDaily[entryIndex] = { ...updatedDaily[entryIndex], [field]: null };
-              return;
-            }
-
-            const parsed = Number(token);
-            if (!Number.isFinite(parsed)) {
-              return;
-            }
-
-            updatedDaily[entryIndex] = { ...updatedDaily[entryIndex], [field]: parsed };
-          });
-
-          return recomputeChannel({ ...item, daily: updatedDaily });
-        })
-      );
-    },
-    [allDates]
-  );
-
   const handleReset = () => {
     setApplyError(null);
     setApplySuccess(null);
-    setSelectedChannelKey(null);
     if (baselineData.length) {
       setTableData(cloneEditableChannels(baselineData));
     }
@@ -801,7 +572,6 @@ export default function PSITablePage() {
 
       <div className="psi-page-content">
         <PSITableControls
-          ref={controlsRef}
           isCollapsed={controlsCollapsed}
           onToggleCollapse={() => setControlsCollapsed((previous) => !previous)}
           sessionId={sessionId}
@@ -849,35 +619,18 @@ export default function PSITablePage() {
           hasAnyData={tableData.length > 0}
           selectedSku={selectedSku}
           visibleMetrics={visibleMetrics}
-          metricDefinitions={metricDefinitions}
-          visibleMetricKeys={visibleMetricKeys}
-          isMetricSelectorOpen={isMetricSelectorOpen}
-          onMetricSelectorToggle={() => setIsMetricSelectorOpen((previous) => !previous)}
-          onMetricVisibilityChange={toggleMetricVisibility}
-          metricSelectorRef={metricSelectorRef}
           allDates={allDates}
           todayIso={todayIso}
           formatDisplayDate={formatDisplayDate}
-          tableRef={tableRef}
-          tableScrollContainerRef={tableScrollContainerRef}
-          topScrollContainerRef={topScrollContainerRef}
-          tableScrollAreaRef={tableScrollAreaRef}
           onDownload={handleDownload}
           canDownload={Boolean(displayedTableData.length && visibleMetrics.length)}
-          selectedChannelKey={selectedChannelKey}
-          setSelectedChannelKey={setSelectedChannelKey}
-          onClearSelection={handleClearSelection}
           applyError={applyError}
           applySuccess={applySuccess}
-          baselineMap={baselineMap}
-          onEditableChange={handleEditableChange}
-          onPasteValues={handlePasteValues}
           formatNumber={formatNumber}
           makeChannelKey={makeChannelKey}
-          makeCellKey={makeCellKey}
-          valuesEqual={valuesEqual}
-          rowGroupRefs={rowGroupRefs}
-          onRowKeyDown={handleRowKeyDown}
+          onEditableChange={handleEditableChange}
+          onRegisterScrollToDate={registerScrollToDate}
+          onChannelCellClick={handleChannelCellClick}
         />
       </div>
     </div>
