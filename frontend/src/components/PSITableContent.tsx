@@ -10,6 +10,7 @@ import {
   PSIEditableChannel,
   PSIEditableDay,
 } from "../pages/psiTableTypes";
+import PSITable from "./PSITable";
 
 interface PSITableContentProps {
   sessionId: string;
@@ -131,186 +132,67 @@ const PSITableContent = ({
               </div>
             )}
           </div>
-          <div className="psi-table-scroll-area" ref={tableScrollAreaRef}>
-            <div
-              className="psi-scrollbar psi-scrollbar-top"
-              ref={topScrollContainerRef}
-              onScroll={onTopScroll}
-              role="presentation"
-            >
-              <div className="psi-scrollbar-filler" style={{ width: `${tableContentWidth}px` }} />
-            </div>
-            <div className="psi-table-container" ref={tableScrollContainerRef} onScroll={onBottomScroll}>
-              <table className="psi-table" ref={tableRef}>
-                <thead>
-                  <tr>
-                    <th className="sticky-col col-sku">sku_code</th>
-                    <th className="sticky-col col-sku-name">sku_name</th>
-                    <th className="sticky-col col-warehouse">warehouse_name</th>
-                    <th className="sticky-col col-channel">channel</th>
-                    <th className="sticky-col col-div">
-                      <div className="metric-header" ref={metricSelectorRef}>
-                        <button
-                          type="button"
-                          className="metric-toggle"
-                          onClick={onMetricSelectorToggle}
-                          aria-expanded={isMetricSelectorOpen}
-                        >
-                          div
-                        </button>
-                        {isMetricSelectorOpen && (
-                          <div className="metric-selector">
-                            <p className="metric-selector-title">表示する指標</p>
-                            <div className="metric-selector-options">
-                              {metricDefinitions.map((metric) => {
-                                const key = metric.key as MetricKey;
-                                const checked = visibleMetricKeys.includes(key);
-                                const disabled = checked && visibleMetricKeys.length === 1;
-                                return (
-                                  <label key={metric.key}>
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={disabled}
-                                      onChange={() => onMetricVisibilityChange(key)}
-                                    />
-                                    {metric.label}
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </th>
-                    {allDates.map((date) => (
-                      <th
-                        key={date}
-                        className={`date-header${date === todayIso ? " today-column" : ""}`}
-                        data-date={date}
-                      >
-                        {formatDisplayDate(date)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableData.map((item, channelIndex) => {
-                    const channelKey = makeChannelKey(item);
-                    const rowSpan = Math.max(visibleMetrics.length, 1);
-                    const dateMap = new Map(item.daily.map((entry) => [entry.date, entry]));
-
-                    if (!visibleMetrics.length) {
-                      return null;
-                    }
-
-                    const isSelected = selectedChannelKey === channelKey;
-
-                    return visibleMetrics.map((metric, metricIndex) => {
-                      const isFirstMetricRow = metricIndex === 0;
-
-                      return (
-                        <tr
-                          key={`${channelKey}-${metric.key}`}
-                          className={`psi-table-row${isSelected ? " selected" : ""}`}
-                          onClick={() => onRowSelection(channelKey)}
-                          tabIndex={isFirstMetricRow ? 0 : -1}
-                          ref={
-                            isFirstMetricRow
-                              ? (element) => {
-                                  rowGroupRefs.current[channelIndex] = element ?? null;
-                                }
-                              : undefined
-                          }
-                          onKeyDown={
-                            isFirstMetricRow
-                              ? (event) => onRowKeyDown(event, channelIndex, channelKey)
-                              : undefined
-                          }
-                          aria-selected={isSelected}
-                        >
-                          {isFirstMetricRow && (
-                            <>
-                              <td className={`sticky-col col-sku${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
-                                {item.sku_code}
-                              </td>
-                              <td
-                                className={`sticky-col col-sku-name${isSelected ? " selected" : ""}`}
-                                rowSpan={rowSpan}
-                              >
-                                {item.sku_name ?? "—"}
-                              </td>
-                              <td
-                                className={`sticky-col col-warehouse${isSelected ? " selected" : ""}`}
-                                rowSpan={rowSpan}
-                              >
-                                {item.warehouse_name}
-                              </td>
-                              <td
-                                className={`sticky-col col-channel${isSelected ? " selected" : ""}`}
-                                rowSpan={rowSpan}
-                              >
-                                {item.channel}
-                              </td>
-                            </>
-                          )}
-                          <td className={`sticky-col col-div psi-metric-name${isSelected ? " selected" : ""}`}>
+          <PSITable
+            tableData={tableData}
+            visibleMetrics={visibleMetrics}
+            allDates={allDates}
+            todayIso={todayIso}
+            formatDisplayDate={formatDisplayDate}
+            metricHeader={
+              <div className="metric-header" ref={metricSelectorRef}>
+                <button
+                  type="button"
+                  className="metric-toggle"
+                  onClick={onMetricSelectorToggle}
+                  aria-expanded={isMetricSelectorOpen}
+                >
+                  div
+                </button>
+                {isMetricSelectorOpen && (
+                  <div className="metric-selector">
+                    <p className="metric-selector-title">表示する指標</p>
+                    <div className="metric-selector-options">
+                      {metricDefinitions.map((metric) => {
+                        const key = metric.key as MetricKey;
+                        const checked = visibleMetricKeys.includes(key);
+                        const disabled = checked && visibleMetricKeys.length === 1;
+                        return (
+                          <label key={metric.key}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={disabled}
+                              onChange={() => onMetricVisibilityChange(key)}
+                            />
                             {metric.label}
-                          </td>
-                          {allDates.map((date) => {
-                            const entry = dateMap.get(date);
-                            const cellKey = `${channelKey}-${metric.key}-${date}`;
-                            const todayClass = date === todayIso ? " today-column" : "";
-
-                            if (!entry) {
-                              return (
-                                <td key={cellKey} className={`numeric${todayClass}`}>
-                                  —
-                                </td>
-                              );
-                            }
-
-                            const value = entry[metric.key];
-
-                            if (isEditableMetric(metric)) {
-                              const baselineEntry = baselineMap.get(makeCellKey(channelKey, date));
-                              const baselineValue = baselineEntry ? baselineEntry[metric.key] ?? null : null;
-                              const currentValue = value ?? null;
-                              const isEdited = !valuesEqual(currentValue, baselineValue);
-
-                              return (
-                                <td key={cellKey} className={`numeric${todayClass}`}>
-                                  <input
-                                    type="text"
-                                    className={`psi-edit-input${isEdited ? " edited" : ""}`}
-                                    value={currentValue ?? ""}
-                                    onChange={(event) =>
-                                      onEditableChange(channelKey, date, metric.key, event.target.value)
-                                    }
-                                    inputMode="decimal"
-                                    onPaste={(event) => {
-                                      event.preventDefault();
-                                      onPasteValues(channelKey, date, metric.key, event.clipboardData.getData("text"));
-                                    }}
-                                  />
-                                </td>
-                              );
-                            }
-
-                            return (
-                              <td key={cellKey} className={`numeric${todayClass}`}>
-                                {formatNumber(value)}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    });
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            }
+            tableContentWidth={tableContentWidth}
+            tableRef={tableRef}
+            tableScrollContainerRef={tableScrollContainerRef}
+            topScrollContainerRef={topScrollContainerRef}
+            tableScrollAreaRef={tableScrollAreaRef}
+            onTopScroll={onTopScroll}
+            onBottomScroll={onBottomScroll}
+            baselineMap={baselineMap}
+            onEditableChange={onEditableChange}
+            onPasteValues={onPasteValues}
+            formatNumber={formatNumber}
+            isEditableMetric={isEditableMetric}
+            makeChannelKey={makeChannelKey}
+            makeCellKey={makeCellKey}
+            valuesEqual={valuesEqual}
+            selectedChannelKey={selectedChannelKey}
+            onRowSelection={onRowSelection}
+            rowGroupRefs={rowGroupRefs}
+            onRowKeyDown={onRowKeyDown}
+          />
         </div>
       ) : (
         sessionId && !isLoading && <p className="psi-table-status">No PSI data for the current filters.</p>
