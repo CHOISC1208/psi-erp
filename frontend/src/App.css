@@ -1033,6 +1033,18 @@ button.icon-button:focus-visible {
   justify-content: flex-start;
 }
 
+.psi-grid-cell-duplicate {
+  color: #9da7b2;
+  transition: color 0.2s ease;
+}
+
+.psi-grid-cell-duplicate:hover,
+.psi-grid-cell-duplicate:focus,
+.psi-grid-cell-duplicate:focus-within,
+.rdg-row:hover .psi-grid-cell-duplicate {
+  color: inherit;
+}
+
 .psi-grid-value-cell {
   justify-content: flex-end;
   font-variant-numeric: tabular-nums;

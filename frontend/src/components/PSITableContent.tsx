@@ -222,6 +222,51 @@ const PSITableContent = ({
     []
   );
 
+  const duplicateCellMap = useMemo(() => {
+    if (rows.length === 0) {
+      return new Map<string, Set<string>>();
+    }
+
+    const metricIndex = baseColumns.findIndex((column) => column.key === "metric");
+    if (metricIndex <= 0) {
+      return new Map<string, Set<string>>();
+    }
+
+    const targetKeys = baseColumns.slice(0, metricIndex).map((column) => column.key);
+    if (!targetKeys.length) {
+      return new Map<string, Set<string>>();
+    }
+
+    const duplicates = new Map<string, Set<string>>();
+
+    for (let index = 1; index < rows.length; index += 1) {
+      const currentRow = rows[index];
+      const previousRow = rows[index - 1];
+      if (!previousRow || currentRow.channelKey !== previousRow.channelKey) {
+        continue;
+      }
+
+      for (const columnKey of targetKeys) {
+        const currentValue = currentRow[columnKey];
+        if (
+          currentValue !== null &&
+          currentValue !== undefined &&
+          (typeof currentValue !== "string" || currentValue.trim() !== "") &&
+          currentValue === previousRow[columnKey]
+        ) {
+          let entry = duplicates.get(currentRow.id);
+          if (!entry) {
+            entry = new Set<string>();
+            duplicates.set(currentRow.id, entry);
+          }
+          entry.add(columnKey);
+        }
+      }
+    }
+
+    return duplicates;
+  }, [baseColumns, rows]);
+
   const handleHeaderRef = useCallback((key: string, element: HTMLDivElement | null) => {
     const map = headerRefs.current;
     if (element) {
@@ -257,7 +302,34 @@ const PSITableContent = ({
     [allDates, formatDisplayDate, formatNumber, handleHeaderRef, todayIso]
   );
 
-  const columns = useMemo(() => [...baseColumns, ...dateColumns], [baseColumns, dateColumns]);
+  const columns = useMemo(() => {
+    if (duplicateCellMap.size === 0) {
+      return [...baseColumns, ...dateColumns];
+    }
+
+    const metricIndex = baseColumns.findIndex((column) => column.key === "metric");
+
+    const enhancedBaseColumns =
+      metricIndex > 0
+        ? baseColumns.map((column, columnIndex) => {
+            if (columnIndex >= metricIndex) {
+              return column;
+            }
+
+            const { className } = column;
+            return {
+              ...column,
+              className: (row: PSIGridRow) =>
+                classNames(
+                  typeof className === "function" ? className(row) : className,
+                  duplicateCellMap.get(row.id)?.has(column.key) && "psi-grid-cell-duplicate"
+                ),
+            } satisfies Column<PSIGridRow>;
+          })
+        : baseColumns;
+
+    return [...enhancedBaseColumns, ...dateColumns];
+  }, [baseColumns, dateColumns, duplicateCellMap]);
 
   const handleRowsChange = useCallback(
     (updatedRows: PSIGridRow[], data: RowsChangeData<PSIGridRow>) => {
