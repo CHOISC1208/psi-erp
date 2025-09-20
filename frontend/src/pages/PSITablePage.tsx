@@ -4,11 +4,26 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "../lib/api";
-import { PSIChannel, PSIDailyEntry, PSIEditApplyResult, Session } from "../types";
+import {
+  ChannelTransfer,
+  ChannelTransferCreate,
+  PSIChannel,
+  PSIDailyEntry,
+  PSIEditApplyResult,
+  Session,
+} from "../types";
+import ChannelMoveModal from "../components/ChannelMoveModal";
 import PSITableContent from "../components/PSITableContent";
 import PSITableControls from "../components/PSITableControls";
-import { useDailyPsiQuery, useSessionSummaryQuery, useSessionsQuery } from "../hooks/usePsiQueries";
-import { EditableField, PSIEditableChannel, PSIEditableDay, PSIGridRow, metricDefinitions } from "./psiTableTypes";
+import {
+  useChannelTransfersQuery,
+  useCreateChannelTransferMutation,
+  useDailyPsiQuery,
+  useDeleteChannelTransferMutation,
+  useSessionSummaryQuery,
+  useSessionsQuery,
+} from "../hooks/usePsiQueries";
+import { EditableField, PSIEditableChannel, PSIEditableDay, PSIGridMetricRow, metricDefinitions } from "./psiTableTypes";
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -35,6 +50,17 @@ interface PSIEditUpdatePayload {
   outbound_qty?: number | null;
   safety_stock?: number | null;
 }
+
+type ChannelMoveCellSelection = {
+  channelKey: string;
+  date: string;
+  row: PSIGridMetricRow;
+};
+
+type ChannelMoveSaveChanges = {
+  toCreate: ChannelTransferCreate[];
+  toDelete: ChannelTransfer[];
+};
 
 const applyPsiEdits = async (
   sessionId: string,
@@ -92,10 +118,12 @@ const recomputeChannel = (channel: PSIEditableChannel): PSIEditableChannel => {
 
     const inbound = entry.inbound_qty ?? 0;
     const outbound = entry.outbound_qty ?? 0;
-    const netFlow = inbound - outbound;
+    const channelMove = entry.channel_move ?? 0;
+    const netFlow = inbound - outbound + channelMove;
 
     const anchorValue = effectiveAnchor ?? 0;
-    const shouldKeepNull = effectiveAnchor === null && inbound === 0 && outbound === 0;
+    const shouldKeepNull =
+      effectiveAnchor === null && inbound === 0 && outbound === 0 && channelMove === 0;
     const stockClosing = shouldKeepNull ? null : anchorValue + netFlow;
 
     const safety = entry.safety_stock ?? 0;
@@ -147,6 +175,55 @@ const valuesEqual = (a: number | null | undefined, b: number | null | undefined)
   return Math.abs(a - b) < 1e-9;
 };
 
+const applyPendingEditsToChannels = (
+  channels: PSIEditableChannel[],
+  edits: PSIEditUpdatePayload[]
+): PSIEditableChannel[] => {
+  if (!edits.length) {
+    return channels;
+  }
+
+  const grouped = new Map<string, Map<string, PSIEditUpdatePayload>>();
+  edits.forEach((edit) => {
+    const channelKey = makeChannelKey(edit);
+    const dateMap = grouped.get(channelKey);
+    if (dateMap) {
+      dateMap.set(edit.date, edit);
+    } else {
+      grouped.set(channelKey, new Map([[edit.date, edit]]));
+    }
+  });
+
+  return channels.map((channel) => {
+    const channelKey = makeChannelKey(channel);
+    const channelEdits = grouped.get(channelKey);
+    if (!channelEdits) {
+      return channel;
+    }
+
+    const updatedDaily = channel.daily.map((entry) => {
+      const edit = channelEdits.get(entry.date);
+      if (!edit) {
+        return { ...entry };
+      }
+
+      const nextEntry = { ...entry };
+      if (Object.prototype.hasOwnProperty.call(edit, "inbound_qty")) {
+        nextEntry.inbound_qty = edit.inbound_qty ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(edit, "outbound_qty")) {
+        nextEntry.outbound_qty = edit.outbound_qty ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(edit, "safety_stock")) {
+        nextEntry.safety_stock = edit.safety_stock ?? null;
+      }
+      return nextEntry;
+    });
+
+    return recomputeChannel({ ...channel, daily: updatedDaily });
+  });
+};
+
 export default function PSITablePage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -168,8 +245,15 @@ export default function PSITablePage() {
   const [lastAppliedAt, setLastAppliedAt] = useState<string | null>(null);
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
   const scrollToDateRef = useRef<(date: string) => void>(() => {});
+  const pendingEditsRef = useRef<PSIEditUpdatePayload[]>([]);
+  const [channelMoveSelection, setChannelMoveSelection] = useState<ChannelMoveCellSelection | null>(null);
+  const [channelMoveError, setChannelMoveError] = useState<string | null>(null);
+  const [isChannelMoveSaving, setIsChannelMoveSaving] = useState(false);
 
   const sessionsQuery = useSessionsQuery();
+  const channelTransfersQuery = useChannelTransfersQuery(sessionId);
+  const createChannelTransferMutation = useCreateChannelTransferMutation();
+  const deleteChannelTransferMutation = useDeleteChannelTransferMutation();
 
   const availableSessions = sessionsQuery.data ?? [];
   const leaderSession = useMemo(
@@ -245,9 +329,15 @@ export default function PSITablePage() {
   useEffect(() => {
     if (psiQuery.data) {
       const prepared = prepareEditableData(psiQuery.data);
-      const cloned = cloneEditableChannels(prepared);
-      setBaselineData(cloned);
-      setTableData(cloneEditableChannels(prepared));
+      const baselineClone = cloneEditableChannels(prepared);
+      const tableClone = cloneEditableChannels(prepared);
+      const editsToReapply = pendingEditsRef.current;
+      const tableWithEdits =
+        editsToReapply.length > 0
+          ? applyPendingEditsToChannels(tableClone, editsToReapply)
+          : tableClone;
+      setBaselineData(baselineClone);
+      setTableData(tableWithEdits);
     } else {
       setBaselineData([]);
       setTableData([]);
@@ -271,6 +361,8 @@ export default function PSITablePage() {
 
   useEffect(() => {
     setLastAppliedAt(null);
+    setChannelMoveSelection(null);
+    setChannelMoveError(null);
   }, [sessionId]);
 
   useEffect(() => {
@@ -286,6 +378,109 @@ export default function PSITablePage() {
     () => (selectedSku ? tableData.filter((item) => item.sku_code === selectedSku) : []),
     [selectedSku, tableData]
   );
+
+  const channelMap = useMemo(() => {
+    const map = new Map<string, PSIEditableChannel>();
+    tableData.forEach((item) => {
+      map.set(makeChannelKey(item), item);
+    });
+    return map;
+  }, [tableData]);
+
+  useEffect(() => {
+    if (channelMoveSelection && !channelMap.has(channelMoveSelection.channelKey)) {
+      setChannelMoveSelection(null);
+    }
+  }, [channelMap, channelMoveSelection]);
+
+  const channelTransfers = channelTransfersQuery.data ?? [];
+
+  const selectedChannelForMove = useMemo(() => {
+    if (!channelMoveSelection) {
+      return null;
+    }
+    return channelMap.get(channelMoveSelection.channelKey) ?? null;
+  }, [channelMap, channelMoveSelection]);
+
+  const selectedChannelTransfers = useMemo(() => {
+    if (!channelMoveSelection) {
+      return [];
+    }
+
+    const { row, date } = channelMoveSelection;
+
+    return channelTransfers.filter(
+      (transfer) =>
+        transfer.session_id === sessionId &&
+        transfer.sku_code === row.sku_code &&
+        transfer.warehouse_name === row.warehouse_name &&
+        transfer.transfer_date === date &&
+        (transfer.from_channel === row.channel || transfer.to_channel === row.channel)
+    );
+  }, [channelMoveSelection, channelTransfers, sessionId]);
+
+  const currentNetMove = useMemo(() => {
+    if (!channelMoveSelection) {
+      return 0;
+    }
+    const channelName = channelMoveSelection.row.channel;
+    return selectedChannelTransfers.reduce((total, transfer) => {
+      if (transfer.to_channel === channelName) {
+        return total + transfer.qty;
+      }
+      if (transfer.from_channel === channelName) {
+        return total - transfer.qty;
+      }
+      return total;
+    }, 0);
+  }, [channelMoveSelection, selectedChannelTransfers]);
+
+  const currentChannelMoveValue = useMemo(() => {
+    if (!channelMoveSelection || !selectedChannelForMove) {
+      return null;
+    }
+    const entry = selectedChannelForMove.daily.find((item) => item.date === channelMoveSelection.date);
+    return entry?.channel_move ?? null;
+  }, [channelMoveSelection, selectedChannelForMove]);
+
+  const availableTransferChannels = useMemo(() => {
+    if (!channelMoveSelection) {
+      return [];
+    }
+
+    const { row } = channelMoveSelection;
+    const unique = new Set<string>();
+    tableData.forEach((item) => {
+      if (item.sku_code === row.sku_code && item.warehouse_name === row.warehouse_name) {
+        unique.add(item.channel);
+      }
+    });
+    unique.delete(row.channel);
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [channelMoveSelection, tableData]);
+
+  const channelMoveModalContext = useMemo(() => {
+    if (!channelMoveSelection || !selectedChannelForMove) {
+      return null;
+    }
+    return { selection: channelMoveSelection, channel: selectedChannelForMove };
+  }, [channelMoveSelection, selectedChannelForMove]);
+
+  const channelTransfersLoading = channelTransfersQuery.isLoading;
+  const channelTransfersRefetching = channelTransfersQuery.isFetching;
+
+  const selectedChannelInfo = useMemo(() => {
+    if (!channelMoveModalContext) {
+      return null;
+    }
+    const { channel } = channelMoveModalContext;
+    return {
+      sku_code: channel.sku_code,
+      sku_name: channel.sku_name ?? null,
+      warehouse_name: channel.warehouse_name,
+      channel: channel.channel,
+    };
+  }, [channelMoveModalContext]);
 
   const allDates = useMemo(() => {
     const dateSet = new Set<string>();
@@ -351,6 +546,10 @@ export default function PSITablePage() {
 
     return edits;
   }, [baselineMap, tableData]);
+
+  useEffect(() => {
+    pendingEditsRef.current = pendingEdits;
+  }, [pendingEdits]);
 
   const hasPendingChanges = pendingEdits.length > 0;
   const isDescriptionDirty = descriptionDraft !== originalDescription;
@@ -457,9 +656,57 @@ export default function PSITablePage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleChannelCellClick = useCallback((row: PSIGridRow) => {
-    console.debug("Channel cell clicked", row);
+  const handleChannelCellClick = useCallback((selection: ChannelMoveCellSelection) => {
+    setChannelMoveError(null);
+    setChannelMoveSelection(selection);
   }, []);
+
+  const handleChannelMoveSave = useCallback(
+    async (changes: ChannelMoveSaveChanges) => {
+      if (!sessionId || !channelMoveSelection) {
+        return;
+      }
+
+      if (!changes.toCreate.length && !changes.toDelete.length) {
+        setChannelMoveError(null);
+        return;
+      }
+
+      setIsChannelMoveSaving(true);
+      setChannelMoveError(null);
+
+      try {
+        for (const transfer of changes.toDelete) {
+          await deleteChannelTransferMutation.mutateAsync(transfer);
+        }
+
+        for (const transfer of changes.toCreate) {
+          await createChannelTransferMutation.mutateAsync(transfer);
+        }
+
+        await channelTransfersQuery.refetch();
+        await psiQuery.refetch();
+        setChannelMoveError(null);
+      } catch (error) {
+        setChannelMoveError(getErrorMessage(error, "Failed to update channel moves."));
+      } finally {
+        setIsChannelMoveSaving(false);
+      }
+    },
+    [
+      channelMoveSelection,
+      channelTransfersQuery,
+      createChannelTransferMutation,
+      deleteChannelTransferMutation,
+      psiQuery,
+      sessionId,
+    ]
+  );
+
+  const handleChannelMoveClose = () => {
+    setChannelMoveSelection(null);
+    setChannelMoveError(null);
+  };
 
   const handleEditableChange = (channelKey: string, date: string, field: EditableField, rawValue: string) => {
     setApplyError(null);
@@ -626,6 +873,25 @@ export default function PSITablePage() {
           onEditableChange={handleEditableChange}
           onRegisterScrollToDate={registerScrollToDate}
           onChannelCellClick={handleChannelCellClick}
+        />
+
+        <ChannelMoveModal
+          isOpen={Boolean(channelMoveModalContext)}
+          sessionId={sessionId}
+          date={channelMoveModalContext?.selection.date ?? null}
+          channel={selectedChannelInfo}
+          existingTransfers={selectedChannelTransfers}
+          availableChannels={availableTransferChannels}
+          isLoading={channelTransfersLoading && !channelTransfersQuery.data}
+          isRefetching={channelTransfersRefetching && Boolean(channelTransfersQuery.data)}
+          isSaving={isChannelMoveSaving}
+          error={channelMoveError}
+          onClose={handleChannelMoveClose}
+          onSave={handleChannelMoveSave}
+          formatDisplayDate={formatDisplayDate}
+          formatNumber={formatNumber}
+          currentNetMove={currentNetMove}
+          channelMoveValue={currentChannelMoveValue}
         />
       </div>
     </div>
