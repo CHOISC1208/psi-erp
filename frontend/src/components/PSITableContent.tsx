@@ -1,9 +1,14 @@
-import { MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import DataGrid, { type CellClickArgs, type Column, type RenderEditCellProps, type RowsChangeData } from "react-data-grid";
 
-import iconUrls from "../lib/iconUrls.json";
-import { EditableField, MetricDefinition, MetricKey, PSIEditableChannel, PSIEditableDay } from "../pages/psiTableTypes";
-import PSITableSplit from "./PSITableSplit";
+import {
+  EditableField,
+  MetricDefinition,
+  PSIEditableChannel,
+  PSIGridRow,
+  MetricKey,
+} from "../pages/psiTableTypes";
 
 interface PSITableContentProps {
   sessionId: string;
@@ -14,35 +19,83 @@ interface PSITableContentProps {
   hasAnyData: boolean;
   selectedSku: string | null;
   visibleMetrics: MetricDefinition[];
-  metricDefinitions: MetricDefinition[];
-  visibleMetricKeys: MetricKey[];
-  isMetricSelectorOpen: boolean;
-  onMetricSelectorToggle: () => void;
-  onMetricVisibilityChange: (metricKey: MetricKey) => void;
-  metricSelectorRef: MutableRefObject<HTMLDivElement | null>;
   allDates: string[];
   todayIso: string;
   formatDisplayDate: (iso: string) => string;
-  tableRef: MutableRefObject<HTMLTableElement | null>;
-  tableScrollContainerRef: MutableRefObject<HTMLDivElement | null>;
-  topScrollContainerRef: MutableRefObject<HTMLDivElement | null>;
-  tableScrollAreaRef: MutableRefObject<HTMLDivElement | null>;
   onDownload: () => void;
   canDownload: boolean;
-  selectedChannelKey: string | null;
-  setSelectedChannelKey: (key: string | null) => void;
-  onClearSelection: () => void;
   applyError: string | null;
   applySuccess: string | null;
-  baselineMap: Map<string, PSIEditableDay>;
-  onEditableChange: (channelKey: string, date: string, field: EditableField, rawValue: string) => void;
-  onPasteValues: (channelKey: string, date: string, field: EditableField, clipboardText: string) => void;
   formatNumber: (value?: number | null) => string;
   makeChannelKey: (channel: { sku_code: string; warehouse_name: string; channel: string }) => string;
-  makeCellKey: (channelKey: string, date: string) => string;
-  valuesEqual: (a: number | null | undefined, b: number | null | undefined) => boolean;
-  rowGroupRefs: MutableRefObject<(HTMLTableRowElement | null)[]>;
-  onRowKeyDown: (event: ReactKeyboardEvent<HTMLTableRowElement>, index: number, channelKey: string) => void;
+  onEditableChange: (channelKey: string, date: string, field: EditableField, rawValue: string) => void;
+  onRegisterScrollToDate?: (handler: (date: string) => void) => (() => void) | void;
+  onChannelCellClick?: (row: PSIGridRow) => void;
+}
+
+const editableFields: EditableField[] = ["inbound_qty", "outbound_qty", "safety_stock"];
+const editableFieldSet = new Set<EditableField>(editableFields);
+
+const classNames = (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(" ");
+
+const isEditableField = (key: MetricKey): key is EditableField => editableFieldSet.has(key as EditableField);
+
+const toInputValue = (input: number | null | undefined) =>
+  input === null || input === undefined ? "" : String(input);
+
+function NumberEditor({ row, column, onRowChange, onClose }: RenderEditCellProps<PSIGridRow>) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const initialValue = row[column.key] as number | null | undefined;
+  const [value, setValue] = useState(() => toInputValue(initialValue));
+
+  useEffect(() => {
+    setValue(toInputValue(initialValue));
+  }, [initialValue]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  if (!row.metricEditable) {
+    onClose(false);
+    return null;
+  }
+
+  const commit = () => {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      onRowChange({ ...row, [column.key]: null }, true);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      onClose(false);
+      return;
+    }
+    onRowChange({ ...row, [column.key]: parsed }, true);
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commit();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      onClose(false);
+    }
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      className="psi-grid-editor"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={commit}
+      onKeyDown={handleKeyDown}
+    />
+  );
 }
 
 const PSITableContent = ({
@@ -54,45 +107,227 @@ const PSITableContent = ({
   hasAnyData,
   selectedSku,
   visibleMetrics,
-  metricDefinitions,
-  visibleMetricKeys,
-  isMetricSelectorOpen,
-  onMetricSelectorToggle,
-  onMetricVisibilityChange,
-  metricSelectorRef,
   allDates,
   todayIso,
   formatDisplayDate,
-  tableRef,
-  tableScrollContainerRef,
-  topScrollContainerRef,
-  tableScrollAreaRef,
   onDownload,
   canDownload,
-  selectedChannelKey,
-  setSelectedChannelKey,
-  onClearSelection,
   applyError,
   applySuccess,
-  baselineMap,
-  onEditableChange,
-  onPasteValues,
   formatNumber,
   makeChannelKey,
-  makeCellKey,
-  valuesEqual,
-  rowGroupRefs,
-  onRowKeyDown,
+  onEditableChange,
+  onRegisterScrollToDate,
+  onChannelCellClick,
 }: PSITableContentProps) => {
-  const hasTableRows = tableData.length > 0;
+  const [activeWarehouse, setActiveWarehouse] = useState<string | null>(null);
+  const headerRefs = useRef(new Map<string, HTMLDivElement>());
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
+  const warehouses = useMemo(() => {
+    if (!tableData.length || !visibleMetrics.length) {
+      return [] as Array<{ name: string; channelCount: number; rows: PSIGridRow[] }>;
+    }
+
+    const grouping = new Map<string, PSIEditableChannel[]>();
+    tableData.forEach((channel) => {
+      const key = channel.warehouse_name;
+      const list = grouping.get(key);
+      if (list) {
+        list.push(channel);
+      } else {
+        grouping.set(key, [channel]);
+      }
+    });
+
+    return Array.from(grouping.entries()).map(([warehouseName, channels]) => {
+      const rows: PSIGridRow[] = [];
+      channels.forEach((channel) => {
+        const channelKey = makeChannelKey(channel);
+        const dateMap = new Map(channel.daily.map((entry) => [entry.date, entry]));
+        visibleMetrics.forEach((metric) => {
+          const metricKey = metric.key as MetricKey;
+          const row: PSIGridRow = {
+            id: `${channelKey}__${metricKey}`,
+            channelKey,
+            sku_code: channel.sku_code,
+            warehouse_name: channel.warehouse_name,
+            channel: channel.channel,
+            metric: metric.label,
+            metricKey,
+            metricEditable: metric.editable === true,
+          };
+
+          allDates.forEach((date) => {
+            const dailyEntry = dateMap.get(date);
+            const value = dailyEntry ? (dailyEntry[metricKey as keyof typeof dailyEntry] as number | null | undefined) : null;
+            row[date] = value ?? null;
+          });
+
+          rows.push(row);
+        });
+      });
+
+      return {
+        name: warehouseName,
+        channelCount: channels.length,
+        rows,
+      };
+    });
+  }, [allDates, makeChannelKey, tableData, visibleMetrics]);
+
+  useEffect(() => {
+    if (!warehouses.length) {
+      setActiveWarehouse(null);
+      return;
+    }
+    if (!activeWarehouse || !warehouses.some((item) => item.name === activeWarehouse)) {
+      setActiveWarehouse(warehouses[0].name);
+    }
+  }, [activeWarehouse, warehouses]);
+
+  useEffect(() => {
+    const refMap = headerRefs.current;
+    refMap.forEach((_, key) => {
+      if (!allDates.includes(key)) {
+        refMap.delete(key);
+      }
+    });
+  }, [allDates]);
+
+  const activeWarehouseData = useMemo(
+    () => warehouses.find((item) => item.name === activeWarehouse) ?? null,
+    [activeWarehouse, warehouses]
+  );
+
+  const rows = activeWarehouseData?.rows ?? [];
+
+  const baseColumns = useMemo<Column<PSIGridRow>[]>(
+    () => [
+      {
+        key: "channel",
+        name: "Channel",
+        width: 180,
+        frozen: true,
+        className: "psi-grid-channel-cell",
+      },
+      {
+        key: "metric",
+        name: "Metric",
+        width: 160,
+        frozen: true,
+        className: "psi-grid-metric-cell",
+      },
+    ],
+    []
+  );
+
+  const handleHeaderRef = useCallback((key: string, element: HTMLDivElement | null) => {
+    const map = headerRefs.current;
+    if (element) {
+      map.set(key, element);
+    } else {
+      map.delete(key);
+    }
+  }, []);
+
+  const dateColumns = useMemo<Column<PSIGridRow>[]>(
+    () =>
+      allDates.map((date) => {
+        const isToday = date === todayIso;
+        return {
+          key: date,
+          name: formatDisplayDate(date),
+          width: 132,
+          className: (row: PSIGridRow) =>
+            classNames(
+              "psi-grid-value-cell",
+              row.metricEditable && "psi-grid-cell-editable",
+              isToday && "psi-grid-cell-today"
+            ),
+          headerCellClass: classNames("psi-grid-date-header", isToday && "psi-grid-header-today"),
+          renderCell: ({ row }) => formatNumber(row[date] as number | null | undefined),
+          renderEditCell: (props) => <NumberEditor {...props} />,
+          editorOptions: {
+            editOnClick: true,
+          },
+          setHeaderRef: (element: HTMLDivElement | null) => handleHeaderRef(date, element),
+        } satisfies Column<PSIGridRow>;
+      }),
+    [allDates, formatDisplayDate, formatNumber, handleHeaderRef, todayIso]
+  );
+
+  const columns = useMemo(() => [...baseColumns, ...dateColumns], [baseColumns, dateColumns]);
+
+  const handleRowsChange = useCallback(
+    (updatedRows: PSIGridRow[], data: RowsChangeData<PSIGridRow>) => {
+      if (!data?.column) {
+        return;
+      }
+      const columnKey = data.column.key;
+      if (!allDates.includes(columnKey)) {
+        return;
+      }
+      const rowIndex = data.indexes[0];
+      const updatedRow = updatedRows[rowIndex];
+      if (!updatedRow || !updatedRow.metricEditable || !isEditableField(updatedRow.metricKey)) {
+        return;
+      }
+      const value = updatedRow[columnKey];
+      const rawValue = value === null || value === undefined ? "" : String(value);
+      onEditableChange(updatedRow.channelKey, columnKey, updatedRow.metricKey, rawValue);
+    },
+    [allDates, onEditableChange]
+  );
+
+  const handleCellClick = useCallback(
+    (args: CellClickArgs<PSIGridRow>) => {
+      if (args.column.key === "channel") {
+        onChannelCellClick?.(args.row);
+      }
+    },
+    [onChannelCellClick]
+  );
+
+  const scrollToDate = useCallback(
+    (targetDate: string) => {
+      const viewport = viewportRef.current;
+      const headerCell = headerRefs.current.get(targetDate);
+      if (!viewport || !headerCell) {
+        return;
+      }
+      const viewportRect = viewport.getBoundingClientRect();
+      const cellRect = headerCell.getBoundingClientRect();
+      const offset = cellRect.left - viewportRect.left;
+      const nextScrollLeft = viewport.scrollLeft + offset - viewport.clientWidth / 2 + cellRect.width / 2;
+      viewport.scrollTo({ left: Math.max(0, nextScrollLeft), behavior: "smooth" });
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!onRegisterScrollToDate) {
+      return;
+    }
+    const cleanup = onRegisterScrollToDate(scrollToDate);
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
+  }, [onRegisterScrollToDate, scrollToDate]);
+
+  const hasRows = rows.length > 0 && visibleMetrics.length > 0 && allDates.length > 0;
   const showSelectionPlaceholder = !selectedSku && hasAnyData;
   const showNoDataMessage = !hasAnyData && sessionId && !isLoading;
+  const showNoMetricsMessage = Boolean(selectedSku && visibleMetrics.length === 0);
+  const showNoDatesMessage = Boolean(selectedSku && visibleMetrics.length > 0 && allDates.length === 0);
 
   return (
     <section className="psi-table-section">
       {isLoading && sessionId && <p className="psi-table-status">Loading PSI data...</p>}
       {isError && <p className="psi-table-status error">{errorMessage}</p>}
-      {hasTableRows ? (
+      {hasRows ? (
         <div className="psi-table-wrapper">
           <div className="psi-table-toolbar">
             <div className="psi-table-toolbar-group">
@@ -103,20 +338,8 @@ const PSITableContent = ({
                 disabled={!canDownload}
                 aria-label="CSVをダウンロード"
               >
-                <img src={iconUrls.downloadCsv} alt="" aria-hidden="true" className="psi-button-icon" />
                 <span>CSV</span>
               </button>
-              {selectedChannelKey && (
-                <button
-                  type="button"
-                  className="psi-button secondary"
-                  onClick={onClearSelection}
-                  aria-label="選択を解除"
-                >
-                  <img src={iconUrls.clear} alt="" aria-hidden="true" className="psi-button-icon" />
-                  <span>選択解除</span>
-                </button>
-              )}
             </div>
             {(applyError || applySuccess) && (
               <div className="psi-table-messages">
@@ -125,40 +348,45 @@ const PSITableContent = ({
               </div>
             )}
           </div>
-          <div className="psi-table-scroll-area" ref={tableScrollAreaRef}>
-            <PSITableSplit
-              tableData={tableData}
-              baselineMap={baselineMap}
-              visibleMetrics={visibleMetrics}
-              metricDefinitions={metricDefinitions}
-              visibleMetricKeys={visibleMetricKeys}
-              isMetricSelectorOpen={isMetricSelectorOpen}
-              onMetricSelectorToggle={onMetricSelectorToggle}
-              onMetricVisibilityChange={onMetricVisibilityChange}
-              metricSelectorRef={metricSelectorRef}
-              allDates={allDates}
-              todayIso={todayIso}
-              formatDisplayDate={formatDisplayDate}
-              onEditableChange={onEditableChange}
-              onPasteValues={onPasteValues}
-              formatNumber={formatNumber}
-              makeChannelKey={makeChannelKey}
-              makeCellKey={makeCellKey}
-              valuesEqual={valuesEqual}
-              selectedChannelKey={selectedChannelKey}
-              setSelectedChannelKey={setSelectedChannelKey}
-              rowGroupRefs={rowGroupRefs}
-              onRowKeyDown={onRowKeyDown}
-              tableRef={tableRef}
-              tableScrollContainerRef={tableScrollContainerRef}
-              headerRightScrollRef={topScrollContainerRef}
+          <div className="psi-warehouse-tabs" role="tablist" aria-label="Warehouses">
+            {warehouses.map((item) => {
+              const isActive = item.name === activeWarehouse;
+              return (
+                <button
+                  key={item.name}
+                  type="button"
+                  role="tab"
+                  className={classNames("psi-warehouse-tab", isActive && "active")}
+                  aria-selected={isActive}
+                  onClick={() => setActiveWarehouse(item.name)}
+                >
+                  {item.name} ({item.channelCount})
+                </button>
+              );
+            })}
+          </div>
+          <div className="psi-grid-container">
+            <DataGrid
+              columns={columns}
+              rows={rows}
+              rowKeyGetter={(row) => row.id}
+              onRowsChange={handleRowsChange}
+              onCellClick={handleCellClick}
+              defaultColumnOptions={{ width: 132 }}
+              viewportRef={viewportRef}
+              style={{ blockSize: "calc(100vh - 320px)" }}
+              className="psi-data-grid"
             />
           </div>
         </div>
       ) : showSelectionPlaceholder ? (
         <p className="psi-table-status">上段の集計からSKUを選択してください。</p>
+      ) : showNoDataMessage ? (
+        <p className="psi-table-status">No PSI data for the current filters.</p>
+      ) : showNoMetricsMessage ? (
+        <p className="psi-table-status">表示するメトリクスが選択されていません。</p>
       ) : (
-        showNoDataMessage && <p className="psi-table-status">No PSI data for the current filters.</p>
+        showNoDatesMessage && <p className="psi-table-status">選択した期間の日付が見つかりません。</p>
       )}
     </section>
   );

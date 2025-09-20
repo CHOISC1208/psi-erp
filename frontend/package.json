@@ -13,7 +13,8 @@
     "axios": "^1.12.2",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "react-router-dom": "6.28.0"
+    "react-router-dom": "6.28.0",
+    "react-data-grid": "file:vendor/react-data-grid"
   },
   "devDependencies": {
     "@types/react": "18.3.7",
