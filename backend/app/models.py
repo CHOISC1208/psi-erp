@@ -6,7 +6,19 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, JSON, Numeric, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -65,6 +77,9 @@ class Session(Base, SchemaMixin, TimestampMixin):
         back_populates="session", cascade="all, delete-orphan"
     )
     psi_edits: Mapped[list["PSIEdit"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+    channel_transfers: Mapped[list["ChannelTransfer"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
 
@@ -161,3 +176,37 @@ class PSIEditLog(Base, SchemaMixin):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     edited_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ChannelTransfer(Base, SchemaMixin, TimestampMixin):
+    """Represents stock movement between sales channels within a warehouse."""
+
+    __tablename__ = "channel_transfers"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "sku_code",
+            "warehouse_name",
+            "transfer_date",
+            "from_channel",
+            "to_channel",
+            name="uq_channel_transfers_key",
+        ),
+        {"schema": settings.db_schema or "public"},
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    sku_code: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    warehouse_name: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    transfer_date: Mapped[date] = mapped_column(Date, primary_key=True, nullable=False)
+    from_channel: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    to_channel: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    qty: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    session: Mapped[Session] = relationship(back_populates="channel_transfers")

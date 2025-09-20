@@ -199,6 +199,23 @@ CREATE INDEX IF NOT EXISTS idx_transfers_key
   ON psi.stock_transfers (session_id, sku_code, transfer_date);
 ```
 
+```sql
+CREATE TABLE IF NOT EXISTS psi.channel_transfers (
+  session_id uuid NOT NULL REFERENCES psi.sessions(id) ON DELETE CASCADE,
+  sku_code text NOT NULL,
+  warehouse_name text NOT NULL,
+  transfer_date date NOT NULL,
+  from_channel text NOT NULL,
+  to_channel text NOT NULL,
+  qty numeric(20,6) NOT NULL,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (session_id, sku_code, warehouse_name, transfer_date, from_channel, to_channel),
+  UNIQUE (session_id, sku_code, warehouse_name, transfer_date, from_channel, to_channel)
+);
+```
+
 ### 2.4 需要計画（日別）
 
 ```sql
