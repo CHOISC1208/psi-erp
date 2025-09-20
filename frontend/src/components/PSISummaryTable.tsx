@@ -76,56 +76,62 @@ const PSISummaryTable = memo(function PSISummaryTable({
           ))}
         </tr>
       </thead>
-      <tbody>
-        {rows.map((row) => {
-          const isSelected = row.sku_code === selectedSku;
-          const handleSelect = () => {
-            onSelectSku(isSelected ? null : row.sku_code);
-          };
+      {rows.map((row) => {
+        const isSelected = row.sku_code === selectedSku;
+        const handleSelect = () => {
+          onSelectSku(isSelected ? null : row.sku_code);
+        };
 
-          return metricLabels.map((metric, index) => {
-            const labelCell = (
-              <th scope="row" key={`${row.sku_code}-${metric.key}-label`}>
-                {metric.label}
-              </th>
-            );
+        return (
+          <tbody
+            key={row.sku_code}
+            className={`psi-summary-group${isSelected ? " is-selected" : ""}`}
+          >
+            {metricLabels.map((metric, index) => {
+              const positionClass =
+                index === 0
+                  ? " group-start"
+                  : index === metricLabels.length - 1
+                  ? " group-end"
+                  : " group-middle";
 
-            return (
-              <tr
-                key={`${row.sku_code}-${metric.key}`}
-                className={`psi-summary-row${isSelected ? " is-selected" : ""}`}
-                onClick={handleSelect}
-                role="button"
-                tabIndex={index === 0 ? 0 : -1}
-                aria-pressed={isSelected}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    handleSelect();
-                  }
-                }}
-              >
-                {index === 0 && (
-                  <th scope="rowgroup" rowSpan={metricLabels.length} className="psi-summary-sku">
-                    <div className="psi-summary-sku-code">{row.sku_code}</div>
-                    {row.sku_name && <div className="psi-summary-sku-name">{row.sku_name}</div>}
-                  </th>
-                )}
-                {labelCell}
-                {orderedChannels.map((channel) => {
-                  const channelAgg = row.channels[channel];
-                  const value = channelAgg ? channelAgg[metric.key] : null;
-                  return (
-                    <td key={`${row.sku_code}-${metric.key}-${channel}`} className="numeric">
-                      {formatValue(value)}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          });
-        })}
-      </tbody>
+              return (
+                <tr
+                  key={`${row.sku_code}-${metric.key}`}
+                  className={`psi-summary-row${positionClass}${isSelected ? " is-selected" : ""}`}
+                  onClick={handleSelect}
+                  role="button"
+                  tabIndex={index === 0 ? 0 : -1}
+                  aria-pressed={isSelected}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleSelect();
+                    }
+                  }}
+                >
+                  {index === 0 && (
+                    <th scope="rowgroup" rowSpan={metricLabels.length} className="psi-summary-sku">
+                      <div className="psi-summary-sku-code">{row.sku_code}</div>
+                      {row.sku_name && <div className="psi-summary-sku-name">{row.sku_name}</div>}
+                    </th>
+                  )}
+                  <th scope="row">{metric.label}</th>
+                  {orderedChannels.map((channel) => {
+                    const channelAgg = row.channels[channel];
+                    const value = channelAgg ? channelAgg[metric.key] : null;
+                    return (
+                      <td key={`${row.sku_code}-${metric.key}-${channel}`} className="numeric">
+                        {formatValue(value)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        );
+      })}
     </table>
   );
 });
