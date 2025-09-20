@@ -45,16 +45,6 @@ const classNames = (...values: Array<string | false | null | undefined>) => valu
 
 const isEditableField = (key: MetricKey): key is EditableField => editableFieldSet.has(key as EditableField);
 
-const getRowHighlightClass = (row: PSIGridRow) => {
-  if (row.rowHighlight === "warning") {
-    return "psi-grid-row-warning";
-  }
-  if (row.rowHighlight === "success") {
-    return "psi-grid-row-success";
-  }
-  return "";
-};
-
 type WarehouseChannelGroup = {
   channelKey: string;
   header: PSIGridChannelRow;
@@ -204,28 +194,13 @@ const PSITableContent = ({
             rowType: "metric",
           };
 
-          let hasNegative = false;
-          let hasPositive = false;
-
           allDates.forEach((date) => {
             const dailyEntry = dateMap.get(date);
             const value = dailyEntry
               ? (dailyEntry[metricKey as keyof typeof dailyEntry] as number | null | undefined)
               : null;
             metricRow[date] = value ?? null;
-            if (metricKey === "stock_closing" && typeof value === "number" && value < 0) {
-              hasNegative = true;
-            }
-            if (metricKey === "movable_stock" && typeof value === "number" && value >= MOVABLE_STOCK_THRESHOLD) {
-              hasPositive = true;
-            }
           });
-
-          if (metricKey === "stock_closing" && hasNegative) {
-            metricRow.rowHighlight = "warning";
-          } else if (metricKey === "movable_stock" && hasPositive) {
-            metricRow.rowHighlight = "success";
-          }
 
           return metricRow;
         });
@@ -332,15 +307,9 @@ const PSITableContent = ({
       }
 
       const isCollapsed = collapsedChannels[channelGroup.channelKey] ?? false;
-      const headerHighlight =
-        filteredMetrics.find((row) => row.rowHighlight === "warning")?.rowHighlight ||
-        filteredMetrics.find((row) => row.rowHighlight === "success")?.rowHighlight ||
-        channelGroup.header.rowHighlight;
-
       list.push({
         ...channelGroup.header,
         collapsed: isCollapsed,
-        rowHighlight: headerHighlight,
       });
 
       if (!isCollapsed) {
@@ -366,8 +335,7 @@ const PSITableContent = ({
           classNames(
             "psi-grid-channel-cell",
             row.rowType === "channel" && "psi-grid-channel-group",
-            row.rowType === "metric" && "psi-grid-channel-leaf",
-            getRowHighlightClass(row)
+            row.rowType === "metric" && "psi-grid-channel-leaf"
           ),
         renderCell: ({ row }) => {
           if (row.rowType === "channel") {
@@ -410,8 +378,7 @@ const PSITableContent = ({
           classNames(
             "psi-grid-metric-cell",
             row.rowType === "channel" && "psi-grid-metric-group",
-            row.rowType === "metric" && "psi-grid-metric-leaf",
-            getRowHighlightClass(row)
+            row.rowType === "metric" && "psi-grid-metric-leaf"
           ),
         renderCell: ({ row }) => (row.rowType === "channel" ? null : row.metric),
         setHeaderRef: handleMetricHeaderRef,
@@ -487,7 +454,6 @@ const PSITableContent = ({
             if (row.rowType !== "metric") {
               return classNames(
                 "psi-grid-group-cell",
-                getRowHighlightClass(row),
                 isToday && "psi-grid-cell-today"
               );
             }
@@ -496,13 +462,15 @@ const PSITableContent = ({
             const numericValue = typeof cellValue === "number" ? cellValue : null;
             const isNegativeValue = numericValue !== null && numericValue < 0;
             const showStockWarning = row.metricKey === "stock_closing" && isNegativeValue;
+            const showMovableSurplus =
+              row.metricKey === "movable_stock" && numericValue !== null && numericValue >= MOVABLE_STOCK_THRESHOLD;
             return classNames(
               "psi-grid-value-cell",
               row.metricEditable && "psi-grid-cell-editable",
               isToday && "psi-grid-cell-today",
               isNegativeValue && "psi-grid-value-negative",
               showStockWarning && "psi-grid-stock-warning",
-              getRowHighlightClass(row)
+              showMovableSurplus && "psi-grid-value-surplus"
             );
           },
           headerCellClass: classNames("psi-grid-date-header", isToday && "psi-grid-header-today"),

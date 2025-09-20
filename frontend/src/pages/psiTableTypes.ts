@@ -19,8 +19,6 @@ export interface PSIEditableChannel extends Omit<PSIChannel, "daily"> {
   daily: PSIEditableDay[];
 }
 
-export type PSIGridRowHighlight = "warning" | "success";
-
 export type PSIGridRowType = "channel" | "metric";
 
 export interface PSIGridRowBase {
@@ -32,7 +30,6 @@ export interface PSIGridRowBase {
   metric: string;
   metricEditable: boolean;
   rowType: PSIGridRowType;
-  rowHighlight?: PSIGridRowHighlight;
   collapsed?: boolean;
 }
 

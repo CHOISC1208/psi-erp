@@ -986,16 +986,15 @@ button.icon-button:focus-visible {
 .psi-data-grid.rdg {
   --psi-grid-border: rgba(148, 163, 184, 0.28);
   --psi-grid-hover: rgba(253, 224, 71, 0.28);
-  --psi-grid-group-hover: rgba(254, 249, 195, 0.24);
   --psi-grid-selection: rgba(37, 99, 235, 0.22);
   --psi-grid-selection-border: rgba(37, 99, 235, 0.45);
   --psi-grid-selection-outline: rgba(250, 204, 21, 0.8);
   --psi-grid-editable: rgba(37, 99, 235, 0.14);
-  --psi-grid-group-bg: rgba(248, 250, 252, 0.7);
-  --psi-grid-warning: rgba(248, 113, 113, 0.22);
-  --psi-grid-warning-border: rgba(220, 38, 38, 0.72);
-  --psi-grid-success: rgba(134, 239, 172, 0.22);
-  --psi-grid-success-border: rgba(22, 163, 74, 0.65);
+  --psi-grid-group-divider: rgba(148, 163, 184, 0.45);
+  --psi-grid-warning: rgba(190, 24, 38, 0.38);
+  --psi-grid-warning-text: #f8fafc;
+  --psi-grid-success: rgba(22, 163, 74, 0.32);
+  --psi-grid-success-text: #f8fafc;
   border: 1px solid var(--psi-grid-border);
   border-radius: 0.5rem;
   background-color: var(--surface-table);
@@ -1060,7 +1059,7 @@ button.icon-button:focus-visible {
 
 .psi-data-grid .rdg-row {
   min-height: 32px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.45);
+  border-bottom: 1px solid var(--psi-grid-group-divider);
   box-sizing: border-box;
 }
 
@@ -1069,7 +1068,7 @@ button.icon-button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  border-right: 1px solid rgba(15, 23, 42, 0.45);
+  border-right: 1px solid var(--psi-grid-group-divider);
   background-color: var(--surface-table);
   color: var(--text-primary);
   gap: 0.25rem;
@@ -1079,18 +1078,25 @@ button.icon-button:focus-visible {
   border-right: none;
 }
 
-.psi-data-grid .rdg-row:nth-child(even) .rdg-cell {
+.psi-data-grid .rdg-row:nth-child(even) .rdg-cell:not(.psi-grid-stock-warning):not(.psi-grid-value-surplus) {
   background-color: var(--surface-table-zebra);
 }
 
-.psi-data-grid .rdg-row:hover .rdg-cell:not(.psi-grid-cell-today):not(.psi-grid-cell-editable) {
+.psi-data-grid .rdg-row:hover .rdg-cell:not(.psi-grid-cell-today):not(.rdg-cell-editing):not([aria-selected="true"]) {
   background-color: var(--psi-grid-hover);
 }
 
-.psi-data-grid .rdg-row:hover .psi-grid-channel-group,
-.psi-data-grid .rdg-row:hover .psi-grid-metric-group,
-.psi-data-grid .rdg-row:hover .psi-grid-group-cell {
-  background-color: var(--psi-grid-group-hover);
+.psi-data-grid .rdg-row:hover .rdg-cell[aria-selected="true"] {
+  background-color: var(--psi-grid-selection);
+}
+
+.psi-data-grid .rdg-row:hover .rdg-cell.rdg-cell-editing {
+  background-color: var(--surface-input);
+}
+
+.psi-data-grid .rdg-cell[aria-selected="true"] {
+  background-color: var(--psi-grid-selection);
+  color: var(--text-primary);
 }
 
 .psi-grid-channel-cell,
@@ -1102,8 +1108,9 @@ button.icon-button:focus-visible {
 }
 
 .psi-grid-channel-group {
-  background-color: var(--psi-grid-group-bg) !important;
   font-weight: 700;
+  background-color: transparent !important;
+  border-top: 1px solid var(--psi-grid-group-divider);
 }
 
 .psi-grid-channel-group-content {
@@ -1163,8 +1170,9 @@ button.icon-button:focus-visible {
 }
 
 .psi-grid-metric-group {
-  background-color: var(--psi-grid-group-bg) !important;
   font-weight: 600;
+  background-color: transparent !important;
+  border-top: 1px solid var(--psi-grid-group-divider);
 }
 
 .psi-grid-metric-leaf {
@@ -1173,10 +1181,17 @@ button.icon-button:focus-visible {
 }
 
 .psi-grid-group-cell {
-  background-color: var(--psi-grid-group-bg) !important;
   justify-content: center;
-  color: var(--text-muted);
-  font-weight: 500;
+  color: var(--text-secondary);
+  font-weight: 600;
+  background-color: transparent !important;
+  border-top: 1px solid var(--psi-grid-group-divider);
+}
+
+.psi-data-grid .rdg-row:first-child .psi-grid-channel-group,
+.psi-data-grid .rdg-row:first-child .psi-grid-metric-group,
+.psi-data-grid .rdg-row:first-child .psi-grid-group-cell {
+  border-top-color: transparent;
 }
 
 .psi-grid-cell-duplicate {
@@ -1215,9 +1230,27 @@ button.icon-button:focus-visible {
 }
 
 .psi-grid-stock-warning {
-  background-color: transparent;
-  color: var(--accent-red);
+  background-color: var(--psi-grid-warning);
+  color: var(--psi-grid-warning-text);
   font-weight: 600;
+}
+
+.psi-grid-value-surplus {
+  background-color: var(--psi-grid-success);
+  color: var(--psi-grid-success-text);
+  font-weight: 600;
+}
+
+.psi-data-grid .rdg-row:hover .psi-grid-stock-warning,
+.psi-data-grid .rdg-row:hover .psi-grid-value-surplus {
+  color: var(--text-primary);
+}
+
+.rdg-cell[aria-selected="true"].psi-grid-stock-warning,
+.rdg-cell[aria-selected="true"].psi-grid-value-surplus,
+.rdg-cell.rdg-cell-editing.psi-grid-stock-warning,
+.rdg-cell.rdg-cell-editing.psi-grid-value-surplus {
+  color: var(--text-primary);
 }
 
 .psi-summary-cell-selected {
@@ -1228,22 +1261,32 @@ button.icon-button:focus-visible {
   background-color: transparent;
 }
 
-.psi-summary-row-selected {
+.psi-summary-data-grid .psi-summary-row-selected {
+  position: relative;
   background-color: var(--psi-grid-selection);
-  border-left: 2px solid var(--psi-grid-selection-outline);
-  border-right: 2px solid var(--psi-grid-selection-outline);
-  border-bottom: 0;
+  border-bottom: none;
+  z-index: 1;
 }
 
-.psi-summary-row-selected-start {
+.psi-summary-data-grid .psi-summary-row-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-left: 2px solid var(--psi-grid-selection-outline);
+  border-right: 2px solid var(--psi-grid-selection-outline);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.psi-summary-data-grid .psi-summary-row-selected-start::after {
   border-top: 2px solid var(--psi-grid-selection-outline);
 }
 
-.psi-summary-row-selected-middle {
+.psi-summary-data-grid .psi-summary-row-selected-middle::after {
   border-top: 0;
 }
 
-.psi-summary-row-selected-end {
+.psi-summary-data-grid .psi-summary-row-selected-end::after {
   border-bottom: 2px solid var(--psi-grid-selection-outline);
 }
 
@@ -1270,20 +1313,6 @@ button.icon-button:focus-visible {
   color: inherit;
 }
 
-.psi-grid-row-warning {
-  background-color: var(--psi-grid-warning) !important;
-  box-shadow: inset 4px 0 0 var(--psi-grid-warning-border);
-}
-
-.psi-grid-row-success {
-  background-color: var(--psi-grid-success) !important;
-  box-shadow: inset 4px 0 0 var(--psi-grid-success-border);
-}
-
-.psi-data-grid .rdg-row:hover .psi-grid-row-warning,
-.psi-data-grid .rdg-row:hover .psi-grid-row-success {
-  background-color: var(--psi-grid-hover) !important;
-}
 
 .psi-grid-group-start {
   box-shadow: 0 -4px 0 var(--surface-panel);

@@ -50,8 +50,10 @@ const metricLabels: { key: SummaryMetricKey; label: string }[] = [
 const summaryGroupPositions: Array<"start" | "middle" | "end"> = ["start", "middle", "end"];
 
 const maxVisibleRows = 9;
-const rowHeight = 36;
 const headerHeight = 36;
+// Allow enough vertical room for nine visible data rows with the current
+// effective row height (including padding and borders).
+const summaryBodyHeight = 468;
 const baseColumnWidth = 132;
 const skuColumnWidth = baseColumnWidth * 3;
 
@@ -341,7 +343,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
     return null;
   }
 
-  const gridHeight = headerHeight + maxVisibleRows * rowHeight;
+  const gridHeight = headerHeight + summaryBodyHeight;
 
   return (
     <div className="psi-summary-grid">
