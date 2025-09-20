@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { ChannelTransfer, ChannelTransferCreate } from "../types";
+import { api } from "../lib/api";
 
 interface ChannelMoveModalProps {
   isOpen: boolean;
@@ -64,6 +65,14 @@ const toNullableString = (value: string) => {
   return trimmed ? trimmed : null;
 };
 
+const sanitizeForFilename = (value: string) =>
+  value
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[\\/:*?"<>|]+/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
 const ChannelMoveModal = ({
   isOpen,
   sessionId,
@@ -85,6 +94,8 @@ const ChannelMoveModal = ({
   const [drafts, setDrafts] = useState<DraftTransfer[]>([]);
   const [removedTransfers, setRemovedTransfers] = useState<Record<string, true>>({});
   const [localError, setLocalError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const headingId = useId();
   const descriptionId = useId();
   const otherChannelListId = useId();
@@ -191,11 +202,62 @@ const ChannelMoveModal = ({
     setDrafts([]);
     setRemovedTransfers({});
     setLocalError(null);
+    setIsDownloading(false);
+    setDownloadError(null);
   }, [isOpen, channel?.channel, date, existingTransfers]);
 
   if (!canRender || !isOpen || !channel || !date) {
     return null;
   }
+
+  const handleDownloadPlan = async () => {
+    if (!sessionId || !channel || !date || typeof window === "undefined") {
+      return;
+    }
+
+    setDownloadError(null);
+    setIsDownloading(true);
+
+    try {
+      const { data } = await api.get<Blob>(
+        `/channel-transfers/${encodeURIComponent(sessionId)}/export`,
+        {
+          params: {
+            sku_code: channel.sku_code,
+            warehouse_name: channel.warehouse_name,
+            channel: channel.channel,
+            start_date: date,
+            end_date: date,
+          },
+          responseType: "blob",
+        }
+      );
+
+      const blob = new Blob([data], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filenameParts = [
+        "channel-transfer-plan",
+        sanitizeForFilename(sessionId),
+        sanitizeForFilename(channel.sku_code),
+        sanitizeForFilename(channel.warehouse_name),
+        sanitizeForFilename(channel.channel),
+        date,
+      ].filter(Boolean);
+      link.href = url;
+      link.download = `${filenameParts.join("_") || "channel-transfer-plan"}-${timestamp}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      setDownloadError("チャネル移動計画のダウンロードに失敗しました。");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleAddDraft = () => {
     setDrafts((previous) => [
@@ -297,6 +359,21 @@ const ChannelMoveModal = ({
         </header>
 
         <div className="channel-move-modal__content">
+          <div className="channel-move-modal__actions">
+            <button
+              type="button"
+              className="psi-button secondary"
+              onClick={handleDownloadPlan}
+              disabled={isDownloading}
+            >
+              {isDownloading ? "ダウンロード中..." : "チャネル移動計画をダウンロード"}
+            </button>
+            {downloadError && (
+              <p className="channel-move-modal__error" role="alert">
+                {downloadError}
+              </p>
+            )}
+          </div>
           <div className="channel-move-modal__summary" aria-live="polite">
             <div>
               <span className="channel-move-modal__summary-label">PSIのchannel_move</span>

@@ -1,11 +1,15 @@
 """Channel transfer API routes."""
 from __future__ import annotations
 
+import csv
 from datetime import date
+from io import StringIO
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, or_, select
+from sqlalchemy.sql import Select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
@@ -77,6 +81,127 @@ def list_channel_transfers(
     )
 
     return list(db.scalars(query))
+
+
+def _build_export_query(
+    *,
+    base_query: Select,
+    sku_code: str | None,
+    warehouse_name: str | None,
+    channel: str | None,
+    start_date: date | None,
+    end_date: date | None,
+) -> Select:
+    if sku_code:
+        lowered = sku_code.lower()
+        base_query = base_query.where(
+            func.lower(models.ChannelTransfer.sku_code).like(f"%{lowered}%")
+        )
+    if warehouse_name:
+        lowered = warehouse_name.lower()
+        base_query = base_query.where(
+            func.lower(models.ChannelTransfer.warehouse_name).like(f"%{lowered}%")
+        )
+    if channel:
+        lowered = channel.lower()
+        base_query = base_query.where(
+            or_(
+                func.lower(models.ChannelTransfer.from_channel) == lowered,
+                func.lower(models.ChannelTransfer.to_channel) == lowered,
+            )
+        )
+
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date")
+
+    if start_date is not None:
+        base_query = base_query.where(models.ChannelTransfer.transfer_date >= start_date)
+    if end_date is not None:
+        base_query = base_query.where(models.ChannelTransfer.transfer_date <= end_date)
+
+    return base_query
+
+
+@router.get("/{session_id}/export")
+def export_channel_transfers(
+    *,
+    session_id: UUID,
+    sku_code: str | None = None,
+    warehouse_name: str | None = None,
+    channel: str | None = None,
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    db: DBSession = Depends(get_db),
+) -> StreamingResponse:
+    """Export channel transfers as a CSV stream using the provided filters."""
+
+    query = select(models.ChannelTransfer).where(
+        models.ChannelTransfer.session_id == session_id
+    )
+    query = _build_export_query(
+        base_query=query,
+        sku_code=sku_code,
+        warehouse_name=warehouse_name,
+        channel=channel,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    query = query.order_by(
+        models.ChannelTransfer.transfer_date.asc(),
+        models.ChannelTransfer.sku_code.asc(),
+        models.ChannelTransfer.warehouse_name.asc(),
+        models.ChannelTransfer.from_channel.asc(),
+        models.ChannelTransfer.to_channel.asc(),
+    )
+
+    transfers = list(db.scalars(query))
+
+    def iter_rows():
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+
+        writer.writerow(
+            [
+                "session_id",
+                "transfer_date",
+                "sku_code",
+                "warehouse_name",
+                "from_channel",
+                "to_channel",
+                "qty",
+                "note",
+            ]
+        )
+        yield buffer.getvalue().encode("utf-8")
+        buffer.seek(0)
+        buffer.truncate(0)
+
+        for transfer in transfers:
+            writer.writerow(
+                [
+                    str(transfer.session_id),
+                    transfer.transfer_date.isoformat(),
+                    transfer.sku_code,
+                    transfer.warehouse_name,
+                    transfer.from_channel,
+                    transfer.to_channel,
+                    str(transfer.qty),
+                    transfer.note or "",
+                ]
+            )
+            yield buffer.getvalue().encode("utf-8")
+            buffer.seek(0)
+            buffer.truncate(0)
+
+    filename = f"channel-transfers-{session_id}.csv"
+    headers = {"Content-Disposition": f"attachment; filename=\"{filename}\""}
+
+    return StreamingResponse(
+        iter_rows(),
+        media_type="text/csv; charset=utf-8",
+        headers=headers,
+    )
 
 
 @router.post("", response_model=schemas.ChannelTransferRead, status_code=status.HTTP_201_CREATED)
