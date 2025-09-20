@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
 import axios from "axios";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "../lib/api";
-import iconUrls from "../lib/iconUrls.json";
-import { PSIChannel, PSIDailyEntry, PSIEditApplyResult, PSISessionSummary, Session } from "../types";
-
-const fetchSessions = async (): Promise<Session[]> => {
-  const { data } = await api.get<Session[]>("/sessions/");
-  return data;
-};
+import { PSIChannel, PSIDailyEntry, PSIEditApplyResult, Session } from "../types";
+import PSITableContent from "../components/PSITableContent";
+import PSITableControls from "../components/PSITableControls";
+import { useDailyPsiQuery, useSessionSummaryQuery, useSessionsQuery } from "../hooks/usePsiQueries";
+import {
+  EditableField,
+  MetricDefinition,
+  MetricKey,
+  PSIEditableChannel,
+  PSIEditableDay,
+  isEditableMetric,
+  metricDefinitions,
+} from "./psiTableTypes";
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -27,26 +33,6 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   }
 
   return fallback;
-};
-
-const fetchDailyPsi = async (
-  sessionId: string,
-  filters: { sku_code?: string; warehouse_name?: string; channel?: string }
-): Promise<PSIChannel[]> => {
-  const params: Record<string, string> = {};
-  if (filters.sku_code?.trim()) params.sku_code = filters.sku_code.trim();
-  if (filters.warehouse_name?.trim()) params.warehouse_name = filters.warehouse_name.trim();
-  if (filters.channel?.trim()) params.channel = filters.channel.trim();
-
-  const { data } = await api.get<PSIChannel[]>(`/psi/${sessionId}/daily`, {
-    params,
-  });
-  return data;
-};
-
-const fetchSessionSummary = async (sessionId: string): Promise<PSISessionSummary> => {
-  const { data } = await api.get<PSISessionSummary>(`/psi/${sessionId}/summary`);
-  return data;
 };
 
 interface PSIEditUpdatePayload {
@@ -97,51 +83,6 @@ const compareDateStrings = (a: string, b: string) => parseDate(a).getTime() - pa
 
 const formatDisplayDate = (iso: string) => dateFormatter.format(parseDate(iso));
 const formatDisplayDateTime = (iso: string) => dateTimeFormatter.format(new Date(iso));
-
-type MetricKey =
-  | "stock_at_anchor"
-  | "inbound_qty"
-  | "outbound_qty"
-  | "net_flow"
-  | "stock_closing"
-  | "safety_stock"
-  | "movable_stock";
-
-type EditableField = "inbound_qty" | "outbound_qty" | "safety_stock";
-
-interface PSIEditableDay extends PSIDailyEntry {
-  base_stock_at_anchor: number | null;
-}
-
-interface PSIEditableChannel extends Omit<PSIChannel, "daily"> {
-  daily: PSIEditableDay[];
-}
-
-interface MetricDefinitionBase {
-  key: MetricKey;
-  label: string;
-  editable?: false;
-}
-
-interface EditableMetricDefinition {
-  key: EditableField;
-  label: string;
-  editable: true;
-}
-
-type MetricDefinition = MetricDefinitionBase | EditableMetricDefinition;
-
-const metricDefinitions: MetricDefinition[] = [
-  { key: "stock_at_anchor", label: "stock_at_anchor" },
-  { key: "inbound_qty", label: "inbound_qty", editable: true },
-  { key: "outbound_qty", label: "outbound_qty", editable: true },
-  { key: "net_flow", label: "net_flow" },
-  { key: "stock_closing", label: "stock_closing" },
-  { key: "safety_stock", label: "safety_stock", editable: true },
-  { key: "movable_stock", label: "movable_stock" },
-];
-
-const isEditableMetric = (metric: MetricDefinition): metric is EditableMetricDefinition => metric.editable === true;
 
 const sortDailyEntries = (daily: PSIDailyEntry[]): PSIEditableDay[] =>
   [...daily]
@@ -249,10 +190,7 @@ export default function PSITablePage() {
   const controlsRef = useRef<HTMLElement | null>(null);
   const tableScrollAreaRef = useRef<HTMLDivElement | null>(null);
 
-  const sessionsQuery = useQuery({
-    queryKey: ["sessions"],
-    queryFn: fetchSessions,
-  });
+  const sessionsQuery = useSessionsQuery();
 
   const availableSessions = sessionsQuery.data ?? [];
   const leaderSession = useMemo(
@@ -318,17 +256,13 @@ export default function PSITablePage() {
     setSearchParams(params);
   };
 
-  const psiQuery = useQuery({
-    queryKey: ["psi-daily", sessionId, skuCode, warehouseName, channel],
-    queryFn: () => fetchDailyPsi(sessionId, { sku_code: skuCode, warehouse_name: warehouseName, channel }),
-    enabled: Boolean(sessionId),
+  const psiQuery = useDailyPsiQuery(sessionId, {
+    sku_code: skuCode,
+    warehouse_name: warehouseName,
+    channel,
   });
 
-  const sessionSummaryQuery = useQuery({
-    queryKey: ["psi-session-summary", sessionId],
-    queryFn: () => fetchSessionSummary(sessionId),
-    enabled: Boolean(sessionId),
-  });
+  const sessionSummaryQuery = useSessionSummaryQuery(sessionId);
 
   useEffect(() => {
     if (psiQuery.data) {
@@ -914,6 +848,12 @@ export default function PSITablePage() {
     }
   };
 
+  const handleDescriptionChange = (value: string) => {
+    setDescriptionDraft(value);
+    setDescriptionSaved(false);
+    setDescriptionError(null);
+  };
+
   return (
     <div className="page psi-page">
       <header className="psi-page-header">
@@ -922,406 +862,84 @@ export default function PSITablePage() {
       </header>
 
       <div className="psi-page-content">
-        <section ref={controlsRef} className={`psi-controls${controlsCollapsed ? " collapsed" : ""}`}>
-          <div className="psi-controls-header">
-            <h2>Filters &amp; Description</h2>
-            <button type="button" className="collapse-toggle" onClick={() => setControlsCollapsed((previous) => !previous)}>
-              {controlsCollapsed ? "詳細を表示" : "詳細を折りたたむ"}
-            </button>
-          </div>
-          {!controlsCollapsed && (
-            <div className="psi-controls-body">
-              <div className="psi-panel psi-filter-panel">
-                <h3>フィルタ</h3>
-                <div className="psi-filter-grid">
-                  <label>
-                    Session
-                    <select
-                      value={sessionId}
-                      onChange={(event) => handleSessionChange(event.target.value)}
-                      disabled={sessionsQuery.isLoading}
-                    >
-                      <option value="" disabled>
-                        Select a session
-                      </option>
-                      {availableSessions.map((session) => (
-                        <option key={session.id} value={session.id}>
-                          {session.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    SKU Code
-                    <input
-                      type="text"
-                      value={skuCode}
-                      onChange={(event) => setSkuCode(event.target.value)}
-                      placeholder="Optional"
-                    />
-                  </label>
-                  <label>
-                    Warehouse
-                    <input
-                      type="text"
-                      value={warehouseName}
-                      onChange={(event) => setWarehouseName(event.target.value)}
-                      placeholder="Optional"
-                    />
-                  </label>
-                  <label>
-                    Channel
-                    <input
-                      type="text"
-                      value={channel}
-                      onChange={(event) => setChannel(event.target.value)}
-                      placeholder="Optional"
-                    />
-                  </label>
-                </div>
-                {sessionsQuery.isLoading && <p>Loading sessions...</p>}
-                {sessionsQuery.isError && (
-                  <p className="error">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
-                )}
-              </div>
-              <div className="psi-panel psi-description-panel">
-                {sessionId ? (
-                  <>
-                    <div className="psi-description-dates">
-                      <div>
-                        <strong>開始日</strong>
-                        <span>{sessionSummaryQuery.isLoading ? "…" : formattedStart}</span>
-                      </div>
-                      <div>
-                        <strong>終了日</strong>
-                        <span>{sessionSummaryQuery.isLoading ? "…" : formattedEnd}</span>
-                      </div>
-                    </div>
-                    {sessionSummaryQuery.isError && (
-                      <p className="error">{getErrorMessage(sessionSummaryQuery.error, "Unable to load session date range.")}</p>
-                    )}
-                    <label>
-                      Description
-                      <textarea
-                        value={descriptionDraft}
-                        onChange={(event) => {
-                          setDescriptionDraft(event.target.value);
-                          setDescriptionSaved(false);
-                          setDescriptionError(null);
-                        }}
-                        placeholder="Add a description for this session"
-                      />
-                    </label>
-                    <div className="session-summary-actions">
-                      <button
-                        type="button"
-                        className="psi-button secondary"
-                        onClick={handleDescriptionSave}
-                        disabled={!isDescriptionDirty || isSavingDescription}
-                        aria-label={isSavingDescription ? "説明を保存中" : "説明を保存"}
-                      >
-                        <img src={iconUrls.save} alt="" aria-hidden="true" className="psi-button-icon" />
-                        <span>{isSavingDescription ? "保存中…" : "保存"}</span>
-                      </button>
-                      {descriptionError && <span className="error">{descriptionError}</span>}
-                      {descriptionSaved && <span className="success">Description updated.</span>}
-                    </div>
-                    <div className="psi-session-meta">
-                      <div>
-                        <strong>作成日</strong>
-                        <span>{formattedCreatedAt}</span>
-                      </div>
-                      <div>
-                        <strong>更新日</strong>
-                        <span>{formattedUpdatedAt}</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <p>Select a session to view its details.</p>
-                )}
-              </div>
-            </div>
-          )}
-          <div className="psi-toolbar" role="toolbar" aria-label="PSI data actions">
-            <div className="psi-toolbar-group">
-              <button
-                type="button"
-                className="psi-button primary"
-                onClick={handleApply}
-                disabled={!sessionId || !hasPendingChanges || isApplying}
-              >
-                <img src={iconUrls.apply} alt="" aria-hidden="true" className="psi-button-icon" />
-                <span>{isApplying ? "Applying…" : "適用"}</span>
-              </button>
-            </div>
-            <div className="psi-toolbar-group">
-              <button
-                type="button"
-                className="psi-button secondary"
-                onClick={() => psiQuery.refetch()}
-                disabled={!sessionId || psiQuery.isFetching}
-              >
-                <img src={iconUrls.refresh} alt="" aria-hidden="true" className="psi-button-icon" />
-                <span>更新</span>
-              </button>
-              <button
-                type="button"
-                className="psi-button secondary"
-                onClick={handleReset}
-                disabled={!baselineData.length}
-              >
-                <img src={iconUrls.reset} alt="" aria-hidden="true" className="psi-button-icon" />
-                <span>リセット</span>
-              </button>
-            </div>
-            <div className="psi-toolbar-spacer" aria-hidden="true" />
-            <button
-              type="button"
-              className="psi-button today"
-              onClick={handleTodayClick}
-              aria-label="今日の列へ移動"
-            >
-              <img src={iconUrls.today} alt="" aria-hidden="true" className="psi-button-icon" />
-              <span>今日へ</span>
-            </button>
-          </div>
-        </section>
+        <PSITableControls
+          ref={controlsRef}
+          isCollapsed={controlsCollapsed}
+          onToggleCollapse={() => setControlsCollapsed((previous) => !previous)}
+          sessionId={sessionId}
+          availableSessions={availableSessions}
+          onSessionChange={handleSessionChange}
+          sessionsQuery={sessionsQuery}
+          skuCode={skuCode}
+          onSkuCodeChange={setSkuCode}
+          warehouseName={warehouseName}
+          onWarehouseNameChange={setWarehouseName}
+          channel={channel}
+          onChannelChange={setChannel}
+          sessionSummaryQuery={sessionSummaryQuery}
+          formattedStart={formattedStart}
+          formattedEnd={formattedEnd}
+          formattedCreatedAt={formattedCreatedAt}
+          formattedUpdatedAt={formattedUpdatedAt}
+          descriptionDraft={descriptionDraft}
+          onDescriptionChange={handleDescriptionChange}
+          onDescriptionSave={handleDescriptionSave}
+          isDescriptionDirty={isDescriptionDirty}
+          isSavingDescription={isSavingDescription}
+          descriptionError={descriptionError}
+          descriptionSaved={descriptionSaved}
+          onApply={handleApply}
+          canApply={Boolean(sessionId) && hasPendingChanges}
+          isApplying={isApplying}
+          onRefresh={() => psiQuery.refetch()}
+          refreshDisabled={!sessionId || psiQuery.isFetching}
+          onReset={handleReset}
+          onTodayClick={handleTodayClick}
+          hasBaselineData={baselineData.length > 0}
+          getErrorMessage={getErrorMessage}
+        />
 
-        <section className="psi-table-section">
-          {psiQuery.isLoading && sessionId && <p className="psi-table-status">Loading PSI data...</p>}
-          {psiQuery.isError && (
-            <p className="psi-table-status error">{getErrorMessage(psiQuery.error, "Unable to load PSI data.")}</p>
-          )}
-          {tableData.length > 0 ? (
-            <div className="psi-table-wrapper">
-              <div className="psi-table-toolbar">
-                <div className="psi-table-toolbar-group">
-                  <button
-                    type="button"
-                    className="psi-button secondary"
-                    onClick={handleDownload}
-                    disabled={!tableData.length || !visibleMetrics.length}
-                    aria-label="CSVをダウンロード"
-                  >
-                    <img src={iconUrls.downloadCsv} alt="" aria-hidden="true" className="psi-button-icon" />
-                    <span>CSV</span>
-                  </button>
-                  {selectedChannelKey && (
-                    <button
-                      type="button"
-                      className="psi-button secondary"
-                      onClick={handleClearSelection}
-                      aria-label="選択を解除"
-                    >
-                      <img src={iconUrls.clear} alt="" aria-hidden="true" className="psi-button-icon" />
-                      <span>選択解除</span>
-                    </button>
-                  )}
-                </div>
-                {(applyError || applySuccess) && (
-                  <div className="psi-table-messages">
-                    {applyError && <span className="error">{applyError}</span>}
-                    {applySuccess && <span className="success">{applySuccess}</span>}
-                  </div>
-                )}
-              </div>
-              <div className="psi-table-scroll-area" ref={tableScrollAreaRef}>
-                <div
-                  className="psi-scrollbar psi-scrollbar-top"
-                  ref={topScrollContainerRef}
-                  onScroll={handleTopScroll}
-                  role="presentation"
-                >
-                  <div className="psi-scrollbar-filler" style={{ width: `${tableContentWidth}px` }} />
-                </div>
-                <div
-                  className="psi-table-container"
-                  ref={tableScrollContainerRef}
-                  onScroll={handleBottomScroll}
-                >
-                  <table className="psi-table" ref={tableRef}>
-                    <thead>
-                      <tr>
-                        <th className="sticky-col col-sku">sku_code</th>
-                        <th className="sticky-col col-sku-name">sku_name</th>
-                        <th className="sticky-col col-warehouse">warehouse_name</th>
-                        <th className="sticky-col col-channel">channel</th>
-                        <th className="sticky-col col-div">
-                          <div className="metric-header" ref={metricSelectorRef}>
-                            <button
-                              type="button"
-                              className="metric-toggle"
-                              onClick={() => setIsMetricSelectorOpen((previous) => !previous)}
-                              aria-expanded={isMetricSelectorOpen}
-                            >
-                              div
-                            </button>
-                            {isMetricSelectorOpen && (
-                              <div className="metric-selector">
-                                <p className="metric-selector-title">表示する指標</p>
-                                <div className="metric-selector-options">
-                                  {metricDefinitions.map((metric) => {
-                                    const key = metric.key as MetricKey;
-                                    const checked = visibleMetricKeys.includes(key);
-                                    const disabled = checked && visibleMetricKeys.length === 1;
-                                    return (
-                                      <label key={metric.key}>
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          disabled={disabled}
-                                          onChange={() => toggleMetricVisibility(key)}
-                                        />
-                                        {metric.label}
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </th>
-                        {allDates.map((date) => (
-                          <th
-                            key={date}
-                            className={`date-header${date === todayIso ? " today-column" : ""}`}
-                            data-date={date}
-                          >
-                            {formatDisplayDate(date)}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tableData.map((item, channelIndex) => {
-                        const channelKey = makeChannelKey(item);
-                        const rowSpan = Math.max(visibleMetrics.length, 1);
-                        const dateMap = new Map(item.daily.map((entry) => [entry.date, entry]));
-
-                        if (!visibleMetrics.length) {
-                          return null;
-                        }
-
-                        const isSelected = selectedChannelKey === channelKey;
-
-                        return visibleMetrics.map((metric, metricIndex) => {
-                          const isFirstMetricRow = metricIndex === 0;
-
-                          return (
-                            <tr
-                              key={`${channelKey}-${metric.key}`}
-                              className={`psi-table-row${isSelected ? " selected" : ""}`}
-                              onClick={() => handleRowSelection(channelKey)}
-                              tabIndex={isFirstMetricRow ? 0 : -1}
-                              ref={
-                                isFirstMetricRow
-                                  ? (element) => {
-                                      rowGroupRefs.current[channelIndex] = element ?? null;
-                                    }
-                                  : undefined
-                              }
-                              onKeyDown={
-                                isFirstMetricRow
-                                  ? (event) => handleRowKeyDown(event, channelIndex, channelKey)
-                                  : undefined
-                              }
-                              aria-selected={isSelected}
-                            >
-                              {isFirstMetricRow && (
-                                <>
-                                  <td className={`sticky-col col-sku${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
-                                    {item.sku_code}
-                                  </td>
-                                  <td
-                                    className={`sticky-col col-sku-name${isSelected ? " selected" : ""}`}
-                                    rowSpan={rowSpan}
-                                  >
-                                    {item.sku_name ?? "—"}
-                                  </td>
-                                  <td
-                                    className={`sticky-col col-warehouse${isSelected ? " selected" : ""}`}
-                                    rowSpan={rowSpan}
-                                  >
-                                    {item.warehouse_name}
-                                  </td>
-                                  <td
-                                    className={`sticky-col col-channel${isSelected ? " selected" : ""}`}
-                                    rowSpan={rowSpan}
-                                  >
-                                    {item.channel}
-                                  </td>
-                                </>
-                              )}
-                              <td className={`sticky-col col-div psi-metric-name${isSelected ? " selected" : ""}`}>
-                                {metric.label}
-                              </td>
-                              {allDates.map((date) => {
-                                const entry = dateMap.get(date);
-                                const cellKey = `${channelKey}-${metric.key}-${date}`;
-                                const todayClass = date === todayIso ? " today-column" : "";
-
-                                if (!entry) {
-                                  return (
-                                    <td key={cellKey} className={`numeric${todayClass}`}>
-                                      —
-                                    </td>
-                                  );
-                                }
-
-                                const value = entry[metric.key];
-
-                                if (isEditableMetric(metric)) {
-                                  const baselineEntry = baselineMap.get(makeCellKey(channelKey, date));
-                                  const baselineValue = baselineEntry ? baselineEntry[metric.key] ?? null : null;
-                                  const currentValue = value ?? null;
-                                  const isEdited = !valuesEqual(currentValue, baselineValue);
-
-                                  return (
-                                    <td key={cellKey} className={`numeric${todayClass}`}>
-                                      <input
-                                        type="text"
-                                        className={`psi-edit-input${isEdited ? " edited" : ""}`}
-                                        value={currentValue ?? ""}
-                                        onChange={(event) =>
-                                          handleEditableChange(channelKey, date, metric.key, event.target.value)
-                                        }
-                                        inputMode="decimal"
-                                        onPaste={(event) => {
-                                          event.preventDefault();
-                                          handlePasteValues(
-                                            channelKey,
-                                            date,
-                                            metric.key,
-                                            event.clipboardData.getData("text")
-                                          );
-                                        }}
-                                      />
-                                    </td>
-                                  );
-                                }
-
-                                return (
-                                  <td key={cellKey} className={`numeric${todayClass}`}>
-                                    {formatNumber(value)}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        });
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          ) : (
-            sessionId && !psiQuery.isLoading && (
-              <p className="psi-table-status">No PSI data for the current filters.</p>
-            )
-          )}
-        </section>
+        <PSITableContent
+          sessionId={sessionId}
+          isLoading={psiQuery.isLoading}
+          isError={psiQuery.isError}
+          errorMessage={psiQuery.isError ? getErrorMessage(psiQuery.error, "Unable to load PSI data.") : null}
+          tableData={tableData}
+          visibleMetrics={visibleMetrics}
+          metricDefinitions={metricDefinitions}
+          visibleMetricKeys={visibleMetricKeys}
+          isMetricSelectorOpen={isMetricSelectorOpen}
+          onMetricSelectorToggle={() => setIsMetricSelectorOpen((previous) => !previous)}
+          onMetricVisibilityChange={toggleMetricVisibility}
+          metricSelectorRef={metricSelectorRef}
+          allDates={allDates}
+          todayIso={todayIso}
+          formatDisplayDate={formatDisplayDate}
+          tableContentWidth={tableContentWidth}
+          tableRef={tableRef}
+          tableScrollContainerRef={tableScrollContainerRef}
+          topScrollContainerRef={topScrollContainerRef}
+          tableScrollAreaRef={tableScrollAreaRef}
+          onTopScroll={handleTopScroll}
+          onBottomScroll={handleBottomScroll}
+          onDownload={handleDownload}
+          canDownload={Boolean(tableData.length && visibleMetrics.length)}
+          selectedChannelKey={selectedChannelKey}
+          onClearSelection={handleClearSelection}
+          applyError={applyError}
+          applySuccess={applySuccess}
+          baselineMap={baselineMap}
+          onEditableChange={handleEditableChange}
+          onPasteValues={handlePasteValues}
+          formatNumber={formatNumber}
+          isEditableMetric={isEditableMetric}
+          makeChannelKey={makeChannelKey}
+          makeCellKey={makeCellKey}
+          valuesEqual={valuesEqual}
+          onRowSelection={handleRowSelection}
+          rowGroupRefs={rowGroupRefs}
+          onRowKeyDown={handleRowKeyDown}
+        />
       </div>
     </div>
   );
