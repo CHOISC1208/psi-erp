@@ -134,140 +134,144 @@ const PSITableControls = forwardRef(function PSITableControls(
       </div>
       {!isCollapsed && (
         <div className="psi-controls-body">
-          <div className="psi-panel psi-filter-panel">
-            <h3>フィルタ</h3>
-            <div className="psi-filter-grid">
-              <label>
-                Session
-                <select
-                  value={sessionId}
-                  onChange={(event) => onSessionChange(event.target.value)}
-                  disabled={sessionsQuery.isLoading}
-                >
-                  <option value="" disabled>
-                    Select a session
-                  </option>
-                  {availableSessions.map((session) => (
-                    <option key={session.id} value={session.id}>
-                      {session.title}
+          <section className="psi-left-pane">
+            <div className="psi-panel psi-filter-panel row-full">
+              <h3>フィルタ</h3>
+              <div className="psi-filter-grid">
+                <label className="row-full">
+                  Session
+                  <select
+                    value={sessionId}
+                    onChange={(event) => onSessionChange(event.target.value)}
+                    disabled={sessionsQuery.isLoading}
+                  >
+                    <option value="" disabled>
+                      Select a session
                     </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                SKU Code
-                <input
-                  type="text"
-                  value={skuCode}
-                  onChange={(event) => onSkuCodeChange(event.target.value)}
-                  placeholder="Optional"
-                />
-              </label>
-              <label>
-                Warehouse
-                <input
-                  type="text"
-                  value={warehouseName}
-                  onChange={(event) => onWarehouseNameChange(event.target.value)}
-                  placeholder="Optional"
-                />
-              </label>
-              <label>
-                Channel
-                <input
-                  type="text"
-                  value={channel}
-                  onChange={(event) => onChannelChange(event.target.value)}
-                  placeholder="Optional"
-                />
-              </label>
-            </div>
-            {sessionsQuery.isLoading && <p>Loading sessions...</p>}
-            {sessionsQuery.isError && (
-              <p className="error">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
-            )}
-          </div>
-          <div className="psi-panel psi-description-panel">
-            {sessionId ? (
-              <>
-                <div className="psi-description-dates">
-                  <div>
-                    <strong>開始日</strong>
-                    <span>{sessionSummaryQuery.isLoading ? "…" : formattedStart}</span>
-                  </div>
-                  <div>
-                    <strong>終了日</strong>
-                    <span>{sessionSummaryQuery.isLoading ? "…" : formattedEnd}</span>
-                  </div>
-                </div>
-                {sessionSummaryQuery.isError && (
-                  <p className="error">
-                    {getErrorMessage(sessionSummaryQuery.error, "Unable to load session date range.")}
-                  </p>
-                )}
-                <label>
-                  Description
-                  <textarea
-                    value={descriptionDraft}
-                    onChange={(event) => onDescriptionChange(event.target.value)}
-                    placeholder="Add a description for this session"
+                    {availableSessions.map((session) => (
+                      <option key={session.id} value={session.id}>
+                        {session.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="row-full">
+                  SKU Code
+                  <input
+                    type="text"
+                    value={skuCode}
+                    onChange={(event) => onSkuCodeChange(event.target.value)}
+                    placeholder="Optional"
                   />
                 </label>
-                <div className="session-summary-actions">
-                  <button
-                    type="button"
-                    className="psi-button secondary"
-                    onClick={onDescriptionSave}
-                    disabled={!isDescriptionDirty || isSavingDescription}
-                    aria-label={isSavingDescription ? "説明を保存中" : "説明を保存"}
-                  >
-                    <img src={iconUrls.save} alt="" aria-hidden="true" className="psi-button-icon" />
-                    <span>{isSavingDescription ? "保存中…" : "保存"}</span>
-                  </button>
-                  {descriptionError && <span className="error">{descriptionError}</span>}
-                  {descriptionSaved && <span className="success">Description updated.</span>}
-                </div>
-                <div className="psi-session-meta">
-                  <div>
-                    <strong>作成日</strong>
-                    <span>{formattedCreatedAt}</span>
-                  </div>
-                  <div>
-                    <strong>更新日</strong>
-                    <span>{formattedUpdatedAt}</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p>Select a session to view its details.</p>
-            )}
-          </div>
-          <div className="psi-summary-card">
-            <div className="psi-summary-header">
-              <h3>集計（3 SKU / ページ）</h3>
-              <div className="psi-pager">
-                <button type="button" onClick={goPrev} disabled={page <= 1 || sorted.length === 0}>
-                  ‹ 前へ
-                </button>
-                <span>
-                  {sorted.length === 0 ? "0 / 0" : `${page} / ${totalPages}`}
-                </span>
-                <button type="button" onClick={goNext} disabled={page >= totalPages || sorted.length === 0}>
-                  次へ ›
-                </button>
+                <label>
+                  Warehouse
+                  <input
+                    type="text"
+                    value={warehouseName}
+                    onChange={(event) => onWarehouseNameChange(event.target.value)}
+                    placeholder="Optional"
+                  />
+                </label>
+                <label>
+                  Channel
+                  <input
+                    type="text"
+                    value={channel}
+                    onChange={(event) => onChannelChange(event.target.value)}
+                    placeholder="Optional"
+                  />
+                </label>
               </div>
+              {sessionsQuery.isLoading && <p className="row-full">Loading sessions...</p>}
+              {sessionsQuery.isError && (
+                <p className="error row-full">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
+              )}
             </div>
-            {sorted.length > 0 ? (
-              <PSISummaryTable
-                rows={pageRows}
-                onSelectSku={onSelectSku}
-                selectedSku={selectedSku}
-                channelOrder={["online", "retail", "wholesale"]}
-              />
-            ) : (
-              <p className="psi-summary-empty">該当する集計データがありません。</p>
-            )}
-          </div>
+            <div className="psi-panel psi-description-panel row-full">
+              {sessionId ? (
+                <>
+                  <div className="psi-description-dates">
+                    <div>
+                      <strong>開始日</strong>
+                      <span>{sessionSummaryQuery.isLoading ? "…" : formattedStart}</span>
+                    </div>
+                    <div>
+                      <strong>終了日</strong>
+                      <span>{sessionSummaryQuery.isLoading ? "…" : formattedEnd}</span>
+                    </div>
+                  </div>
+                  {sessionSummaryQuery.isError && (
+                    <p className="error">
+                      {getErrorMessage(sessionSummaryQuery.error, "Unable to load session date range.")}
+                    </p>
+                  )}
+                  <label className="row-full">
+                    Description
+                    <textarea
+                      value={descriptionDraft}
+                      onChange={(event) => onDescriptionChange(event.target.value)}
+                      placeholder="Add a description for this session"
+                    />
+                  </label>
+                  <div className="session-summary-actions">
+                    <button
+                      type="button"
+                      className="psi-button secondary"
+                      onClick={onDescriptionSave}
+                      disabled={!isDescriptionDirty || isSavingDescription}
+                      aria-label={isSavingDescription ? "説明を保存中" : "説明を保存"}
+                    >
+                      <img src={iconUrls.save} alt="" aria-hidden="true" className="psi-button-icon" />
+                      <span>{isSavingDescription ? "保存中…" : "保存"}</span>
+                    </button>
+                    {descriptionError && <span className="error">{descriptionError}</span>}
+                    {descriptionSaved && <span className="success">Description updated.</span>}
+                  </div>
+                  <div className="psi-session-meta">
+                    <div>
+                      <strong>作成日</strong>
+                      <span>{formattedCreatedAt}</span>
+                    </div>
+                    <div>
+                      <strong>更新日</strong>
+                      <span>{formattedUpdatedAt}</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p>Select a session to view its details.</p>
+              )}
+            </div>
+          </section>
+          <aside className="psi-right-pane">
+            <div className="psi-summary-card">
+              <div className="psi-summary-header">
+                <h3>集計（3 SKU / ページ）</h3>
+                <div className="psi-pager">
+                  <button type="button" onClick={goPrev} disabled={page <= 1 || sorted.length === 0}>
+                    ‹ 前へ
+                  </button>
+                  <span>
+                    {sorted.length === 0 ? "0 / 0" : `${page} / ${totalPages}`}
+                  </span>
+                  <button type="button" onClick={goNext} disabled={page >= totalPages || sorted.length === 0}>
+                    次へ ›
+                  </button>
+                </div>
+              </div>
+              {sorted.length > 0 ? (
+                <PSISummaryTable
+                  rows={pageRows}
+                  onSelectSku={onSelectSku}
+                  selectedSku={selectedSku}
+                  channelOrder={["online", "retail", "wholesale"]}
+                />
+              ) : (
+                <p className="psi-summary-empty">該当する集計データがありません。</p>
+              )}
+            </div>
+          </aside>
         </div>
       )}
       <div className="psi-toolbar" role="toolbar" aria-label="PSI data actions">

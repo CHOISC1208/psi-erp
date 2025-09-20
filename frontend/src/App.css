@@ -229,7 +229,7 @@ body {
 
 .psi-controls-header h2 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1rem;
 }
 
 button.collapse-toggle {
@@ -249,40 +249,30 @@ button.collapse-toggle:focus-visible {
 
 .psi-controls-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.25fr);
-  grid-template-areas: "filters description summary";
-  gap: 1.25rem;
+  grid-template-columns: 1fr 2fr;
+  gap: 16px;
   align-items: start;
 }
 
-.psi-filter-panel {
-  grid-area: filters;
+.psi-left-pane {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
-.psi-description-panel {
-  grid-area: description;
+.psi-left-pane .row-full {
+  grid-column: 1 / -1;
 }
 
-.psi-summary-card {
-  grid-area: summary;
+.psi-right-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-@media (max-width: 1280px) {
-  .psi-controls-body {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas:
-      "filters summary"
-      "description description";
-  }
-}
-
-@media (max-width: 960px) {
+@media (max-width: 1100px) {
   .psi-controls-body {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      "filters"
-      "description"
-      "summary";
   }
 }
 
@@ -322,7 +312,12 @@ button.collapse-toggle:focus-visible {
 
 .psi-filter-grid {
   display: grid;
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.psi-filter-grid .row-full {
+  grid-column: 1 / -1;
 }
 
 .psi-filter-grid label {
