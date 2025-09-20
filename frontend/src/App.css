@@ -527,6 +527,7 @@ button.icon-button:focus-visible {
 
 .psi-table th,
 .psi-table td {
+  box-sizing: border-box;
   padding: 0.5rem 0.625rem;
   border-bottom: 1px solid var(--border-default);
   white-space: nowrap;
@@ -556,7 +557,7 @@ td.numeric {
   background: var(--surface-table-header);
   font-weight: 700;
   font-size: 0.8rem;
-  z-index: 6;
+  z-index: 12;
   text-transform: none;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-default);
@@ -623,7 +624,7 @@ td.numeric {
 }
 
 .psi-table thead .today-column {
-  z-index: 8;
+  z-index: 14;
   background: var(--psi-today-header-bg);
   color: var(--text-primary);
 }
@@ -649,7 +650,7 @@ td.numeric {
 }
 
 .psi-table thead .sticky-col {
-  z-index: 7;
+  z-index: 13;
   background: var(--surface-sticky-col);
   box-shadow: 1px 0 0 var(--border-default);
   top: var(--psi-table-header-offset, 0);
@@ -659,24 +660,36 @@ td.numeric {
   left: 0;
   min-width: var(--psi-col-sku-width);
   width: var(--psi-col-sku-width);
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .psi-table .col-sku-name {
   left: var(--psi-col-offset-sku-name);
   min-width: var(--psi-col-sku-name-width);
   width: var(--psi-col-sku-name-width);
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .psi-table .col-warehouse {
   left: var(--psi-col-offset-warehouse);
   min-width: var(--psi-col-warehouse-width);
   width: var(--psi-col-warehouse-width);
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .psi-table .col-channel {
   left: var(--psi-col-offset-channel);
   min-width: var(--psi-col-channel-width);
   width: var(--psi-col-channel-width);
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .psi-table .col-div {
