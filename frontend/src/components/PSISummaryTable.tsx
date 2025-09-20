@@ -16,6 +16,7 @@ type SummaryGridRow = Record<string, string | number | boolean | null | undefine
   isSelected: boolean;
   total: number | null;
   surplus: number | null;
+  isPlaceholder?: boolean;
 };
 
 type Props = {
@@ -47,6 +48,12 @@ const metricLabels: { key: SummaryMetricKey; label: string }[] = [
 ];
 
 const summaryGroupPositions: Array<"start" | "middle" | "end"> = ["start", "middle", "end"];
+
+const maxVisibleRows = 9;
+const rowHeight = 36;
+const headerHeight = 36;
+const baseColumnWidth = 132;
+const skuColumnWidth = baseColumnWidth * 3;
 
 const PSISummaryTable = memo(function PSISummaryTable({
   rows,
@@ -158,16 +165,54 @@ const PSISummaryTable = memo(function PSISummaryTable({
     return gridRows.filter((row) => row.metric.toLowerCase().includes(normalizedMetricFilter));
   }, [gridRows, normalizedMetricFilter]);
 
+  const paddedRows = useMemo(() => {
+    if (filteredRows.length >= maxVisibleRows) {
+      return filteredRows;
+    }
+
+    const placeholdersNeeded = maxVisibleRows - filteredRows.length;
+    const placeholders: SummaryGridRow[] = [];
+
+    for (let index = 0; index < placeholdersNeeded; index += 1) {
+      const position = summaryGroupPositions[(filteredRows.length + index) % summaryGroupPositions.length];
+      const placeholder: SummaryGridRow = {
+        id: `placeholder-${index}`,
+        sku: "",
+        metric: "",
+        metricKey: metricLabels[index % metricLabels.length].key,
+        groupPosition: position,
+        isSelected: false,
+        total: null,
+        surplus: null,
+        isPlaceholder: true,
+      };
+
+      orderedChannels.forEach((channel) => {
+        placeholder[channel] = null;
+      });
+
+      placeholders.push(placeholder);
+    }
+
+    return [...filteredRows, ...placeholders];
+  }, [filteredRows, orderedChannels]);
+
   const valueClassName = useCallback(
     (row: SummaryGridRow, key: string) => {
+      if (row.isPlaceholder) {
+        return classNames("psi-grid-value-cell", "psi-summary-cell-placeholder");
+      }
+
       const rawValue = row[key];
       const numericValue = typeof rawValue === "number" ? rawValue : null;
       const isStockClosing = row.metricKey === "last_closing";
-      const isNegative = isStockClosing && numericValue !== null && numericValue < 0;
+      const isNegative = numericValue !== null && numericValue < 0;
+
       return classNames(
         "psi-grid-value-cell",
-        row.isSelected && "psi-grid-row-selected",
-        `psi-grid-group-${row.groupPosition}`,
+        row.groupPosition && `psi-grid-group-${row.groupPosition}`,
+        row.isSelected && "psi-summary-cell-selected",
+        isNegative && "psi-grid-value-negative",
         isStockClosing && isNegative && "psi-grid-stock-warning"
       );
     },
@@ -182,19 +227,24 @@ const PSISummaryTable = memo(function PSISummaryTable({
     const skuColumn: Column<SummaryGridRow> = {
       key: "sku",
       name: "SKU",
-      width: 192,
+      width: skuColumnWidth,
       frozen: true,
       className: (row) =>
         classNames(
           "psi-grid-summary-sku-cell",
-          `psi-grid-group-${row.groupPosition}`,
-          row.isSelected && "psi-grid-row-selected",
-          row.groupPosition !== "start" && "psi-grid-cell-duplicate"
+          !row.isPlaceholder && row.groupPosition && `psi-grid-group-${row.groupPosition}`,
+          !row.isPlaceholder && row.groupPosition !== "start" && "psi-grid-cell-duplicate",
+          row.isSelected && "psi-summary-cell-selected",
+          row.isPlaceholder && "psi-summary-cell-placeholder"
         ),
       renderCell: ({ row }) => (
-        <div className="psi-grid-summary-sku">
-          <div className="psi-grid-summary-sku-code">{row.sku}</div>
-          {row.skuName && <div className="psi-grid-summary-sku-name">{row.skuName}</div>}
+        <div className="psi-grid-summary-sku" aria-hidden={row.isPlaceholder ? "true" : undefined}>
+          {!row.isPlaceholder && (
+            <>
+              <div className="psi-grid-summary-sku-code">{row.sku}</div>
+              {row.skuName && <div className="psi-grid-summary-sku-name">{row.skuName}</div>}
+            </>
+          )}
         </div>
       ),
     };
@@ -202,13 +252,14 @@ const PSISummaryTable = memo(function PSISummaryTable({
     const metricColumn: Column<SummaryGridRow> = {
       key: "metric",
       name: "",
-      width: 136,
+      width: baseColumnWidth,
       frozen: true,
       className: (row) =>
         classNames(
           "psi-grid-summary-metric-cell",
-          `psi-grid-group-${row.groupPosition}`,
-          row.isSelected && "psi-grid-row-selected"
+          !row.isPlaceholder && row.groupPosition && `psi-grid-group-${row.groupPosition}`,
+          row.isSelected && "psi-summary-cell-selected",
+          row.isPlaceholder && "psi-summary-cell-placeholder"
         ),
       setHeaderRef: handleMetricHeaderRef,
     };
@@ -216,28 +267,29 @@ const PSISummaryTable = memo(function PSISummaryTable({
     const channelColumns = orderedChannels.map((channel) => ({
       key: channel,
       name: channel,
-      width: 120,
+      width: baseColumnWidth,
       className: (row: SummaryGridRow) => valueClassName(row, channel),
       headerCellClass: "psi-grid-header-numeric",
-      renderCell: ({ row }: { row: SummaryGridRow }) => formatValue(row[channel] as number | null | undefined),
+      renderCell: ({ row }: { row: SummaryGridRow }) =>
+        row.isPlaceholder ? "" : formatValue(row[channel] as number | null | undefined),
     }));
 
     const surplusColumn: Column<SummaryGridRow> = {
       key: "surplus",
       name: "余剰在庫",
-      width: 132,
+      width: baseColumnWidth,
       className: (row) => valueClassName(row, "surplus"),
       headerCellClass: "psi-grid-header-numeric",
-      renderCell: ({ row }) => formatValue(row.surplus as number | null | undefined),
+      renderCell: ({ row }) => (row.isPlaceholder ? "" : formatValue(row.surplus as number | null | undefined)),
     };
 
     const totalColumn: Column<SummaryGridRow> = {
       key: "total",
       name: "合計",
-      width: 132,
+      width: baseColumnWidth,
       className: (row) => valueClassName(row, "total"),
       headerCellClass: "psi-grid-header-numeric",
-      renderCell: ({ row }) => formatValue(row.total as number | null | undefined),
+      renderCell: ({ row }) => (row.isPlaceholder ? "" : formatValue(row.total as number | null | undefined)),
     };
 
     return [skuColumn, metricColumn, ...channelColumns, surplusColumn, totalColumn];
@@ -261,33 +313,48 @@ const PSISummaryTable = memo(function PSISummaryTable({
 
   const handleCellClick = useCallback(
     ({ row }: { row: SummaryGridRow }) => {
+      if (row.isPlaceholder) {
+        return;
+      }
       onSelectSku(row.isSelected ? null : row.sku);
     },
     [onSelectSku]
+  );
+
+  const getRowClassName = useCallback(
+    (row: SummaryGridRow) => {
+      if (row.isPlaceholder) {
+        return "psi-summary-row-placeholder";
+      }
+      if (!row.isSelected) {
+        return undefined;
+      }
+      const positionClass = row.groupPosition
+        ? `psi-summary-row-selected-${row.groupPosition}`
+        : undefined;
+      return classNames("psi-summary-row-selected", positionClass);
+    },
+    []
   );
 
   if (!gridRows.length) {
     return null;
   }
 
-  const rowHeight = 32;
-  const headerHeight = 32;
-  const maxVisibleRows = 9;
-  const minGridHeight = headerHeight + maxVisibleRows * rowHeight;
-  const dynamicHeight = headerHeight + Math.min(filteredRows.length, maxVisibleRows) * rowHeight;
-  const gridHeight = Math.max(minGridHeight, dynamicHeight);
+  const gridHeight = headerHeight + maxVisibleRows * rowHeight;
 
   return (
     <div className="psi-summary-grid">
       {metricHeaderPortal}
       <DataGrid
         columns={columns}
-        rows={filteredRows}
+        rows={paddedRows}
         rowKeyGetter={(row) => row.id}
         onCellClick={handleCellClick}
-        defaultColumnOptions={{ width: 132 }}
+        defaultColumnOptions={{ width: baseColumnWidth }}
         className="psi-data-grid psi-summary-data-grid"
         style={{ blockSize: `${gridHeight}px` }}
+        rowClassName={getRowClassName}
       />
     </div>
   );

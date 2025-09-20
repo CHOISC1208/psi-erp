@@ -30,6 +30,7 @@ function DataGrid({
   className,
   defaultColumnOptions,
   viewportRef,
+  rowClassName,
 }) {
   const columnWidth = defaultColumnOptions?.width ?? 140;
   const columnsWithWidth = useMemo(
@@ -204,8 +205,13 @@ function DataGrid({
       <div className="rdg-body" ref={bodyRef}>
         {rowsToRender.map((row, rowIdx) => {
           const rowKey = rowKeyGetter ? rowKeyGetter(row) : rowIdx;
+          const extraRowClassName = rowClassName ? rowClassName(row, rowIdx) : undefined;
           return (
-            <div key={rowKey} className="rdg-row" style={{ gridTemplateColumns: templateColumns }}>
+            <div
+              key={rowKey}
+              className={clsx("rdg-row", extraRowClassName)}
+              style={{ gridTemplateColumns: templateColumns }}
+            >
               {columnsWithWidth.map((column, columnIdx) => {
                 const frozenOffset = frozenOffsets[columnIdx];
                 const cellClass =

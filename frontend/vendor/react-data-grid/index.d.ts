@@ -52,6 +52,7 @@ export interface DataGridProps<RowType> {
     width?: number;
   };
   viewportRef?: React.Ref<HTMLDivElement>;
+  rowClassName?: (row: RowType, rowIdx: number) => string | undefined;
 }
 
 export default function DataGrid<RowType>(props: DataGridProps<RowType>): JSX.Element;
