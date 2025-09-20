@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import DataGrid, { type Column } from "react-data-grid";
 import { createPortal } from "react-dom";
 
@@ -17,6 +17,13 @@ type SummaryGridRow = Record<string, string | number | boolean | null | undefine
   total: number | null;
   surplus: number | null;
   isPlaceholder?: boolean;
+};
+
+type SelectionOverlayMetrics = {
+  top: number;
+  height: number;
+  left: number;
+  width: number;
 };
 
 type Props = {
@@ -65,6 +72,8 @@ const PSISummaryTable = memo(function PSISummaryTable({
 }: Props) {
   const [metricFilter, setMetricFilter] = useState("");
   const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
+  const gridContainerRef = useRef<HTMLDivElement | null>(null);
+  const [selectionOverlay, setSelectionOverlay] = useState<SelectionOverlayMetrics | null>(null);
 
   const orderedChannels = useMemo(() => {
     const unique = new Set<string>();
@@ -225,6 +234,91 @@ const PSISummaryTable = memo(function PSISummaryTable({
     setMetricHeaderElement(element);
   }, []);
 
+  const updateSelectionOverlay = useCallback(() => {
+    const container = gridContainerRef.current;
+    if (!container) {
+      setSelectionOverlay(null);
+      return;
+    }
+
+    const gridElement = container.querySelector<HTMLElement>(".rdg");
+    if (!gridElement) {
+      setSelectionOverlay(null);
+      return;
+    }
+
+    const selectedRows = gridElement.querySelectorAll<HTMLElement>(".psi-summary-row-selected");
+    if (selectedRows.length === 0) {
+      setSelectionOverlay((previous) => (previous === null ? previous : null));
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const gridRect = gridElement.getBoundingClientRect();
+    const firstRowRect = selectedRows[0].getBoundingClientRect();
+    const lastRowRect = selectedRows[selectedRows.length - 1].getBoundingClientRect();
+
+    const outlineOffset = 1;
+    const overlayMetrics: SelectionOverlayMetrics = {
+      top: firstRowRect.top - containerRect.top - outlineOffset,
+      height: lastRowRect.bottom - firstRowRect.top + outlineOffset * 2,
+      left: gridRect.left - containerRect.left - outlineOffset,
+      width: gridRect.width + outlineOffset * 2,
+    };
+
+    setSelectionOverlay((previous) => {
+      if (
+        previous &&
+        Math.abs(previous.top - overlayMetrics.top) < 0.5 &&
+        Math.abs(previous.height - overlayMetrics.height) < 0.5 &&
+        Math.abs(previous.left - overlayMetrics.left) < 0.5 &&
+        Math.abs(previous.width - overlayMetrics.width) < 0.5
+      ) {
+        return previous;
+      }
+      return overlayMetrics;
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    updateSelectionOverlay();
+  }, [paddedRows, updateSelectionOverlay]);
+
+  useLayoutEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const viewport = container.querySelector<HTMLElement>(".rdg-viewport");
+    if (!viewport) {
+      updateSelectionOverlay();
+      return;
+    }
+
+    let animationFrame: number | null = null;
+    const handleScrollOrResize = () => {
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+      }
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        updateSelectionOverlay();
+      });
+    };
+
+    viewport.addEventListener("scroll", handleScrollOrResize, { passive: true });
+    window.addEventListener("resize", handleScrollOrResize);
+
+    return () => {
+      viewport.removeEventListener("scroll", handleScrollOrResize);
+      window.removeEventListener("resize", handleScrollOrResize);
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [updateSelectionOverlay, paddedRows]);
+
   const columns = useMemo<Column<SummaryGridRow>[]>(() => {
     const skuColumn: Column<SummaryGridRow> = {
       key: "sku",
@@ -346,7 +440,18 @@ const PSISummaryTable = memo(function PSISummaryTable({
   const gridHeight = headerHeight + summaryBodyHeight;
 
   return (
-    <div className="psi-summary-grid">
+    <div className="psi-summary-grid" ref={gridContainerRef}>
+      {selectionOverlay && (
+        <div
+          className="psi-summary-selection-overlay"
+          style={{
+            top: `${selectionOverlay.top}px`,
+            left: `${selectionOverlay.left}px`,
+            width: `${selectionOverlay.width}px`,
+            height: `${selectionOverlay.height}px`,
+          }}
+        />
+      )}
       {metricHeaderPortal}
       <DataGrid
         columns={columns}
