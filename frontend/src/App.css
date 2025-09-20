@@ -986,10 +986,16 @@ button.icon-button:focus-visible {
 .psi-data-grid.rdg {
   --psi-grid-border: rgba(148, 163, 184, 0.28);
   --psi-grid-hover: rgba(253, 224, 71, 0.28);
+  --psi-grid-group-hover: rgba(254, 249, 195, 0.24);
   --psi-grid-selection: rgba(37, 99, 235, 0.22);
   --psi-grid-selection-border: rgba(37, 99, 235, 0.45);
   --psi-grid-selection-outline: rgba(250, 204, 21, 0.8);
   --psi-grid-editable: rgba(37, 99, 235, 0.14);
+  --psi-grid-group-bg: rgba(248, 250, 252, 0.7);
+  --psi-grid-warning: rgba(248, 113, 113, 0.22);
+  --psi-grid-warning-border: rgba(220, 38, 38, 0.72);
+  --psi-grid-success: rgba(134, 239, 172, 0.22);
+  --psi-grid-success-border: rgba(22, 163, 74, 0.65);
   border: 1px solid var(--psi-grid-border);
   border-radius: 0.5rem;
   background-color: var(--surface-table);
@@ -1077,8 +1083,14 @@ button.icon-button:focus-visible {
   background-color: var(--surface-table-zebra);
 }
 
-.psi-data-grid .rdg-row:hover .rdg-cell:not(.psi-grid-stock-warning):not(.psi-grid-cell-today):not(.psi-grid-cell-editable) {
+.psi-data-grid .rdg-row:hover .rdg-cell:not(.psi-grid-cell-today):not(.psi-grid-cell-editable) {
   background-color: var(--psi-grid-hover);
+}
+
+.psi-data-grid .rdg-row:hover .psi-grid-channel-group,
+.psi-data-grid .rdg-row:hover .psi-grid-metric-group,
+.psi-data-grid .rdg-row:hover .psi-grid-group-cell {
+  background-color: var(--psi-grid-group-hover);
 }
 
 .psi-grid-channel-cell,
@@ -1087,6 +1099,84 @@ button.icon-button:focus-visible {
 .psi-grid-summary-metric-cell {
   justify-content: flex-start;
   font-weight: 600;
+}
+
+.psi-grid-channel-group {
+  background-color: var(--psi-grid-group-bg) !important;
+  font-weight: 700;
+}
+
+.psi-grid-channel-group-content {
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  cursor: pointer;
+}
+
+.psi-grid-channel-group-content:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+.psi-grid-channel-group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.psi-grid-channel-group-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.psi-grid-channel-group-name {
+  font-weight: 700;
+}
+
+.psi-grid-channel-group-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.psi-grid-channel-leaf {
+  padding-left: 1.5rem;
+  font-weight: 500;
+}
+
+.psi-grid-channel-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.psi-grid-metric-group {
+  background-color: var(--psi-grid-group-bg) !important;
+  font-weight: 600;
+}
+
+.psi-grid-metric-leaf {
+  padding-left: 1rem;
+  font-weight: 500;
+}
+
+.psi-grid-group-cell {
+  background-color: var(--psi-grid-group-bg) !important;
+  justify-content: center;
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .psi-grid-cell-duplicate {
@@ -1125,7 +1215,7 @@ button.icon-button:focus-visible {
 }
 
 .psi-grid-stock-warning {
-  background-color: rgba(245, 158, 11, 0.32);
+  background-color: transparent;
   color: var(--accent-red);
   font-weight: 600;
 }
@@ -1178,6 +1268,21 @@ button.icon-button:focus-visible {
 
 .rdg-cell.rdg-cell-editing.psi-grid-value-negative {
   color: inherit;
+}
+
+.psi-grid-row-warning {
+  background-color: var(--psi-grid-warning) !important;
+  box-shadow: inset 4px 0 0 var(--psi-grid-warning-border);
+}
+
+.psi-grid-row-success {
+  background-color: var(--psi-grid-success) !important;
+  box-shadow: inset 4px 0 0 var(--psi-grid-success-border);
+}
+
+.psi-data-grid .rdg-row:hover .psi-grid-row-warning,
+.psi-data-grid .rdg-row:hover .psi-grid-row-success {
+  background-color: var(--psi-grid-hover) !important;
 }
 
 .psi-grid-group-start {

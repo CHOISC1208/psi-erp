@@ -9,7 +9,11 @@ import {
   PSIEditableChannel,
   PSIGridRow,
   MetricKey,
+  PSIGridChannelRow,
+  PSIGridMetricRow,
 } from "../pages/psiTableTypes";
+
+const MOVABLE_STOCK_THRESHOLD = 10;
 
 interface PSITableContentProps {
   sessionId: string;
@@ -40,6 +44,28 @@ const editableFieldSet = new Set<EditableField>(editableFields);
 const classNames = (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(" ");
 
 const isEditableField = (key: MetricKey): key is EditableField => editableFieldSet.has(key as EditableField);
+
+const getRowHighlightClass = (row: PSIGridRow) => {
+  if (row.rowHighlight === "warning") {
+    return "psi-grid-row-warning";
+  }
+  if (row.rowHighlight === "success") {
+    return "psi-grid-row-success";
+  }
+  return "";
+};
+
+type WarehouseChannelGroup = {
+  channelKey: string;
+  header: PSIGridChannelRow;
+  metrics: PSIGridMetricRow[];
+};
+
+type WarehouseView = {
+  name: string;
+  channelCount: number;
+  channels: WarehouseChannelGroup[];
+};
 
 const toInputValue = (input: number | null | undefined) =>
   input === null || input === undefined ? "" : String(input);
@@ -124,12 +150,13 @@ const PSITableContent = ({
   const [activeWarehouse, setActiveWarehouse] = useState<string | null>(null);
   const [metricFilter, setMetricFilter] = useState("");
   const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
+  const [collapsedChannels, setCollapsedChannels] = useState<Record<string, boolean>>({});
   const headerRefs = useRef(new Map<string, HTMLDivElement>());
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
-  const warehouses = useMemo(() => {
+  const warehouses = useMemo<WarehouseView[]>(() => {
     if (!tableData.length || !visibleMetrics.length) {
-      return [] as Array<{ name: string; channelCount: number; rows: PSIGridRow[] }>;
+      return [];
     }
 
     const grouping = new Map<string, PSIEditableChannel[]>();
@@ -144,13 +171,28 @@ const PSITableContent = ({
     });
 
     return Array.from(grouping.entries()).map(([warehouseName, channels]) => {
-      const rows: PSIGridRow[] = [];
-      channels.forEach((channel) => {
+      const channelGroups: WarehouseChannelGroup[] = channels.map((channel) => {
         const channelKey = makeChannelKey(channel);
         const dateMap = new Map(channel.daily.map((entry) => [entry.date, entry]));
-        visibleMetrics.forEach((metric) => {
+
+        const headerRow: PSIGridChannelRow = {
+          id: `${channelKey}__header`,
+          channelKey,
+          sku_code: channel.sku_code,
+          warehouse_name: channel.warehouse_name,
+          channel: channel.channel,
+          metric: "",
+          metricEditable: false,
+          rowType: "channel",
+        };
+
+        allDates.forEach((date) => {
+          headerRow[date] = null;
+        });
+
+        const metricRows: PSIGridMetricRow[] = visibleMetrics.map((metric) => {
           const metricKey = metric.key as MetricKey;
-          const row: PSIGridRow = {
+          const metricRow: PSIGridMetricRow = {
             id: `${channelKey}__${metricKey}`,
             channelKey,
             sku_code: channel.sku_code,
@@ -159,23 +201,43 @@ const PSITableContent = ({
             metric: metric.label,
             metricKey,
             metricEditable: metric.editable === true,
+            rowType: "metric",
           };
+
+          let hasNegative = false;
+          let hasPositive = false;
 
           allDates.forEach((date) => {
             const dailyEntry = dateMap.get(date);
-            const value = dailyEntry ? (dailyEntry[metricKey as keyof typeof dailyEntry] as number | null | undefined) : null;
-            row[date] = value ?? null;
+            const value = dailyEntry
+              ? (dailyEntry[metricKey as keyof typeof dailyEntry] as number | null | undefined)
+              : null;
+            metricRow[date] = value ?? null;
+            if (metricKey === "stock_closing" && typeof value === "number" && value < 0) {
+              hasNegative = true;
+            }
+            if (metricKey === "movable_stock" && typeof value === "number" && value >= MOVABLE_STOCK_THRESHOLD) {
+              hasPositive = true;
+            }
           });
 
-          rows.push(row);
+          if (metricKey === "stock_closing" && hasNegative) {
+            metricRow.rowHighlight = "warning";
+          } else if (metricKey === "movable_stock" && hasPositive) {
+            metricRow.rowHighlight = "success";
+          }
+
+          return metricRow;
         });
+
+        return { header: headerRow, metrics: metricRows, channelKey } satisfies WarehouseChannelGroup;
       });
 
       return {
         name: warehouseName,
         channelCount: channels.length,
-        rows,
-      };
+        channels: channelGroups,
+      } satisfies WarehouseView;
     });
   }, [allDates, makeChannelKey, tableData, visibleMetrics]);
 
@@ -203,18 +265,91 @@ const PSITableContent = ({
     [activeWarehouse, warehouses]
   );
 
-  const allRows = activeWarehouseData?.rows ?? [];
+  const activeWarehouseChannels = activeWarehouseData?.channels ?? [];
   const normalizedMetricFilter = metricFilter.trim().toLowerCase();
 
+  const allChannelKeys = useMemo(() => {
+    const keys = new Set<string>();
+    warehouses.forEach((warehouse) => {
+      warehouse.channels.forEach((channel) => {
+        keys.add(channel.channelKey);
+      });
+    });
+    return keys;
+  }, [warehouses]);
+
+  useEffect(() => {
+    setCollapsedChannels((previous) => {
+      if (!previous || Object.keys(previous).length === 0) {
+        return previous;
+      }
+
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      allChannelKeys.forEach((key) => {
+        if (previous[key]) {
+          next[key] = true;
+        }
+      });
+
+      if (Object.keys(previous).length !== Object.keys(next).length) {
+        changed = true;
+      }
+
+      if (changed) {
+        return next;
+      }
+
+      return previous;
+    });
+  }, [allChannelKeys]);
+
+  const toggleChannelCollapse = useCallback((channelKey: string) => {
+    setCollapsedChannels((previous) => {
+      const current = previous[channelKey] ?? false;
+      if (current) {
+        const { [channelKey]: _removed, ...rest } = previous;
+        return rest;
+      }
+      return { ...previous, [channelKey]: true };
+    });
+  }, []);
+
   const rows = useMemo(() => {
-    if (!normalizedMetricFilter) {
-      return allRows;
+    if (!activeWarehouseChannels.length) {
+      return [] as PSIGridRow[];
     }
 
-    return allRows.filter((row) =>
-      String(row.metric).toLowerCase().includes(normalizedMetricFilter)
-    );
-  }, [allRows, normalizedMetricFilter]);
+    return activeWarehouseChannels.reduce<PSIGridRow[]>((list, channelGroup) => {
+      const filteredMetrics = normalizedMetricFilter
+        ? channelGroup.metrics.filter((row) =>
+            String(row.metric).toLowerCase().includes(normalizedMetricFilter)
+          )
+        : channelGroup.metrics;
+
+      if (normalizedMetricFilter && filteredMetrics.length === 0) {
+        return list;
+      }
+
+      const isCollapsed = collapsedChannels[channelGroup.channelKey] ?? false;
+      const headerHighlight =
+        filteredMetrics.find((row) => row.rowHighlight === "warning")?.rowHighlight ||
+        filteredMetrics.find((row) => row.rowHighlight === "success")?.rowHighlight ||
+        channelGroup.header.rowHighlight;
+
+      list.push({
+        ...channelGroup.header,
+        collapsed: isCollapsed,
+        rowHighlight: headerHighlight,
+      });
+
+      if (!isCollapsed) {
+        list.push(...filteredMetrics);
+      }
+
+      return list;
+    }, []);
+  }, [activeWarehouseChannels, collapsedChannels, normalizedMetricFilter]);
 
   const handleMetricHeaderRef = useCallback((element: HTMLDivElement | null) => {
     setMetricHeaderElement(element);
@@ -225,24 +360,69 @@ const PSITableContent = ({
       {
         key: "channel",
         name: "Channel",
-        width: 180,
+        width: 220,
         frozen: true,
-        className: "psi-grid-channel-cell",
+        className: (row: PSIGridRow) =>
+          classNames(
+            "psi-grid-channel-cell",
+            row.rowType === "channel" && "psi-grid-channel-group",
+            row.rowType === "metric" && "psi-grid-channel-leaf",
+            getRowHighlightClass(row)
+          ),
+        renderCell: ({ row }) => {
+          if (row.rowType === "channel") {
+            const collapsed = row.collapsed ?? false;
+            return (
+              <button
+                type="button"
+                className="psi-grid-channel-group-content"
+                data-collapsed={collapsed}
+                aria-expanded={!collapsed}
+                aria-label={`${collapsed ? "Expand" : "Collapse"} channel ${row.channel}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleChannelCollapse(row.channelKey);
+                }}
+              >
+                <span className="psi-grid-channel-group-icon" aria-hidden="true">
+                  {collapsed ? "▶" : "▼"}
+                </span>
+                <div className="psi-grid-channel-group-text">
+                  <span className="psi-grid-channel-group-name">{row.channel}</span>
+                  {row.sku_code && (
+                    <span className="psi-grid-channel-group-meta">{row.sku_code}</span>
+                  )}
+                </div>
+              </button>
+            );
+          }
+
+          return <span className="psi-grid-channel-label">{row.channel}</span>;
+        },
       },
       {
         key: "metric",
         name: "",
         width: 160,
         frozen: true,
-        className: "psi-grid-metric-cell",
+        className: (row: PSIGridRow) =>
+          classNames(
+            "psi-grid-metric-cell",
+            row.rowType === "channel" && "psi-grid-metric-group",
+            row.rowType === "metric" && "psi-grid-metric-leaf",
+            getRowHighlightClass(row)
+          ),
+        renderCell: ({ row }) => (row.rowType === "channel" ? null : row.metric),
         setHeaderRef: handleMetricHeaderRef,
       },
     ],
-    [handleMetricHeaderRef]
+    [handleMetricHeaderRef, toggleChannelCollapse]
   );
 
   const duplicateCellMap = useMemo(() => {
-    if (rows.length === 0) {
+    const metricRows = rows.filter((row): row is PSIGridMetricRow => row.rowType === "metric");
+    if (metricRows.length === 0) {
       return new Map<string, Set<string>>();
     }
 
@@ -258,9 +438,9 @@ const PSITableContent = ({
 
     const duplicates = new Map<string, Set<string>>();
 
-    for (let index = 1; index < rows.length; index += 1) {
-      const currentRow = rows[index];
-      const previousRow = rows[index - 1];
+    for (let index = 1; index < metricRows.length; index += 1) {
+      const currentRow = metricRows[index];
+      const previousRow = metricRows[index - 1];
       if (!previousRow || currentRow.channelKey !== previousRow.channelKey) {
         continue;
       }
@@ -304,6 +484,14 @@ const PSITableContent = ({
           name: formatDisplayDate(date),
           width: 132,
           className: (row: PSIGridRow) => {
+            if (row.rowType !== "metric") {
+              return classNames(
+                "psi-grid-group-cell",
+                getRowHighlightClass(row),
+                isToday && "psi-grid-cell-today"
+              );
+            }
+
             const cellValue = row[date] as number | null | undefined;
             const numericValue = typeof cellValue === "number" ? cellValue : null;
             const isNegativeValue = numericValue !== null && numericValue < 0;
@@ -313,11 +501,13 @@ const PSITableContent = ({
               row.metricEditable && "psi-grid-cell-editable",
               isToday && "psi-grid-cell-today",
               isNegativeValue && "psi-grid-value-negative",
-              showStockWarning && "psi-grid-stock-warning"
+              showStockWarning && "psi-grid-stock-warning",
+              getRowHighlightClass(row)
             );
           },
           headerCellClass: classNames("psi-grid-date-header", isToday && "psi-grid-header-today"),
-          renderCell: ({ row }) => formatNumber(row[date] as number | null | undefined),
+          renderCell: ({ row }) =>
+            row.rowType === "metric" ? formatNumber(row[date] as number | null | undefined) : null,
           renderEditCell: (props) => <NumberEditor {...props} />,
           editorOptions: {
             editOnClick: true,
@@ -384,7 +574,12 @@ const PSITableContent = ({
       }
       const rowIndex = data.indexes[0];
       const updatedRow = updatedRows[rowIndex];
-      if (!updatedRow || !updatedRow.metricEditable || !isEditableField(updatedRow.metricKey)) {
+      if (
+        !updatedRow ||
+        updatedRow.rowType !== "metric" ||
+        !updatedRow.metricEditable ||
+        !isEditableField(updatedRow.metricKey)
+      ) {
         return;
       }
       const value = updatedRow[columnKey];
@@ -396,11 +591,18 @@ const PSITableContent = ({
 
   const handleCellClick = useCallback(
     (args: CellClickArgs<PSIGridRow>) => {
+      if (args.row.rowType === "channel") {
+        if (args.column.key === "channel" || args.column.key === "metric") {
+          toggleChannelCollapse(args.row.channelKey);
+        }
+        return;
+      }
+
       if (args.column.key === "channel") {
         onChannelCellClick?.(args.row);
       }
     },
-    [onChannelCellClick]
+    [onChannelCellClick, toggleChannelCollapse]
   );
 
   const scrollToDate = useCallback(
@@ -431,7 +633,7 @@ const PSITableContent = ({
     };
   }, [onRegisterScrollToDate, scrollToDate]);
 
-  const hasRows = allRows.length > 0 && visibleMetrics.length > 0 && allDates.length > 0;
+  const hasRows = rows.length > 0 && visibleMetrics.length > 0 && allDates.length > 0;
   const showSelectionPlaceholder = !selectedSku && hasAnyData;
   const showNoDataMessage = !hasAnyData && sessionId && !isLoading;
   const showNoMetricsMessage = Boolean(selectedSku && visibleMetrics.length === 0);
