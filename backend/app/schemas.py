@@ -132,3 +132,43 @@ class MasterRecordRead(MasterRecordBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ChannelTransferBase(BaseModel):
+    """Shared attributes for channel transfer write models."""
+
+    sku_code: str
+    warehouse_name: str
+    transfer_date: date
+    from_channel: str
+    to_channel: str
+    qty: float
+    note: str | None = None
+
+
+class ChannelTransferCreate(ChannelTransferBase):
+    """Schema for creating a channel transfer."""
+
+    session_id: UUID
+
+
+class ChannelTransferUpdate(BaseModel):
+    """Schema for updating a channel transfer."""
+
+    sku_code: str | None = None
+    warehouse_name: str | None = None
+    transfer_date: date | None = None
+    from_channel: str | None = None
+    to_channel: str | None = None
+    qty: float | None = None
+    note: str | None = None
+
+
+class ChannelTransferRead(ChannelTransferBase):
+    """Channel transfer data returned by the API."""
+
+    session_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
