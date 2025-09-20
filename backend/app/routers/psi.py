@@ -128,12 +128,28 @@ async def upload_csv_for_session(
     _get_session_or_404(db, session_id)
 
     raw_bytes = await file.read()
-    try:
-        text = raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:  # pragma: no cover - sanity check
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid encoding") from exc
+    text: str | None = None
+    decode_errors: list[UnicodeDecodeError] = []
+    for encoding in ("utf-8-sig", "utf-16", "utf-16le", "utf-16be"):
+        try:
+            text = raw_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError as exc:  # pragma: no cover - sanity check
+            decode_errors.append(exc)
 
-    reader = csv.DictReader(io.StringIO(text))
+    if text is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid encoding",
+        ) from (decode_errors[0] if decode_errors else None)
+
+    sample = text[:1024]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=[",", "\t", ";"])
+    except csv.Error:
+        dialect = csv.get_dialect("excel")
+
+    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
     if reader.fieldnames is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing header row")
 
