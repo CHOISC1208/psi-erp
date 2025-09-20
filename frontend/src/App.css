@@ -509,7 +509,8 @@ button.icon-button:focus-visible {
 .psi-table-container {
   flex: 1;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  position: relative;
   background: var(--surface-panel);
   border-radius: 0.75rem;
   border: 1px solid var(--border-default);
@@ -548,13 +549,13 @@ button.icon-button:focus-visible {
 
 .psi-table thead th {
   position: sticky;
-  top: var(--psi-table-header-offset, 0);
-  background: var(--surface-table-header);
+  top: var(--psi-table-header-offset, 0px);
+  background: var(--surface-panel, #111827);
+  color: var(--text-high, #f3f4f6);
   font-weight: 700;
   font-size: 0.8rem;
-  z-index: 6;
+  z-index: 30;
   text-transform: none;
-  color: var(--text-primary);
   border-bottom: 1px solid var(--border-default);
 }
 
@@ -614,6 +615,7 @@ button.icon-button:focus-visible {
 .psi-table .today-column {
   background: var(--psi-today-bg);
   box-shadow: inset 1px 0 0 var(--psi-today-border), inset -1px 0 0 var(--psi-today-border);
+  z-index: 1;
 }
 
 .psi-table thead .today-column {
@@ -632,8 +634,8 @@ button.icon-button:focus-visible {
 .psi-table .sticky-col {
   position: sticky;
   left: 0;
-  background: var(--surface-sticky-col);
-  z-index: 5;
+  background: var(--surface-panel, #111827);
+  z-index: 20;
   box-shadow: 1px 0 0 var(--border-default);
 }
 
@@ -642,10 +644,10 @@ button.icon-button:focus-visible {
 }
 
 .psi-table thead .sticky-col {
-  z-index: 7;
-  background: var(--surface-sticky-col);
+  z-index: 30;
+  background: var(--surface-panel, #111827);
   box-shadow: 1px 0 0 var(--border-default);
-  top: var(--psi-table-header-offset, 0);
+  top: var(--psi-table-header-offset, 0px);
 }
 
 .psi-table .col-sku {
