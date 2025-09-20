@@ -4,6 +4,8 @@ export type ChannelAgg = {
   inbound_sum: number;
   outbound_sum: number;
   last_closing: number | null;
+  last_safety_stock: number | null;
+  last_movable_stock: number | null;
 };
 
 export type SummaryRow = {
@@ -41,6 +43,8 @@ export function buildSummary(psi: PSIChannel[], start?: string | null, end?: str
       inbound_sum: 0,
       outbound_sum: 0,
       last_closing: null,
+      last_safety_stock: null,
+      last_movable_stock: null,
     };
 
     channel.daily.forEach((entry) => {
@@ -59,7 +63,17 @@ export function buildSummary(psi: PSIChannel[], start?: string | null, end?: str
       const previousDate = channelDates.get(lastDateKey);
       if (!previousDate || entry.date >= previousDate) {
         channelDates.set(lastDateKey, entry.date);
-        current.last_closing = entry.stock_closing ?? null;
+        const closing = entry.stock_closing ?? null;
+        const safety = entry.safety_stock ?? null;
+        const movable =
+          entry.movable_stock !== undefined && entry.movable_stock !== null
+            ? entry.movable_stock
+            : closing !== null && safety !== null
+              ? closing - safety
+              : null;
+        current.last_closing = closing;
+        current.last_safety_stock = safety;
+        current.last_movable_stock = movable;
       }
     });
 
