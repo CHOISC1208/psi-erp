@@ -38,7 +38,6 @@ interface PSITableControlsProps {
   onRefresh: () => void;
   refreshDisabled: boolean;
   onReset: () => void;
-  onTodayClick: () => void;
   hasBaselineData: boolean;
   getErrorMessage: (error: unknown, fallback: string) => string;
   selectedSku: string | null;
@@ -78,7 +77,6 @@ const PSITableControls = forwardRef(function PSITableControls(
     onRefresh,
     refreshDisabled,
     onReset,
-    onTodayClick,
     hasBaselineData,
     getErrorMessage,
     selectedSku,
@@ -246,20 +244,6 @@ const PSITableControls = forwardRef(function PSITableControls(
           </section>
           <aside className="psi-right-pane">
             <div className="psi-summary-card">
-              <div className="psi-summary-header">
-                <h3>集計（3 SKU / ページ）</h3>
-                <div className="psi-pager">
-                  <button type="button" onClick={goPrev} disabled={page <= 1 || sorted.length === 0}>
-                    ‹ 前へ
-                  </button>
-                  <span>
-                    {sorted.length === 0 ? "0 / 0" : `${page} / ${totalPages}`}
-                  </span>
-                  <button type="button" onClick={goNext} disabled={page >= totalPages || sorted.length === 0}>
-                    次へ ›
-                  </button>
-                </div>
-              </div>
               {sorted.length > 0 ? (
                 <PSISummaryTable
                   rows={pageRows}
@@ -307,10 +291,15 @@ const PSITableControls = forwardRef(function PSITableControls(
           </button>
         </div>
         <div className="psi-toolbar-spacer" aria-hidden="true" />
-        <button type="button" className="psi-button today" onClick={onTodayClick} aria-label="今日の列へ移動">
-          <img src={iconUrls.today} alt="" aria-hidden="true" className="psi-button-icon" />
-          <span>今日へ</span>
-        </button>
+        <div className="psi-toolbar-group psi-toolbar-pager">
+          <button type="button" onClick={goPrev} disabled={page <= 1 || sorted.length === 0}>
+            ‹ 前へ
+          </button>
+          <span>{sorted.length === 0 ? "0 / 0" : `${page} / ${totalPages}`}</span>
+          <button type="button" onClick={goNext} disabled={page >= totalPages || sorted.length === 0}>
+            次へ ›
+          </button>
+        </div>
       </div>
     </section>
   );

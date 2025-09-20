@@ -1,5 +1,6 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import DataGrid, { type Column } from "react-data-grid";
+import { createPortal } from "react-dom";
 
 import { ChannelAgg, SummaryRow } from "../utils/psiSummary";
 
@@ -53,6 +54,9 @@ const PSISummaryTable = memo(function PSISummaryTable({
   selectedSku,
   channelOrder,
 }: Props) {
+  const [metricFilter, setMetricFilter] = useState("");
+  const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
+
   const orderedChannels = useMemo(() => {
     const unique = new Set<string>();
     rows.forEach((row) => {
@@ -144,6 +148,16 @@ const PSISummaryTable = memo(function PSISummaryTable({
     return summaryRows;
   }, [rows, orderedChannels, selectedSku]);
 
+  const normalizedMetricFilter = metricFilter.trim().toLowerCase();
+
+  const filteredRows = useMemo(() => {
+    if (!normalizedMetricFilter) {
+      return gridRows;
+    }
+
+    return gridRows.filter((row) => row.metric.toLowerCase().includes(normalizedMetricFilter));
+  }, [gridRows, normalizedMetricFilter]);
+
   const valueClassName = useCallback(
     (row: SummaryGridRow, key: string) => {
       const rawValue = row[key];
@@ -159,6 +173,10 @@ const PSISummaryTable = memo(function PSISummaryTable({
     },
     []
   );
+
+  const handleMetricHeaderRef = useCallback((element: HTMLDivElement | null) => {
+    setMetricHeaderElement(element);
+  }, []);
 
   const columns = useMemo<Column<SummaryGridRow>[]>(() => {
     const skuColumn: Column<SummaryGridRow> = {
@@ -183,7 +201,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
 
     const metricColumn: Column<SummaryGridRow> = {
       key: "metric",
-      name: "Metric",
+      name: "",
       width: 136,
       frozen: true,
       className: (row) =>
@@ -192,6 +210,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
           `psi-grid-group-${row.groupPosition}`,
           row.isSelected && "psi-grid-row-selected"
         ),
+      setHeaderRef: handleMetricHeaderRef,
     };
 
     const channelColumns = orderedChannels.map((channel) => ({
@@ -222,7 +241,23 @@ const PSISummaryTable = memo(function PSISummaryTable({
     };
 
     return [skuColumn, metricColumn, ...channelColumns, surplusColumn, totalColumn];
-  }, [orderedChannels, valueClassName]);
+  }, [handleMetricHeaderRef, orderedChannels, valueClassName]);
+
+  const metricHeaderPortal =
+    metricHeaderElement &&
+    createPortal(
+      <div className="psi-grid-header-filter">
+        <span>Metric</span>
+        <input
+          type="text"
+          value={metricFilter}
+          onChange={(event) => setMetricFilter(event.target.value)}
+          placeholder="フィルタ"
+          aria-label="Metricをフィルタ"
+        />
+      </div>,
+      metricHeaderElement
+    );
 
   const handleCellClick = useCallback(
     ({ row }: { row: SummaryGridRow }) => {
@@ -237,13 +272,17 @@ const PSISummaryTable = memo(function PSISummaryTable({
 
   const rowHeight = 32;
   const headerHeight = 32;
-  const gridHeight = Math.max(headerHeight + gridRows.length * rowHeight, 224);
+  const maxVisibleRows = 9;
+  const minGridHeight = headerHeight + maxVisibleRows * rowHeight;
+  const dynamicHeight = headerHeight + Math.min(filteredRows.length, maxVisibleRows) * rowHeight;
+  const gridHeight = Math.max(minGridHeight, dynamicHeight);
 
   return (
     <div className="psi-summary-grid">
+      {metricHeaderPortal}
       <DataGrid
         columns={columns}
-        rows={gridRows}
+        rows={filteredRows}
         rowKeyGetter={(row) => row.id}
         onCellClick={handleCellClick}
         defaultColumnOptions={{ width: 132 }}

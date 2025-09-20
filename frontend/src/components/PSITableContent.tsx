@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import DataGrid, { type CellClickArgs, type Column, type RenderEditCellProps, type RowsChangeData } from "react-data-grid";
+import { createPortal } from "react-dom";
 
 import {
   EditableField,
@@ -121,6 +122,8 @@ const PSITableContent = ({
   onChannelCellClick,
 }: PSITableContentProps) => {
   const [activeWarehouse, setActiveWarehouse] = useState<string | null>(null);
+  const [metricFilter, setMetricFilter] = useState("");
+  const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
   const headerRefs = useRef(new Map<string, HTMLDivElement>());
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -200,7 +203,22 @@ const PSITableContent = ({
     [activeWarehouse, warehouses]
   );
 
-  const rows = activeWarehouseData?.rows ?? [];
+  const allRows = activeWarehouseData?.rows ?? [];
+  const normalizedMetricFilter = metricFilter.trim().toLowerCase();
+
+  const rows = useMemo(() => {
+    if (!normalizedMetricFilter) {
+      return allRows;
+    }
+
+    return allRows.filter((row) =>
+      String(row.metric).toLowerCase().includes(normalizedMetricFilter)
+    );
+  }, [allRows, normalizedMetricFilter]);
+
+  const handleMetricHeaderRef = useCallback((element: HTMLDivElement | null) => {
+    setMetricHeaderElement(element);
+  }, []);
 
   const baseColumns = useMemo<Column<PSIGridRow>[]>(
     () => [
@@ -213,13 +231,14 @@ const PSITableContent = ({
       },
       {
         key: "metric",
-        name: "Metric",
+        name: "",
         width: 160,
         frozen: true,
         className: "psi-grid-metric-cell",
+        setHeaderRef: handleMetricHeaderRef,
       },
     ],
-    []
+    [handleMetricHeaderRef]
   );
 
   const duplicateCellMap = useMemo(() => {
@@ -336,6 +355,22 @@ const PSITableContent = ({
     return [...enhancedBaseColumns, ...dateColumns];
   }, [baseColumns, dateColumns, duplicateCellMap]);
 
+  const metricHeaderPortal =
+    metricHeaderElement &&
+    createPortal(
+      <div className="psi-grid-header-filter">
+        <span>Metric</span>
+        <input
+          type="text"
+          value={metricFilter}
+          onChange={(event) => setMetricFilter(event.target.value)}
+          placeholder="フィルタ"
+          aria-label="Metricをフィルタ"
+        />
+      </div>,
+      metricHeaderElement
+    );
+
   const handleRowsChange = useCallback(
     (updatedRows: PSIGridRow[], data: RowsChangeData<PSIGridRow>) => {
       if (!data?.column) {
@@ -394,7 +429,7 @@ const PSITableContent = ({
     };
   }, [onRegisterScrollToDate, scrollToDate]);
 
-  const hasRows = rows.length > 0 && visibleMetrics.length > 0 && allDates.length > 0;
+  const hasRows = allRows.length > 0 && visibleMetrics.length > 0 && allDates.length > 0;
   const showSelectionPlaceholder = !selectedSku && hasAnyData;
   const showNoDataMessage = !hasAnyData && sessionId && !isLoading;
   const showNoMetricsMessage = Boolean(selectedSku && visibleMetrics.length === 0);
@@ -443,6 +478,7 @@ const PSITableContent = ({
             })}
           </div>
           <div className="psi-grid-container">
+            {metricHeaderPortal}
             <DataGrid
               columns={columns}
               rows={rows}

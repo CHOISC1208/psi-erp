@@ -345,15 +345,42 @@ button.collapse-toggle:focus-visible {
   margin-bottom: 8px;
 }
 
-.psi-pager {
+.psi-pager,
+.psi-toolbar-pager {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.psi-pager button:disabled {
+.psi-pager button:disabled,
+.psi-toolbar-pager button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.psi-toolbar-pager {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.psi-toolbar-pager button {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.psi-toolbar-pager button:hover:not([disabled]) {
+  background-color: rgba(253, 224, 71, 0.18);
+  border-color: rgba(253, 224, 71, 0.5);
+}
+
+.psi-toolbar-pager span {
+  min-width: 64px;
+  text-align: center;
 }
 
 
@@ -958,7 +985,7 @@ button.icon-button:focus-visible {
 
 .psi-data-grid.rdg {
   --psi-grid-border: rgba(148, 163, 184, 0.28);
-  --psi-grid-hover: rgba(59, 130, 246, 0.18);
+  --psi-grid-hover: rgba(253, 224, 71, 0.28);
   --psi-grid-selection: rgba(37, 99, 235, 0.22);
   --psi-grid-selection-border: rgba(37, 99, 235, 0.45);
   --psi-grid-editable: rgba(37, 99, 235, 0.14);
@@ -984,6 +1011,36 @@ button.icon-button:focus-visible {
   font-weight: 600;
   color: var(--text-secondary);
   border-right: 1px solid var(--psi-grid-border);
+}
+
+.psi-grid-header-filter {
+  display: grid;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.psi-grid-header-filter span {
+  font-weight: 600;
+}
+
+.psi-grid-header-filter input {
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-input);
+  background-color: var(--surface-input);
+  color: var(--text-primary);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.psi-grid-header-filter input::placeholder {
+  color: var(--text-muted);
+}
+
+.psi-grid-header-filter input:focus {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
 }
 
 .psi-data-grid .rdg-header-cell:last-child {
@@ -1038,7 +1095,9 @@ button.icon-button:focus-visible {
 .psi-grid-cell-duplicate:hover,
 .psi-grid-cell-duplicate:focus,
 .psi-grid-cell-duplicate:focus-within,
-.rdg-row:hover .psi-grid-cell-duplicate {
+.rdg-row:hover .psi-grid-cell-duplicate,
+.rdg-cell[aria-selected="true"].psi-grid-cell-duplicate,
+.rdg-cell.rdg-cell-editing.psi-grid-cell-duplicate {
   color: var(--text-primary);
 }
 
