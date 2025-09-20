@@ -395,7 +395,7 @@ button.collapse-toggle:focus-visible {
 
 .psi-summary-selection-overlay {
   position: absolute;
-  border: 2px solid var(--psi-grid-selection-outline);
+  border: 2px solid transparent;
   border-radius: 0.5rem;
   box-sizing: border-box;
   pointer-events: none;
