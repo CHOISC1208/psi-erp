@@ -521,6 +521,7 @@ button.icon-button:focus-visible {
   border-collapse: collapse;
   min-width: 840px;
   font-size: 0.8125rem;
+  table-layout: fixed;
 }
 
 
@@ -528,7 +529,8 @@ button.icon-button:focus-visible {
 .psi-table td {
   padding: 0.5rem 0.625rem;
   border-bottom: 1px solid var(--border-default);
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
   color: var(--text-primary);
 }
 
@@ -752,6 +754,9 @@ button.icon-button:focus-visible {
 
 .psi-edit-input {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 0.25rem 0.5rem;
   border-radius: 0.375rem;
   border: 1px solid var(--border-input);
@@ -836,6 +841,13 @@ button.icon-button:focus-visible {
 .numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.psi-table td.numeric {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .error {
