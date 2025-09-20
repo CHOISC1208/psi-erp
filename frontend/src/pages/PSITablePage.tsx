@@ -373,10 +373,6 @@ export default function PSITablePage() {
     };
   }, []);
 
-  const handleTodayClick = useCallback(() => {
-    scrollToDateRef.current(todayIso);
-  }, [todayIso]);
-
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -603,7 +599,6 @@ export default function PSITablePage() {
           onRefresh={() => psiQuery.refetch()}
           refreshDisabled={!sessionId || psiQuery.isFetching}
           onReset={handleReset}
-          onTodayClick={handleTodayClick}
           hasBaselineData={baselineData.length > 0}
           getErrorMessage={getErrorMessage}
           selectedSku={selectedSku}
