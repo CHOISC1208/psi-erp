@@ -1,16 +1,28 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../lib/api";
-import { PSIChannel, PSISessionSummary, Session } from "../types";
+import {
+  PSIChannel,
+  PSIEditApplyResult,
+  PSIEditUpdatePayload,
+  PSISessionSummary,
+  Session,
+} from "../types";
 
-const fetchSessions = async (): Promise<Session[]> => {
+export type PsiFilters = {
+  sku_code?: string;
+  warehouse_name?: string;
+  channel?: string;
+};
+
+export const fetchSessions = async (): Promise<Session[]> => {
   const { data } = await api.get<Session[]>("/sessions/");
   return data;
 };
 
-const fetchDailyPsi = async (
+export const fetchDailyPsi = async (
   sessionId: string,
-  filters: { sku_code?: string; warehouse_name?: string; channel?: string }
+  filters: PsiFilters
 ): Promise<PSIChannel[]> => {
   const params: Record<string, string> = {};
   if (filters.sku_code?.trim()) params.sku_code = filters.sku_code.trim();
@@ -23,8 +35,18 @@ const fetchDailyPsi = async (
   return data;
 };
 
-const fetchSessionSummary = async (sessionId: string): Promise<PSISessionSummary> => {
+export const fetchSessionSummary = async (
+  sessionId: string
+): Promise<PSISessionSummary> => {
   const { data } = await api.get<PSISessionSummary>(`/psi/${sessionId}/summary`);
+  return data;
+};
+
+export const applyPsiEdits = async (
+  sessionId: string,
+  edits: PSIEditUpdatePayload[]
+): Promise<PSIEditApplyResult> => {
+  const { data } = await api.post<PSIEditApplyResult>(`/psi/${sessionId}/edits/apply`, { edits });
   return data;
 };
 
@@ -36,10 +58,16 @@ export const useSessionsQuery = () =>
 
 export const useDailyPsiQuery = (
   sessionId: string,
-  filters: { sku_code?: string; warehouse_name?: string; channel?: string }
+  filters: PsiFilters
 ) =>
   useQuery({
-    queryKey: ["psi-daily", sessionId, filters.sku_code, filters.warehouse_name, filters.channel],
+    queryKey: [
+      "psi-daily",
+      sessionId,
+      filters.sku_code,
+      filters.warehouse_name,
+      filters.channel,
+    ],
     queryFn: () => fetchDailyPsi(sessionId, filters),
     enabled: Boolean(sessionId),
   });

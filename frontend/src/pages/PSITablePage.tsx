@@ -5,10 +5,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "../lib/api";
-import { PSIChannel, PSIDailyEntry, PSIEditApplyResult, Session } from "../types";
+import { PSIChannel, PSIDailyEntry, PSIEditUpdatePayload, Session } from "../types";
 import PSITableContent from "../components/PSITableContent";
 import PSITableControls from "../components/PSITableControls";
-import { useDailyPsiQuery, useSessionSummaryQuery, useSessionsQuery } from "../hooks/usePsiQueries";
+import { applyPsiEdits, useDailyPsiQuery, useSessionSummaryQuery, useSessionsQuery } from "../hooks/usePsi";
 import {
   EditableField,
   MetricDefinition,
@@ -33,24 +33,6 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   }
 
   return fallback;
-};
-
-interface PSIEditUpdatePayload {
-  sku_code: string;
-  warehouse_name: string;
-  channel: string;
-  date: string;
-  inbound_qty?: number | null;
-  outbound_qty?: number | null;
-  safety_stock?: number | null;
-}
-
-const applyPsiEdits = async (
-  sessionId: string,
-  edits: PSIEditUpdatePayload[]
-): Promise<PSIEditApplyResult> => {
-  const { data } = await api.post<PSIEditApplyResult>(`/psi/${sessionId}/edits/apply`, { edits });
-  return data;
 };
 
 const numberFormatter = new Intl.NumberFormat("ja-JP", {

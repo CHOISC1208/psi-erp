@@ -1,10 +1,11 @@
 import { ChangeEvent, FormEvent, useRef, useState } from "react";
 import axios from "axios";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../lib/api";
 import { Session } from "../types";
+import { useSessionsQuery } from "../hooks/usePsi";
 
 interface SessionFormState {
   title: string;
@@ -16,11 +17,6 @@ interface UploadVariables {
   sessionId: string;
   sessionTitle: string;
 }
-
-const fetchSessions = async (): Promise<Session[]> => {
-  const { data } = await api.get<Session[]>("/sessions/");
-  return data;
-};
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -46,10 +42,7 @@ export default function SessionsPage() {
   const [uploadStatus, setUploadStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [uploadingSessionId, setUploadingSessionId] = useState<string | null>(null);
 
-  const sessionsQuery = useQuery({
-    queryKey: ["sessions"],
-    queryFn: fetchSessions,
-  });
+  const sessionsQuery = useSessionsQuery();
 
   const createSession = useMutation<Session, unknown, SessionFormState>({
     mutationFn: async (payload: SessionFormState) => {

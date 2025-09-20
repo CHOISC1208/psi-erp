@@ -37,6 +37,16 @@ export interface PSIEditApplyResult {
   log_entries: number;
 }
 
+export interface PSIEditUpdatePayload {
+  sku_code: string;
+  warehouse_name: string;
+  channel: string;
+  date: string;
+  inbound_qty?: number | null;
+  outbound_qty?: number | null;
+  safety_stock?: number | null;
+}
+
 export interface MasterRecord {
   id: string;
   master_type: string;
