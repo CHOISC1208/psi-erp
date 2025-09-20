@@ -305,13 +305,15 @@ const PSITableContent = ({
           width: 132,
           className: (row: PSIGridRow) => {
             const cellValue = row[date] as number | null | undefined;
-            const isNegative =
-              row.metricKey === "stock_closing" && typeof cellValue === "number" && cellValue < 0;
+            const numericValue = typeof cellValue === "number" ? cellValue : null;
+            const isNegativeValue = numericValue !== null && numericValue < 0;
+            const showStockWarning = row.metricKey === "stock_closing" && isNegativeValue;
             return classNames(
               "psi-grid-value-cell",
               row.metricEditable && "psi-grid-cell-editable",
               isToday && "psi-grid-cell-today",
-              row.metricKey === "stock_closing" && isNegative && "psi-grid-stock-warning"
+              isNegativeValue && "psi-grid-value-negative",
+              showStockWarning && "psi-grid-stock-warning"
             );
           },
           headerCellClass: classNames("psi-grid-date-header", isToday && "psi-grid-header-today"),
