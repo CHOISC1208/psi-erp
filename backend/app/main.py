@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 
-from .routers import masters, psi, sessions
+from .routers import channel_transfers, masters, psi, sessions
 
 app = FastAPI(title="GEN-like PSI API")
 
@@ -25,11 +25,21 @@ app.add_middleware(
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(masters.router,  prefix="/masters",  tags=["masters"])
 app.include_router(psi.router,      prefix="/psi",      tags=["psi"])
+app.include_router(
+    channel_transfers.router,
+    prefix="/channel-transfers",
+    tags=["channel-transfers"],
+)
 
 # /api 配下にもミラー（フロントが /api/* を叩いてもOKに）
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(masters.router,  prefix="/api/masters",  tags=["masters"])
 app.include_router(psi.router,      prefix="/api/psi",      tags=["psi"])
+app.include_router(
+    channel_transfers.router,
+    prefix="/api/channel-transfers",
+    tags=["channel-transfers"],
+)
 
 @app.get("/health")
 def health() -> dict[str, bool]:
@@ -64,6 +74,7 @@ API_PREFIXES = (
     "sessions",
     "masters",
     "psi",
+    "channel-transfers",
     "health",
     "assets",
     "favicon.ico",

@@ -48,6 +48,7 @@ class DailyPSI(BaseModel):
     stock_at_anchor: float | None = None
     inbound_qty: float | None = None
     outbound_qty: float | None = None
+    channel_move: float | None = None
     net_flow: float | None = None
     stock_closing: float | None = None
     safety_stock: float | None = None
