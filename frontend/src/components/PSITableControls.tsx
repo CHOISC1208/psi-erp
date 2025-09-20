@@ -187,32 +187,6 @@ const PSITableControls = forwardRef(function PSITableControls(
               <p className="error">{getErrorMessage(sessionsQuery.error, "Unable to load sessions.")}</p>
             )}
           </div>
-          <div className="psi-summary-card">
-            <div className="psi-summary-header">
-              <h3>集計（3 SKU / ページ）</h3>
-              <div className="psi-pager">
-                <button type="button" onClick={goPrev} disabled={page <= 1 || sorted.length === 0}>
-                  ‹ 前へ
-                </button>
-                <span>
-                  {sorted.length === 0 ? "0 / 0" : `${page} / ${totalPages}`}
-                </span>
-                <button type="button" onClick={goNext} disabled={page >= totalPages || sorted.length === 0}>
-                  次へ ›
-                </button>
-              </div>
-            </div>
-            {sorted.length > 0 ? (
-              <PSISummaryTable
-                rows={pageRows}
-                onSelectSku={onSelectSku}
-                selectedSku={selectedSku}
-                channelOrder={["online", "retail", "wholesale"]}
-              />
-            ) : (
-              <p className="psi-summary-empty">該当する集計データがありません。</p>
-            )}
-          </div>
           <div className="psi-panel psi-description-panel">
             {sessionId ? (
               <>
@@ -266,6 +240,32 @@ const PSITableControls = forwardRef(function PSITableControls(
               </>
             ) : (
               <p>Select a session to view its details.</p>
+            )}
+          </div>
+          <div className="psi-summary-card">
+            <div className="psi-summary-header">
+              <h3>集計（3 SKU / ページ）</h3>
+              <div className="psi-pager">
+                <button type="button" onClick={goPrev} disabled={page <= 1 || sorted.length === 0}>
+                  ‹ 前へ
+                </button>
+                <span>
+                  {sorted.length === 0 ? "0 / 0" : `${page} / ${totalPages}`}
+                </span>
+                <button type="button" onClick={goNext} disabled={page >= totalPages || sorted.length === 0}>
+                  次へ ›
+                </button>
+              </div>
+            </div>
+            {sorted.length > 0 ? (
+              <PSISummaryTable
+                rows={pageRows}
+                onSelectSku={onSelectSku}
+                selectedSku={selectedSku}
+                channelOrder={["online", "retail", "wholesale"]}
+              />
+            ) : (
+              <p className="psi-summary-empty">該当する集計データがありません。</p>
             )}
           </div>
         </div>

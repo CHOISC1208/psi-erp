@@ -1,4 +1,4 @@
-import { MutableRefObject, useEffect, useMemo, useRef } from "react";
+import { MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import {
@@ -88,6 +88,9 @@ const PSITableSplit = ({
   const rightPaneRef = useRef<HTMLDivElement | null>(null);
   const headerRightInnerRef = useRef<HTMLDivElement | null>(null);
   const syncingRef = useRef(false);
+  const leftRowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+  const rightRowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+  const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
     tableScrollContainerRef.current = rightPaneRef.current;
@@ -219,6 +222,69 @@ const PSITableSplit = ({
     </div>
   );
 
+  const syncRowHeights = useCallback(() => {
+    const count = Math.max(leftRowRefs.current.length, rightRowRefs.current.length);
+
+    for (let index = 0; index < count; index += 1) {
+      const leftRow = leftRowRefs.current[index];
+      const rightRow = rightRowRefs.current[index];
+      if (leftRow) {
+        leftRow.style.removeProperty("height");
+      }
+      if (rightRow) {
+        rightRow.style.removeProperty("height");
+      }
+    }
+
+    for (let index = 0; index < count; index += 1) {
+      const leftRow = leftRowRefs.current[index];
+      const rightRow = rightRowRefs.current[index];
+      if (!leftRow || !rightRow) {
+        continue;
+      }
+
+      const maxHeight = Math.max(leftRow.getBoundingClientRect().height, rightRow.getBoundingClientRect().height);
+      const height = `${maxHeight}px`;
+      leftRow.style.height = height;
+      rightRow.style.height = height;
+    }
+  }, []);
+
+  const scheduleSync = useCallback(() => {
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current);
+    }
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = null;
+      syncRowHeights();
+    });
+  }, [syncRowHeights]);
+
+  useLayoutEffect(() => {
+    scheduleSync();
+    return () => {
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [rows, scheduleSync]);
+
+  useEffect(() => {
+    scheduleSync();
+  }, [selectedChannelKey, scheduleSync]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      scheduleSync();
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [scheduleSync]);
+
   return (
     <div className="psi-grid">
       <div className="psi-header">
@@ -273,7 +339,7 @@ const PSITableSplit = ({
                 metric,
                 metricIndex,
                 rowSpan,
-              }) => {
+              }, rowIndex) => {
                 const isFirstMetricRow = metricIndex === 0;
                 const isSelected = selectedChannelKey === channelKey;
 
@@ -283,12 +349,14 @@ const PSITableSplit = ({
                     className={`psi-table-row${isSelected ? " selected" : ""}`}
                     onClick={() => setSelectedChannelKey(channelKey)}
                     tabIndex={isFirstMetricRow ? 0 : -1}
+                    data-index={rowIndex}
                     ref={
-                      isFirstMetricRow
-                        ? (element) => {
-                            rowGroupRefs.current[channelIndex] = element ?? null;
-                          }
-                        : undefined
+                      (element) => {
+                        leftRowRefs.current[rowIndex] = element ?? null;
+                        if (isFirstMetricRow) {
+                          rowGroupRefs.current[channelIndex] = element ?? null;
+                        }
+                      }
                     }
                     onKeyDown={
                       isFirstMetricRow
@@ -300,21 +368,21 @@ const PSITableSplit = ({
                     {isFirstMetricRow && (
                       <>
                         <td className={`col-sku${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
-                          {channel.sku_code}
+                          <div className="psi-cell-text">{channel.sku_code}</div>
                         </td>
                         <td className={`col-sku-name${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
-                          {channel.sku_name ?? "—"}
+                          <div className="psi-cell-text">{channel.sku_name ?? "—"}</div>
                         </td>
                         <td className={`col-warehouse${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
-                          {channel.warehouse_name}
+                          <div className="psi-cell-text">{channel.warehouse_name}</div>
                         </td>
                         <td className={`col-channel${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
-                          {channel.channel}
+                          <div className="psi-cell-text">{channel.channel}</div>
                         </td>
                       </>
                     )}
                     <td className={`col-div psi-metric-name${isSelected ? " selected" : ""}`}>
-                      {metric.label}
+                      <div className="psi-cell-text">{metric.label}</div>
                     </td>
                   </tr>
                 );
@@ -325,7 +393,7 @@ const PSITableSplit = ({
         <div className="psi-right-pane" ref={rightPaneRef} onScroll={handleRightScroll}>
           <table className="psi-table">
             <tbody>
-              {rows.map(({ channelKey, metric, dateMap }) => {
+              {rows.map(({ channelKey, metric, dateMap }, rowIndex) => {
                 const isSelected = selectedChannelKey === channelKey;
 
                 return (
@@ -335,6 +403,10 @@ const PSITableSplit = ({
                     onClick={() => setSelectedChannelKey(channelKey)}
                     tabIndex={-1}
                     aria-selected={isSelected}
+                    data-index={rowIndex}
+                    ref={(element) => {
+                      rightRowRefs.current[rowIndex] = element ?? null;
+                    }}
                   >
                     {allDates.map((date) => {
                       const entry = dateMap.get(date);
