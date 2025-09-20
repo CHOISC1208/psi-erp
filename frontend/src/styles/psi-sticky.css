@@ -1,0 +1,79 @@
+.psi-grid {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+.psi-header {
+  position: sticky;
+  top: var(--psi-table-header-offset, 0px);
+  z-index: 50;
+  background: var(--surface-panel, #111827);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.psi-body {
+  display: grid;
+  grid-template-columns: var(--psi-left-width, 520px) 1fr;
+  min-height: 0;
+}
+
+.psi-left-pane {
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid var(--border-default);
+}
+
+.psi-right-pane {
+  overflow: auto;
+}
+
+.psi-table {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.psi-table th,
+.psi-table td {
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+
+.psi-table td.numeric {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.psi-edit-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.psi-left-pane td,
+.psi-left-pane th {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.psi-header-row {
+  display: grid;
+  grid-template-columns: var(--psi-left-width, 520px) 1fr;
+  align-items: stretch;
+}
+
+.psi-header-left {
+  overflow: hidden;
+}
+
+.psi-header-right {
+  overflow: hidden;
+}
+
+.psi-header-right-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
