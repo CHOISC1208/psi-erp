@@ -70,10 +70,9 @@ const metricLabels: { key: SummaryMetricKey; label: string }[] = [
 ];
 
 const metricGroupPositions: SummaryGroupPosition[] = ["middle", "middle", "end"];
-const rowsPerGroup = metricGroupPositions.length + 1;
-const maxVisibleRows = rowsPerGroup * 3;
 const defaultHeaderHeight = 36;
 const defaultRowHeight = 36;
+const defaultBodyContentHeight = defaultRowHeight * (metricGroupPositions.length + 1);
 const baseColumnWidth = 112;
 const metricColumnWidth = 152;
 const skuColumnWidth = baseColumnWidth * 3;
@@ -93,7 +92,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
   const [collapsedSkus, setCollapsedSkus] = useState<Record<string, boolean>>({});
   const [gridLayoutMetrics, setGridLayoutMetrics] = useState(() => ({
     headerHeight: defaultHeaderHeight,
-    rowHeight: defaultRowHeight,
+    bodyContentHeight: defaultBodyContentHeight,
     horizontalScrollbarHeight: 0,
   }));
 
@@ -159,25 +158,22 @@ const PSISummaryTable = memo(function PSISummaryTable({
     }
 
     const headerRow = container.querySelector<HTMLElement>(".rdg-header-row");
-    const dataRow = container.querySelector<HTMLElement>(".rdg-row:not(.rdg-row-frozen)");
-    const viewport = container.querySelector<HTMLElement>(".rdg-viewport");
+    const body = container.querySelector<HTMLElement>(".rdg-body");
 
     const measuredHeaderHeight = headerRow?.getBoundingClientRect().height ?? defaultHeaderHeight;
-    const measuredRowHeight = dataRow?.getBoundingClientRect().height ?? defaultRowHeight;
-    const scrollbarHeight = viewport
-      ? Math.max(0, viewport.offsetHeight - viewport.clientHeight)
-      : 0;
+    const measuredBodyContentHeight = body?.scrollHeight ?? defaultBodyContentHeight;
+    const scrollbarHeight = body ? Math.max(0, body.offsetHeight - body.clientHeight) : 0;
 
     setGridLayoutMetrics((previous) => {
       const next = {
         headerHeight: measuredHeaderHeight,
-        rowHeight: measuredRowHeight,
+        bodyContentHeight: measuredBodyContentHeight,
         horizontalScrollbarHeight: scrollbarHeight,
       };
 
       if (
         Math.abs(previous.headerHeight - next.headerHeight) < 0.5 &&
-        Math.abs(previous.rowHeight - next.rowHeight) < 0.5 &&
+        Math.abs(previous.bodyContentHeight - next.bodyContentHeight) < 0.5 &&
         Math.abs(previous.horizontalScrollbarHeight - next.horizontalScrollbarHeight) < 0.5
       ) {
         return previous;
@@ -315,51 +311,6 @@ const PSISummaryTable = memo(function PSISummaryTable({
     }, []);
   }, [summaryGroups]);
 
-  const paddedRows = useMemo(() => {
-    if (visibleRows.length >= maxVisibleRows) {
-      return visibleRows;
-    }
-
-    const placeholdersNeeded = maxVisibleRows - visibleRows.length;
-    const placeholders: SummaryGridRow[] = [];
-    const placeholderPattern: Array<{
-      rowType: SummaryRowType;
-      metricKey?: SummaryMetricKey;
-      groupPosition: SummaryGroupPosition;
-    }> = [
-      { rowType: "skuHeader", groupPosition: "start" },
-      { rowType: "metric", metricKey: "inbound_sum", groupPosition: "middle" },
-      { rowType: "metric", metricKey: "outbound_sum", groupPosition: "middle" },
-      { rowType: "metric", metricKey: "last_closing", groupPosition: "end" },
-    ];
-
-    for (let index = 0; index < placeholdersNeeded; index += 1) {
-      const pattern = placeholderPattern[index % placeholderPattern.length];
-      const metricLabel =
-        pattern.metricKey && metricLabels.find((item) => item.key === pattern.metricKey)?.label;
-      const placeholder: SummaryGridRow = {
-        id: `placeholder-${index}`,
-        rowType: pattern.rowType,
-        sku: "",
-        metric: metricLabel ?? "",
-        metricKey: pattern.metricKey,
-        groupPosition: pattern.groupPosition,
-        isSelected: false,
-        total: null,
-        surplus: null,
-        isPlaceholder: true,
-      };
-
-      orderedChannels.forEach((channel) => {
-        placeholder[channel] = null;
-      });
-
-      placeholders.push(placeholder);
-    }
-
-    return [...visibleRows, ...placeholders];
-  }, [visibleRows, orderedChannels]);
-
   useLayoutEffect(() => {
     measureGridLayout();
 
@@ -378,15 +329,20 @@ const PSISummaryTable = memo(function PSISummaryTable({
 
     resizeObserver.observe(container);
 
-    const viewport = container.querySelector<HTMLElement>(".rdg-viewport");
-    if (viewport) {
-      resizeObserver.observe(viewport);
+    const headerRow = container.querySelector<HTMLElement>(".rdg-header-row");
+    if (headerRow) {
+      resizeObserver.observe(headerRow);
+    }
+
+    const body = container.querySelector<HTMLElement>(".rdg-body");
+    if (body) {
+      resizeObserver.observe(body);
     }
 
     return () => {
       resizeObserver.disconnect();
     };
-  }, [measureGridLayout, paddedRows, orderedChannels]);
+  }, [measureGridLayout, orderedChannels, visibleRows]);
 
   const valueClassName = useCallback(
     (row: SummaryGridRow, key: string) => {
@@ -483,7 +439,11 @@ const PSISummaryTable = memo(function PSISummaryTable({
 
   useLayoutEffect(() => {
     scheduleSelectionOverlayUpdate();
-  }, [paddedRows, scheduleSelectionOverlayUpdate]);
+  }, [scheduleSelectionOverlayUpdate, visibleRows]);
+
+  useLayoutEffect(() => {
+    scheduleSelectionOverlayUpdate();
+  }, [gridLayoutMetrics, scheduleSelectionOverlayUpdate]);
 
   useLayoutEffect(() => {
     const container = gridContainerRef.current;
@@ -491,7 +451,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
       return;
     }
 
-    const viewport = container.querySelector<HTMLElement>(".rdg-viewport");
+    const viewport = container.querySelector<HTMLElement>(".rdg-body");
     if (!viewport) {
       updateSelectionOverlay();
       measureGridLayout();
@@ -520,7 +480,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
         cancelAnimationFrame(animationFrame);
       }
     };
-  }, [measureGridLayout, updateSelectionOverlay, paddedRows]);
+  }, [measureGridLayout, updateSelectionOverlay, visibleRows]);
 
   const columns = useMemo<Column<SummaryGridRow>[]>(() => {
     const skuColumn: Column<SummaryGridRow> = {
@@ -532,24 +492,12 @@ const PSISummaryTable = memo(function PSISummaryTable({
       className: (row) =>
         classNames(
           "psi-grid-summary-sku-cell",
-          !row.isPlaceholder && row.groupPosition && `psi-grid-group-${row.groupPosition}`,
-          !row.isPlaceholder && row.groupPosition !== "start" && "psi-grid-cell-duplicate",
-          row.isSelected && "psi-summary-cell-selected",
-          row.isPlaceholder && "psi-summary-cell-placeholder"
+          row.groupPosition && `psi-grid-group-${row.groupPosition}`,
+          row.groupPosition !== "start" && "psi-grid-cell-duplicate",
+          row.isSelected && "psi-summary-cell-selected"
         ),
       renderCell: ({ row }) => {
         if (row.rowType === "skuHeader") {
-          if (row.isPlaceholder) {
-            return (
-              <div className="psi-grid-summary-sku-group" aria-hidden="true">
-                <span className="psi-grid-summary-sku-toggle" aria-hidden="true">
-                  <span className="psi-grid-summary-sku-toggle-icon">▼</span>
-                </span>
-                <div className="psi-grid-summary-sku" />
-              </div>
-            );
-          }
-
           const collapsed = row.collapsed ?? false;
           return (
             <div className="psi-grid-summary-sku-group">
@@ -589,11 +537,10 @@ const PSISummaryTable = memo(function PSISummaryTable({
       className: (row) =>
         classNames(
           "psi-grid-summary-metric-cell",
-          !row.isPlaceholder && row.groupPosition && `psi-grid-group-${row.groupPosition}`,
-          row.isSelected && "psi-summary-cell-selected",
-          row.isPlaceholder && "psi-summary-cell-placeholder"
+          row.groupPosition && `psi-grid-group-${row.groupPosition}`,
+          row.isSelected && "psi-summary-cell-selected"
         ),
-      renderCell: ({ row }) => (row.rowType === "metric" && !row.isPlaceholder ? row.metric : ""),
+      renderCell: ({ row }) => (row.rowType === "metric" ? row.metric : ""),
       setHeaderRef: handleMetricHeaderRef,
     };
 
@@ -604,7 +551,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
       className: (row: SummaryGridRow) => valueClassName(row, channel),
       headerCellClass: "psi-grid-header-numeric",
       renderCell: ({ row }: { row: SummaryGridRow }) => {
-        if (row.isPlaceholder || row.rowType === "skuHeader") {
+        if (row.rowType === "skuHeader") {
           return "";
         }
         return formatValue(row[channel] as number | null | undefined);
@@ -618,9 +565,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
       className: (row) => valueClassName(row, "total"),
       headerCellClass: "psi-grid-header-numeric",
       renderCell: ({ row }) =>
-        row.isPlaceholder || row.rowType === "skuHeader"
-          ? ""
-          : formatValue(row.total as number | null | undefined),
+        row.rowType === "skuHeader" ? "" : formatValue(row.total as number | null | undefined),
     };
 
     return [skuColumn, metricColumn, ...channelColumns, totalColumn];
@@ -679,9 +624,6 @@ const PSISummaryTable = memo(function PSISummaryTable({
 
   const handleCellClick = useCallback(
     ({ row, event }: CellClickArgs<SummaryGridRow>) => {
-      if (row.isPlaceholder) {
-        return;
-      }
       if (event.altKey || event.metaKey) {
         event.preventDefault();
         event.stopPropagation();
@@ -702,31 +644,22 @@ const PSISummaryTable = memo(function PSISummaryTable({
     [onSelectSku, scheduleSelectionOverlayUpdate]
   );
 
-  const getRowClassName = useCallback(
-    (row: SummaryGridRow) => {
-      if (row.isPlaceholder) {
-        return "psi-summary-row-placeholder";
-      }
-      if (!row.isSelected) {
-        return undefined;
-      }
-      const positionClass = row.groupPosition
-        ? `psi-summary-row-selected-${row.groupPosition}`
-        : undefined;
-      return classNames("psi-summary-row-selected", positionClass);
-    },
-    []
-  );
+  const getRowClassName = useCallback((row: SummaryGridRow) => {
+    if (!row.isSelected) {
+      return undefined;
+    }
+    const positionClass = row.groupPosition ? `psi-summary-row-selected-${row.groupPosition}` : undefined;
+    return classNames("psi-summary-row-selected", positionClass);
+  }, []);
 
   if (!rows.length) {
     return null;
   }
 
-  const rowCountForHeight = Math.max(maxVisibleRows, paddedRows.length);
+  const fallbackBodyHeight = Math.max(visibleRows.length, 1) * defaultRowHeight;
+  const bodyHeight = Math.max(gridLayoutMetrics.bodyContentHeight, fallbackBodyHeight);
   const gridHeight = Math.ceil(
-    gridLayoutMetrics.headerHeight +
-      gridLayoutMetrics.rowHeight * rowCountForHeight +
-      gridLayoutMetrics.horizontalScrollbarHeight
+    gridLayoutMetrics.headerHeight + bodyHeight + gridLayoutMetrics.horizontalScrollbarHeight
   );
 
   return (
@@ -747,7 +680,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
       {metricHeaderPortal}
       <DataGrid
         columns={columns}
-        rows={paddedRows}
+        rows={visibleRows}
         rowKeyGetter={(row) => row.id}
         onCellClick={handleCellClick}
         defaultColumnOptions={{ width: baseColumnWidth }}
