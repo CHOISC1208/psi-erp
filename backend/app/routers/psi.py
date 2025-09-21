@@ -206,7 +206,7 @@ async def upload_csv_for_session(
 
     Args:
         session_id: Identifier of the session receiving the upload.
-        file: Uploaded CSV file following the schema documented in database.md.
+        file: Uploaded CSV file following the schema documented in docs/database.md.
         db: Database session injected by FastAPI.
 
     Returns:

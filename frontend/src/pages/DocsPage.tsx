@@ -10,7 +10,7 @@ type DocEntry = {
   searchableText: string;
 };
 
-const markdownModules = import.meta.glob("../../../*.md", {
+const markdownModules = import.meta.glob("../../../docs/**/*.md", {
   eager: true,
   query: "?raw",
   import: "default"
