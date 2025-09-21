@@ -9,7 +9,7 @@ import {
   PSIEditableChannel,
   PSIGridRow,
   MetricKey,
-  PSIGridChannelRow,
+  PSIGridChannelHeaderRow,
   PSIGridMetricRow,
 } from "../pages/psiTableTypes";
 
@@ -51,7 +51,7 @@ const isEditableField = (key: MetricKey): key is EditableField => editableFieldS
 
 type WarehouseChannelGroup = {
   channelKey: string;
-  header: PSIGridChannelRow;
+  header: PSIGridChannelHeaderRow;
   metrics: PSIGridMetricRow[];
 };
 
@@ -144,7 +144,6 @@ const PSITableContent = ({
   const [activeWarehouse, setActiveWarehouse] = useState<string | null>(null);
   const [metricFilter, setMetricFilter] = useState("");
   const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
-  const [collapsedChannels, setCollapsedChannels] = useState<Record<string, boolean>>({});
   const headerRefs = useRef(new Map<string, HTMLDivElement>());
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -169,7 +168,7 @@ const PSITableContent = ({
         const channelKey = makeChannelKey(channel);
         const dateMap = new Map(channel.daily.map((entry) => [entry.date, entry]));
 
-        const headerRow: PSIGridChannelRow = {
+        const headerRow: PSIGridChannelHeaderRow = {
           id: `${channelKey}__header`,
           channelKey,
           sku_code: channel.sku_code,
@@ -177,7 +176,8 @@ const PSITableContent = ({
           channel: channel.channel,
           metric: "",
           metricEditable: false,
-          rowType: "channel",
+          rowType: "channelHeader",
+          showChannelLabel: true,
         };
 
         allDates.forEach((date) => {
@@ -196,6 +196,7 @@ const PSITableContent = ({
             metricKey,
             metricEditable: metric.editable === true,
             rowType: "metric",
+            showChannelLabel: false,
           };
 
           allDates.forEach((date) => {
@@ -247,53 +248,6 @@ const PSITableContent = ({
   const activeWarehouseChannels = activeWarehouseData?.channels ?? [];
   const normalizedMetricFilter = metricFilter.trim().toLowerCase();
 
-  const allChannelKeys = useMemo(() => {
-    const keys = new Set<string>();
-    warehouses.forEach((warehouse) => {
-      warehouse.channels.forEach((channel) => {
-        keys.add(channel.channelKey);
-      });
-    });
-    return keys;
-  }, [warehouses]);
-
-  useEffect(() => {
-    setCollapsedChannels((previous) => {
-      if (!previous || Object.keys(previous).length === 0) {
-        return previous;
-      }
-
-      let changed = false;
-      const next: Record<string, boolean> = {};
-      allChannelKeys.forEach((key) => {
-        if (previous[key]) {
-          next[key] = true;
-        }
-      });
-
-      if (Object.keys(previous).length !== Object.keys(next).length) {
-        changed = true;
-      }
-
-      if (changed) {
-        return next;
-      }
-
-      return previous;
-    });
-  }, [allChannelKeys]);
-
-  const toggleChannelCollapse = useCallback((channelKey: string) => {
-    setCollapsedChannels((previous) => {
-      const current = previous[channelKey] ?? false;
-      if (current) {
-        const { [channelKey]: _removed, ...rest } = previous;
-        return rest;
-      }
-      return { ...previous, [channelKey]: true };
-    });
-  }, []);
-
   const rows = useMemo(() => {
     if (!activeWarehouseChannels.length) {
       return [] as PSIGridRow[];
@@ -310,19 +264,17 @@ const PSITableContent = ({
         return list;
       }
 
-      const isCollapsed = collapsedChannels[channelGroup.channelKey] ?? false;
-      list.push({
-        ...channelGroup.header,
-        collapsed: isCollapsed,
-      });
-
-      if (!isCollapsed) {
-        list.push(...filteredMetrics);
-      }
+      list.push(channelGroup.header);
+      list.push(
+        ...filteredMetrics.map((metricRow) => ({
+          ...metricRow,
+          showChannelLabel: false,
+        }))
+      );
 
       return list;
     }, []);
-  }, [activeWarehouseChannels, collapsedChannels, normalizedMetricFilter]);
+  }, [activeWarehouseChannels, normalizedMetricFilter]);
 
   const handleMetricHeaderRef = useCallback((element: HTMLDivElement | null) => {
     setMetricHeaderElement(element);
@@ -338,39 +290,30 @@ const PSITableContent = ({
         className: (row: PSIGridRow) =>
           classNames(
             "psi-grid-channel-cell",
-            row.rowType === "channel" && "psi-grid-channel-group",
+            row.rowType === "channelHeader" && "psi-grid-channel-group",
             row.rowType === "metric" && "psi-grid-channel-leaf"
           ),
         renderCell: ({ row }) => {
-          if (row.rowType === "channel") {
-            const collapsed = row.collapsed ?? false;
+          if (row.rowType === "channelHeader") {
             return (
-              <button
-                type="button"
-                className="psi-grid-channel-group-content"
-                data-collapsed={collapsed}
-                aria-expanded={!collapsed}
-                aria-label={`${collapsed ? "Expand" : "Collapse"} channel ${row.channel}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  toggleChannelCollapse(row.channelKey);
-                }}
-              >
-                <span className="psi-grid-channel-group-icon" aria-hidden="true">
-                  {collapsed ? "▶" : "▼"}
-                </span>
+              <div className="psi-grid-channel-group-content">
+                <span className="psi-grid-channel-group-icon" aria-hidden="true">▼</span>
                 <div className="psi-grid-channel-group-text">
                   <span className="psi-grid-channel-group-name">{row.channel}</span>
                   {row.sku_code && (
                     <span className="psi-grid-channel-group-meta">{row.sku_code}</span>
                   )}
                 </div>
-              </button>
+              </div>
             );
           }
 
-          return <span className="psi-grid-channel-label">{row.channel}</span>;
+          const channelLabel = row.showChannelLabel === false ? "" : row.channel;
+          return (
+            <span className="psi-grid-channel-label" aria-label={row.channel}>
+              {channelLabel}
+            </span>
+          );
         },
       },
       {
@@ -381,14 +324,14 @@ const PSITableContent = ({
         className: (row: PSIGridRow) =>
           classNames(
             "psi-grid-metric-cell",
-            row.rowType === "channel" && "psi-grid-metric-group",
+            row.rowType === "channelHeader" && "psi-grid-metric-group",
             row.rowType === "metric" && "psi-grid-metric-leaf"
           ),
-        renderCell: ({ row }) => (row.rowType === "channel" ? null : row.metric),
+        renderCell: ({ row }) => (row.rowType === "channelHeader" ? null : row.metric),
         setHeaderRef: handleMetricHeaderRef,
       },
     ],
-    [handleMetricHeaderRef, toggleChannelCollapse]
+    [handleMetricHeaderRef]
   );
 
   const duplicateCellMap = useMemo(() => {
@@ -565,13 +508,6 @@ const PSITableContent = ({
 
   const handleCellClick = useCallback(
     (args: CellClickArgs<PSIGridRow>) => {
-      if (args.row.rowType === "channel") {
-        if (args.column.key === "channel" || args.column.key === "metric") {
-          toggleChannelCollapse(args.row.channelKey);
-        }
-        return;
-      }
-
       if (args.row.rowType === "metric" && args.row.metricKey === "channel_move") {
         const columnKey = args.column.key;
         if (allDates.includes(columnKey)) {
@@ -584,7 +520,7 @@ const PSITableContent = ({
         }
       }
     },
-    [allDates, onChannelCellClick, toggleChannelCollapse]
+    [allDates, onChannelCellClick]
   );
 
   const scrollToDate = useCallback(
@@ -674,7 +610,7 @@ const PSITableContent = ({
               defaultColumnOptions={{ width: 132 }}
               viewportRef={viewportRef}
               style={{ blockSize: "calc(100vh - 320px)" }}
-              className="psi-data-grid"
+              className="psi-rdg psi-data-grid"
             />
           </div>
         </div>

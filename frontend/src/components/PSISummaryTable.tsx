@@ -14,17 +14,23 @@ import { ChannelAgg, SummaryRow } from "../utils/psiSummary";
 
 type SummaryMetricKey = keyof Pick<ChannelAgg, "inbound_sum" | "outbound_sum" | "last_closing">;
 
+type SummaryRowType = "skuHeader" | "metric";
+
+type SummaryGroupPosition = "start" | "middle" | "end";
+
 type SummaryGridRow = Record<string, string | number | boolean | null | undefined> & {
   id: string;
+  rowType: SummaryRowType;
   sku: string;
   skuName?: string;
   metric: string;
-  metricKey: SummaryMetricKey;
-  groupPosition: "start" | "middle" | "end";
+  metricKey?: SummaryMetricKey;
+  groupPosition: SummaryGroupPosition;
   isSelected: boolean;
   total: number | null;
   surplus: number | null;
   isPlaceholder?: boolean;
+  collapsed?: boolean;
 };
 
 type SelectionOverlayMetrics = {
@@ -63,14 +69,13 @@ const metricLabels: { key: SummaryMetricKey; label: string }[] = [
   { key: "last_closing", label: "Stock Closing" },
 ];
 
-const summaryGroupPositions: Array<"start" | "middle" | "end"> = ["start", "middle", "end"];
-
-const maxVisibleRows = 9;
+const metricGroupPositions: SummaryGroupPosition[] = ["middle", "middle", "end"];
+const rowsPerGroup = metricGroupPositions.length + 1;
+const maxVisibleRows = rowsPerGroup * 3;
 const headerHeight = 36;
-// Allow enough vertical room for nine visible data rows with the current
-// effective row height (including padding and borders).
-const summaryBodyHeight = 468;
+const summaryBodyHeight = 432;
 const baseColumnWidth = 132;
+const metricColumnWidth = 152;
 const skuColumnWidth = baseColumnWidth * 3;
 
 const PSISummaryTable = memo(function PSISummaryTable({
@@ -85,6 +90,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const [selectionOverlay, setSelectionOverlay] = useState<SelectionOverlayMetrics | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const [collapsedSkus, setCollapsedSkus] = useState<Record<string, boolean>>({});
 
   const orderedChannels = useMemo(() => {
     const unique = new Set<string>();
@@ -112,97 +118,192 @@ const PSISummaryTable = memo(function PSISummaryTable({
     });
   }, [rows, channelOrder]);
 
-  const gridRows = useMemo(() => {
-    const summaryRows: SummaryGridRow[] = [];
-    rows.forEach((row) => {
-      metricLabels.forEach((metric, index) => {
-        const channelValues: Record<string, number | null> = {};
+  useEffect(() => {
+    setCollapsedSkus((previous) => {
+      if (!rows.length) {
+        return Object.keys(previous).length ? {} : previous;
+      }
+      const valid = new Set(rows.map((row) => row.sku_code));
+      const next: Record<string, boolean> = {};
+      valid.forEach((sku) => {
+        if (previous[sku]) {
+          next[sku] = true;
+        }
+      });
+      if (Object.keys(previous).length === Object.keys(next).length) {
+        return previous;
+      }
+      return next;
+    });
+  }, [rows]);
+
+  const toggleSkuCollapse = useCallback((sku: string) => {
+    setCollapsedSkus((previous) => {
+      if (previous[sku]) {
+        const { [sku]: _removed, ...rest } = previous;
+        return rest;
+      }
+      return { ...previous, [sku]: true };
+    });
+  }, []);
+
+  const normalizedMetricFilter = metricFilter.trim().toLowerCase();
+
+  const summaryGroups = useMemo(() => {
+    if (!rows.length) {
+      return [] as Array<{ header: SummaryGridRow; metrics: SummaryGridRow[] }>;
+    }
+
+    return rows.reduce<Array<{ header: SummaryGridRow; metrics: SummaryGridRow[] }>>(
+      (groups, row) => {
+        const isSelected = row.sku_code === selectedSku;
+        const isCollapsed = collapsedSkus[row.sku_code] ?? false;
+        const headerRow: SummaryGridRow = {
+          id: `${row.sku_code}-header`,
+          rowType: "skuHeader",
+          sku: row.sku_code,
+          skuName: row.sku_name ?? undefined,
+          metric: "",
+          groupPosition: "start",
+          isSelected,
+          total: null,
+          surplus: null,
+          collapsed: isCollapsed,
+        };
+
         orderedChannels.forEach((channel) => {
-          const channelAgg = row.channels[channel];
-          if (!channelAgg) {
-            channelValues[channel] = null;
-            return;
-          }
-          const value = channelAgg[metric.key as keyof ChannelAgg];
-          channelValues[channel] = typeof value === "number" ? value : value ?? null;
+          headerRow[channel] = null;
         });
 
-        const totalAccumulator = orderedChannels.reduce(
-          (accumulator, channel) => {
-            const value = channelValues[channel];
-            if (typeof value === "number" && Number.isFinite(value)) {
-              accumulator.sum += value;
-              accumulator.hasValue = true;
+        const metricRows = metricLabels.map((metric, index) => {
+          const channelValues: Record<string, number | null> = {};
+          orderedChannels.forEach((channel) => {
+            const channelAgg = row.channels[channel];
+            if (!channelAgg) {
+              channelValues[channel] = null;
+              return;
             }
-            return accumulator;
-          },
-          { sum: 0, hasValue: false }
-        );
+            const value = channelAgg[metric.key as keyof ChannelAgg];
+            channelValues[channel] = typeof value === "number" ? value : value ?? null;
+          });
 
-        let surplus: number | null = null;
-        if (metric.key === "last_closing") {
-          const surplusAccumulator = orderedChannels.reduce(
+          const totalAccumulator = orderedChannels.reduce(
             (accumulator, channel) => {
-              const channelAgg = row.channels[channel];
-              if (!channelAgg) {
-                return accumulator;
-              }
-              const movable = channelAgg.last_movable_stock;
-              if (typeof movable === "number" && Number.isFinite(movable)) {
-                accumulator.sum += movable;
+              const value = channelValues[channel];
+              if (typeof value === "number" && Number.isFinite(value)) {
+                accumulator.sum += value;
                 accumulator.hasValue = true;
               }
               return accumulator;
             },
             { sum: 0, hasValue: false }
           );
-          surplus = surplusAccumulator.hasValue ? surplusAccumulator.sum : null;
+
+          let surplus: number | null = null;
+          if (metric.key === "last_closing") {
+            const surplusAccumulator = orderedChannels.reduce(
+              (accumulator, channel) => {
+                const channelAgg = row.channels[channel];
+                if (!channelAgg) {
+                  return accumulator;
+                }
+                const movable = channelAgg.last_movable_stock;
+                if (typeof movable === "number" && Number.isFinite(movable)) {
+                  accumulator.sum += movable;
+                  accumulator.hasValue = true;
+                }
+                return accumulator;
+              },
+              { sum: 0, hasValue: false }
+            );
+            surplus = surplusAccumulator.hasValue ? surplusAccumulator.sum : null;
+          }
+
+          const metricRow: SummaryGridRow = {
+            id: `${row.sku_code}-${metric.key}`,
+            rowType: "metric",
+            sku: row.sku_code,
+            skuName: row.sku_name ?? undefined,
+            metric: metric.label,
+            metricKey: metric.key,
+            groupPosition: metricGroupPositions[index] ?? "middle",
+            isSelected,
+            total: totalAccumulator.hasValue ? totalAccumulator.sum : null,
+            surplus,
+          };
+
+          orderedChannels.forEach((channel) => {
+            metricRow[channel] = channelValues[channel];
+          });
+
+          return metricRow;
+        });
+
+        const visibleMetrics = normalizedMetricFilter
+          ? metricRows.filter((metricRow) =>
+              metricRow.metric.toLowerCase().includes(normalizedMetricFilter)
+            )
+          : metricRows;
+
+        if (normalizedMetricFilter && visibleMetrics.length === 0) {
+          return groups;
         }
 
-        summaryRows.push({
-          id: `${row.sku_code}-${metric.key}`,
-          sku: row.sku_code,
-          skuName: row.sku_name ?? undefined,
-          metric: metric.label,
-          metricKey: metric.key,
-          groupPosition: summaryGroupPositions[index] ?? "middle",
-          isSelected: row.sku_code === selectedSku,
-          total: totalAccumulator.hasValue ? totalAccumulator.sum : null,
-          surplus,
-          ...channelValues,
+        const adjustedMetrics = visibleMetrics.map((metricRow, index, array) => {
+          const position: SummaryGroupPosition = index === array.length - 1 ? "end" : "middle";
+          return { ...metricRow, groupPosition: position };
         });
-      });
-    });
 
-    return summaryRows;
-  }, [rows, orderedChannels, selectedSku]);
+        groups.push({ header: headerRow, metrics: adjustedMetrics });
+        return groups;
+      },
+      []
+    );
+  }, [rows, orderedChannels, selectedSku, collapsedSkus, normalizedMetricFilter]);
 
-  const normalizedMetricFilter = metricFilter.trim().toLowerCase();
-
-  const filteredRows = useMemo(() => {
-    if (!normalizedMetricFilter) {
-      return gridRows;
+  const visibleRows = useMemo(() => {
+    if (!summaryGroups.length) {
+      return [] as SummaryGridRow[];
     }
 
-    return gridRows.filter((row) => row.metric.toLowerCase().includes(normalizedMetricFilter));
-  }, [gridRows, normalizedMetricFilter]);
+    return summaryGroups.reduce<SummaryGridRow[]>((list, group) => {
+      list.push(group.header);
+      if (!(group.header.collapsed ?? false)) {
+        list.push(...group.metrics);
+      }
+      return list;
+    }, []);
+  }, [summaryGroups]);
 
   const paddedRows = useMemo(() => {
-    if (filteredRows.length >= maxVisibleRows) {
-      return filteredRows;
+    if (visibleRows.length >= maxVisibleRows) {
+      return visibleRows;
     }
 
-    const placeholdersNeeded = maxVisibleRows - filteredRows.length;
+    const placeholdersNeeded = maxVisibleRows - visibleRows.length;
     const placeholders: SummaryGridRow[] = [];
+    const placeholderPattern: Array<{
+      rowType: SummaryRowType;
+      metricKey?: SummaryMetricKey;
+      groupPosition: SummaryGroupPosition;
+    }> = [
+      { rowType: "skuHeader", groupPosition: "start" },
+      { rowType: "metric", metricKey: "inbound_sum", groupPosition: "middle" },
+      { rowType: "metric", metricKey: "outbound_sum", groupPosition: "middle" },
+      { rowType: "metric", metricKey: "last_closing", groupPosition: "end" },
+    ];
 
     for (let index = 0; index < placeholdersNeeded; index += 1) {
-      const position = summaryGroupPositions[(filteredRows.length + index) % summaryGroupPositions.length];
+      const pattern = placeholderPattern[index % placeholderPattern.length];
+      const metricLabel =
+        pattern.metricKey && metricLabels.find((item) => item.key === pattern.metricKey)?.label;
       const placeholder: SummaryGridRow = {
         id: `placeholder-${index}`,
+        rowType: pattern.rowType,
         sku: "",
-        metric: "",
-        metricKey: metricLabels[index % metricLabels.length].key,
-        groupPosition: position,
+        metric: metricLabel ?? "",
+        metricKey: pattern.metricKey,
+        groupPosition: pattern.groupPosition,
         isSelected: false,
         total: null,
         surplus: null,
@@ -216,8 +317,8 @@ const PSISummaryTable = memo(function PSISummaryTable({
       placeholders.push(placeholder);
     }
 
-    return [...filteredRows, ...placeholders];
-  }, [filteredRows, orderedChannels]);
+    return [...visibleRows, ...placeholders];
+  }, [visibleRows, orderedChannels]);
 
   const valueClassName = useCallback(
     (row: SummaryGridRow, key: string) => {
@@ -366,22 +467,54 @@ const PSISummaryTable = memo(function PSISummaryTable({
           row.isSelected && "psi-summary-cell-selected",
           row.isPlaceholder && "psi-summary-cell-placeholder"
         ),
-      renderCell: ({ row }) => (
-        <div className="psi-grid-summary-sku" aria-hidden={row.isPlaceholder ? "true" : undefined}>
-          {!row.isPlaceholder && (
-            <>
-              <div className="psi-grid-summary-sku-code">{row.sku}</div>
-              {row.skuName && <div className="psi-grid-summary-sku-name">{row.skuName}</div>}
-            </>
-          )}
-        </div>
-      ),
+      renderCell: ({ row }) => {
+        if (row.rowType === "skuHeader") {
+          if (row.isPlaceholder) {
+            return (
+              <div className="psi-grid-summary-sku-group" aria-hidden="true">
+                <span className="psi-grid-summary-sku-toggle" aria-hidden="true">
+                  <span className="psi-grid-summary-sku-toggle-icon">▼</span>
+                </span>
+                <div className="psi-grid-summary-sku" />
+              </div>
+            );
+          }
+
+          const collapsed = row.collapsed ?? false;
+          return (
+            <div className="psi-grid-summary-sku-group">
+              <button
+                type="button"
+                className="psi-grid-summary-sku-toggle"
+                aria-label={`${collapsed ? "Expand" : "Collapse"} ${row.sku}`}
+                aria-expanded={!collapsed}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleSkuCollapse(row.sku);
+                  scheduleSelectionOverlayUpdate();
+                }}
+              >
+                <span className="psi-grid-summary-sku-toggle-icon" aria-hidden="true">
+                  {collapsed ? "▶" : "▼"}
+                </span>
+              </button>
+              <div className="psi-grid-summary-sku">
+                <div className="psi-grid-summary-sku-code">{row.sku}</div>
+                {row.skuName && <div className="psi-grid-summary-sku-name">{row.skuName}</div>}
+              </div>
+            </div>
+          );
+        }
+
+        return <div className="psi-grid-summary-sku" aria-hidden="true" />;
+      },
     };
 
     const metricColumn: Column<SummaryGridRow> = {
       key: "metric",
       name: "",
-      width: baseColumnWidth,
+      width: metricColumnWidth,
       frozen: true,
       className: (row) =>
         classNames(
@@ -390,6 +523,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
           row.isSelected && "psi-summary-cell-selected",
           row.isPlaceholder && "psi-summary-cell-placeholder"
         ),
+      renderCell: ({ row }) => (row.rowType === "metric" && !row.isPlaceholder ? row.metric : ""),
       setHeaderRef: handleMetricHeaderRef,
     };
 
@@ -399,8 +533,12 @@ const PSISummaryTable = memo(function PSISummaryTable({
       width: baseColumnWidth,
       className: (row: SummaryGridRow) => valueClassName(row, channel),
       headerCellClass: "psi-grid-header-numeric",
-      renderCell: ({ row }: { row: SummaryGridRow }) =>
-        row.isPlaceholder ? "" : formatValue(row[channel] as number | null | undefined),
+      renderCell: ({ row }: { row: SummaryGridRow }) => {
+        if (row.isPlaceholder || row.rowType === "skuHeader") {
+          return "";
+        }
+        return formatValue(row[channel] as number | null | undefined);
+      },
     }));
 
     const surplusColumn: Column<SummaryGridRow> = {
@@ -409,7 +547,10 @@ const PSISummaryTable = memo(function PSISummaryTable({
       width: baseColumnWidth,
       className: (row) => valueClassName(row, "surplus"),
       headerCellClass: "psi-grid-header-numeric",
-      renderCell: ({ row }) => (row.isPlaceholder ? "" : formatValue(row.surplus as number | null | undefined)),
+      renderCell: ({ row }) =>
+        row.isPlaceholder || row.rowType === "skuHeader"
+          ? ""
+          : formatValue(row.surplus as number | null | undefined),
     };
 
     const totalColumn: Column<SummaryGridRow> = {
@@ -418,11 +559,21 @@ const PSISummaryTable = memo(function PSISummaryTable({
       width: baseColumnWidth,
       className: (row) => valueClassName(row, "total"),
       headerCellClass: "psi-grid-header-numeric",
-      renderCell: ({ row }) => (row.isPlaceholder ? "" : formatValue(row.total as number | null | undefined)),
+      renderCell: ({ row }) =>
+        row.isPlaceholder || row.rowType === "skuHeader"
+          ? ""
+          : formatValue(row.total as number | null | undefined),
     };
 
     return [skuColumn, metricColumn, ...channelColumns, surplusColumn, totalColumn];
-  }, [handleMetricHeaderRef, handleSkuHeaderRef, orderedChannels, valueClassName]);
+  }, [
+    handleMetricHeaderRef,
+    handleSkuHeaderRef,
+    orderedChannels,
+    scheduleSelectionOverlayUpdate,
+    toggleSkuCollapse,
+    valueClassName,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -509,7 +660,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
     []
   );
 
-  if (!gridRows.length) {
+  if (!rows.length) {
     return null;
   }
 
@@ -537,7 +688,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
         rowKeyGetter={(row) => row.id}
         onCellClick={handleCellClick}
         defaultColumnOptions={{ width: baseColumnWidth }}
-        className="psi-data-grid psi-summary-data-grid"
+        className="psi-rdg psi-data-grid psi-summary-data-grid"
         style={{ blockSize: `${gridHeight}px` }}
         rowClassName={getRowClassName}
       />

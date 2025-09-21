@@ -20,7 +20,7 @@ export interface PSIEditableChannel extends Omit<PSIChannel, "daily"> {
   daily: PSIEditableDay[];
 }
 
-export type PSIGridRowType = "channel" | "metric";
+export type PSIGridRowType = "channelHeader" | "metric";
 
 export interface PSIGridRowBase {
   id: string;
@@ -32,6 +32,7 @@ export interface PSIGridRowBase {
   metricEditable: boolean;
   rowType: PSIGridRowType;
   collapsed?: boolean;
+  showChannelLabel?: boolean;
 }
 
 export interface PSIGridMetricRow extends PSIGridRowBase {
@@ -40,13 +41,13 @@ export interface PSIGridMetricRow extends PSIGridRowBase {
   [key: string]: number | null | string | boolean | undefined;
 }
 
-export interface PSIGridChannelRow extends PSIGridRowBase {
-  rowType: "channel";
+export interface PSIGridChannelHeaderRow extends PSIGridRowBase {
+  rowType: "channelHeader";
   metricKey?: undefined;
   [key: string]: number | null | string | boolean | undefined;
 }
 
-export type PSIGridRow = PSIGridMetricRow | PSIGridChannelRow;
+export type PSIGridRow = PSIGridMetricRow | PSIGridChannelHeaderRow;
 
 export interface MetricDefinitionBase {
   key: MetricKey;
