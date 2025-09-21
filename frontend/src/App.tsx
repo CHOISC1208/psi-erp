@@ -4,6 +4,7 @@ import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom"
 import SessionsPage from "./pages/SessionsPage";
 import PSITablePage from "./pages/PSITablePage";
 import MasterPage from "./pages/MasterPage";
+import DocsPage from "./pages/DocsPage";
 import "./App.css";
 import "./styles/psi-sticky.css";
 
@@ -86,6 +87,14 @@ export default function App() {
               ))}
             </ul>
           </li>
+          <li>
+            <NavLink to="/docs" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">
+                📚
+              </span>
+              <span className="menu-label">Docs</span>
+            </NavLink>
+          </li>
         </ul>
       </nav>
       <main className="content">
@@ -94,6 +103,7 @@ export default function App() {
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/masters/:masterId" element={<MasterPage />} />
           <Route path="/psi" element={<PSITablePage />} />
+          <Route path="/docs" element={<DocsPage />} />
           <Route path="/masters" element={<Navigate to={masters[0].path} replace />} />
         </Routes>
       </main>
