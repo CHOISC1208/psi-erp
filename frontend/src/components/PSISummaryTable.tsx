@@ -74,7 +74,7 @@ const rowsPerGroup = metricGroupPositions.length + 1;
 const maxVisibleRows = rowsPerGroup * 3;
 const defaultHeaderHeight = 36;
 const defaultRowHeight = 36;
-const baseColumnWidth = 132;
+const baseColumnWidth = 112;
 const metricColumnWidth = 152;
 const skuColumnWidth = baseColumnWidth * 3;
 
