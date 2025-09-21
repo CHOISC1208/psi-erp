@@ -39,6 +39,13 @@ interface DraftTransfer {
   note: string;
 }
 
+interface InventoryPreviewEntry {
+  channelName: string;
+  before: number | null;
+  delta: number;
+  after: number | null;
+}
+
 const makeDraftId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 const getTransferKey = (transfer: ChannelTransfer) =>
@@ -180,6 +187,52 @@ const ChannelMoveModal = ({
       return draft.direction === "incoming" ? total + qty : total - qty;
     }, 0);
   }, [channel, validDrafts]);
+
+  const inventoryPreview = useMemo<InventoryPreviewEntry[]>(() => {
+    if (!channel) {
+      return [];
+    }
+
+    const map = new Map<string, { before: number | null; delta: number }>();
+
+    inventorySnapshot.forEach((entry) => {
+      map.set(entry.channel, { before: entry.stockClosing ?? null, delta: 0 });
+    });
+
+    const ensureChannel = (name: string) => {
+      if (!map.has(name)) {
+        map.set(name, { before: null, delta: 0 });
+      }
+      return map.get(name)!;
+    };
+
+    removedList.forEach((transfer) => {
+      const qty = transfer.qty;
+      ensureChannel(transfer.from_channel).delta += qty;
+      ensureChannel(transfer.to_channel).delta -= qty;
+    });
+
+    validDrafts.forEach((draft) => {
+      const qty = Number(draft.qty);
+      const trimmedOther = draft.otherChannel.trim();
+      if (!Number.isFinite(qty) || !trimmedOther) {
+        return;
+      }
+      const from = draft.direction === "outgoing" ? channel.channel : trimmedOther;
+      const to = draft.direction === "incoming" ? channel.channel : trimmedOther;
+      ensureChannel(from).delta -= qty;
+      ensureChannel(to).delta += qty;
+    });
+
+    return Array.from(map.entries())
+      .map(([channelName, { before, delta }]) => ({
+        channelName,
+        before,
+        delta,
+        after: before === null || before === undefined ? null : before + delta,
+      }))
+      .sort((a, b) => a.channelName.localeCompare(b.channelName, "ja"));
+  }, [channel, inventorySnapshot, removedList, validDrafts]);
 
   const previewNetMove = currentNetMove - removedContribution + draftContribution;
   const netDifference = previewNetMove - currentNetMove;
@@ -359,48 +412,6 @@ const ChannelMoveModal = ({
   };
 
   const combinedError = localError ?? error;
-
-  const inventoryPreview = useMemo(() => {
-    const map = new Map<string, { before: number | null; delta: number }>();
-
-    inventorySnapshot.forEach((entry) => {
-      map.set(entry.channel, { before: entry.stockClosing ?? null, delta: 0 });
-    });
-
-    const ensureChannel = (name: string) => {
-      if (!map.has(name)) {
-        map.set(name, { before: null, delta: 0 });
-      }
-      return map.get(name)!;
-    };
-
-    removedList.forEach((transfer) => {
-      const qty = transfer.qty;
-      ensureChannel(transfer.from_channel).delta += qty;
-      ensureChannel(transfer.to_channel).delta -= qty;
-    });
-
-    validDrafts.forEach((draft) => {
-      const qty = Number(draft.qty);
-      const trimmedOther = draft.otherChannel.trim();
-      if (!Number.isFinite(qty) || !trimmedOther || !channel) {
-        return;
-      }
-      const from = draft.direction === "outgoing" ? channel.channel : trimmedOther;
-      const to = draft.direction === "incoming" ? channel.channel : trimmedOther;
-      ensureChannel(from).delta -= qty;
-      ensureChannel(to).delta += qty;
-    });
-
-    return Array.from(map.entries())
-      .map(([channelName, { before, delta }]) => ({
-        channelName,
-        before,
-        delta,
-        after: before === null || before === undefined ? null : before + delta,
-      }))
-      .sort((a, b) => a.channelName.localeCompare(b.channelName, "ja"));
-  }, [channel, inventorySnapshot, removedList, validDrafts]);
 
   const modal = (
     <div className="channel-move-modal-backdrop" onClick={onClose}>
