@@ -85,7 +85,7 @@ const PSITableControls = forwardRef(function PSITableControls(
   ref: ForwardedRef<HTMLElement>
 ) {
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 3;
+  const pageSize = 4;
 
   const start = sessionSummaryQuery.data?.start_date ?? undefined;
   const end = sessionSummaryQuery.data?.end_date ?? undefined;

@@ -611,18 +611,6 @@ const PSISummaryTable = memo(function PSISummaryTable({
       },
     }));
 
-    const surplusColumn: Column<SummaryGridRow> = {
-      key: "surplus",
-      name: "余剰在庫",
-      width: baseColumnWidth,
-      className: (row) => valueClassName(row, "surplus"),
-      headerCellClass: "psi-grid-header-numeric",
-      renderCell: ({ row }) =>
-        row.isPlaceholder || row.rowType === "skuHeader"
-          ? ""
-          : formatValue(row.surplus as number | null | undefined),
-    };
-
     const totalColumn: Column<SummaryGridRow> = {
       key: "total",
       name: "合計",
@@ -635,7 +623,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
           : formatValue(row.total as number | null | undefined),
     };
 
-    return [skuColumn, metricColumn, ...channelColumns, surplusColumn, totalColumn];
+    return [skuColumn, metricColumn, ...channelColumns, totalColumn];
   }, [
     handleMetricHeaderRef,
     handleSkuHeaderRef,
