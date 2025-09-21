@@ -72,8 +72,8 @@ const metricLabels: { key: SummaryMetricKey; label: string }[] = [
 const metricGroupPositions: SummaryGroupPosition[] = ["middle", "middle", "end"];
 const rowsPerGroup = metricGroupPositions.length + 1;
 const maxVisibleRows = rowsPerGroup * 3;
-const headerHeight = 36;
-const summaryBodyHeight = 432;
+const defaultHeaderHeight = 36;
+const defaultRowHeight = 36;
 const baseColumnWidth = 132;
 const metricColumnWidth = 152;
 const skuColumnWidth = baseColumnWidth * 3;
@@ -91,6 +91,11 @@ const PSISummaryTable = memo(function PSISummaryTable({
   const [selectionOverlay, setSelectionOverlay] = useState<SelectionOverlayMetrics | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const [collapsedSkus, setCollapsedSkus] = useState<Record<string, boolean>>({});
+  const [gridLayoutMetrics, setGridLayoutMetrics] = useState(() => ({
+    headerHeight: defaultHeaderHeight,
+    rowHeight: defaultRowHeight,
+    horizontalScrollbarHeight: 0,
+  }));
 
   const orderedChannels = useMemo(() => {
     const unique = new Set<string>();
@@ -144,6 +149,41 @@ const PSISummaryTable = memo(function PSISummaryTable({
         return rest;
       }
       return { ...previous, [sku]: true };
+    });
+  }, []);
+
+  const measureGridLayout = useCallback(() => {
+    const container = gridContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const headerRow = container.querySelector<HTMLElement>(".rdg-header-row");
+    const dataRow = container.querySelector<HTMLElement>(".rdg-row:not(.rdg-row-frozen)");
+    const viewport = container.querySelector<HTMLElement>(".rdg-viewport");
+
+    const measuredHeaderHeight = headerRow?.getBoundingClientRect().height ?? defaultHeaderHeight;
+    const measuredRowHeight = dataRow?.getBoundingClientRect().height ?? defaultRowHeight;
+    const scrollbarHeight = viewport
+      ? Math.max(0, viewport.offsetHeight - viewport.clientHeight)
+      : 0;
+
+    setGridLayoutMetrics((previous) => {
+      const next = {
+        headerHeight: measuredHeaderHeight,
+        rowHeight: measuredRowHeight,
+        horizontalScrollbarHeight: scrollbarHeight,
+      };
+
+      if (
+        Math.abs(previous.headerHeight - next.headerHeight) < 0.5 &&
+        Math.abs(previous.rowHeight - next.rowHeight) < 0.5 &&
+        Math.abs(previous.horizontalScrollbarHeight - next.horizontalScrollbarHeight) < 0.5
+      ) {
+        return previous;
+      }
+
+      return next;
     });
   }, []);
 
@@ -320,6 +360,34 @@ const PSISummaryTable = memo(function PSISummaryTable({
     return [...visibleRows, ...placeholders];
   }, [visibleRows, orderedChannels]);
 
+  useLayoutEffect(() => {
+    measureGridLayout();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const container = gridContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      measureGridLayout();
+    });
+
+    resizeObserver.observe(container);
+
+    const viewport = container.querySelector<HTMLElement>(".rdg-viewport");
+    if (viewport) {
+      resizeObserver.observe(viewport);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [measureGridLayout, paddedRows, orderedChannels]);
+
   const valueClassName = useCallback(
     (row: SummaryGridRow, key: string) => {
       if (row.isPlaceholder) {
@@ -426,6 +494,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
     const viewport = container.querySelector<HTMLElement>(".rdg-viewport");
     if (!viewport) {
       updateSelectionOverlay();
+      measureGridLayout();
       return;
     }
 
@@ -434,10 +503,11 @@ const PSISummaryTable = memo(function PSISummaryTable({
       if (animationFrame !== null) {
         cancelAnimationFrame(animationFrame);
       }
-        animationFrame = window.requestAnimationFrame(() => {
-          animationFrame = null;
-          updateSelectionOverlay();
-        });
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        updateSelectionOverlay();
+        measureGridLayout();
+      });
     };
 
     viewport.addEventListener("scroll", handleScrollOrResize, { passive: true });
@@ -450,7 +520,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
         cancelAnimationFrame(animationFrame);
       }
     };
-  }, [updateSelectionOverlay, paddedRows]);
+  }, [measureGridLayout, updateSelectionOverlay, paddedRows]);
 
   const columns = useMemo<Column<SummaryGridRow>[]>(() => {
     const skuColumn: Column<SummaryGridRow> = {
@@ -664,7 +734,12 @@ const PSISummaryTable = memo(function PSISummaryTable({
     return null;
   }
 
-  const gridHeight = headerHeight + summaryBodyHeight;
+  const rowCountForHeight = Math.max(maxVisibleRows, paddedRows.length);
+  const gridHeight = Math.ceil(
+    gridLayoutMetrics.headerHeight +
+      gridLayoutMetrics.rowHeight * rowCountForHeight +
+      gridLayoutMetrics.horizontalScrollbarHeight
+  );
 
   return (
     <div className="psi-summary-grid" ref={gridContainerRef}>
