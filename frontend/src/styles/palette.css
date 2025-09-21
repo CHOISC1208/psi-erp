@@ -54,7 +54,7 @@
   --surface-card: var(--palette-slate-850);
   --surface-inverted: var(--palette-white);
   --surface-info: var(--palette-ice-100);
-  --surface-warning: var(--palette-rose-50);
+  --surface-warning: #3b2f0c;
 
   --psi-bg-warning: #3b2f0c;
   --psi-bg-warning-hover: #4a3911;
@@ -110,6 +110,7 @@
 }
 
 :root[data-theme="dark"] {
+  --surface-warning: #3b2f0c;
   --psi-bg-warning: #3b2f0c;
   --psi-bg-warning-hover: #4a3911;
   --psi-bg-warning-select: #5c4718;
@@ -117,6 +118,7 @@
 }
 
 :root[data-theme="light"] {
+  --surface-warning: #fef3c7;
   --psi-bg-warning: #fef3c7;
   --psi-bg-warning-hover: #fde68a;
   --psi-bg-warning-select: #fcd34d;
