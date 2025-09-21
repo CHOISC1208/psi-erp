@@ -1067,6 +1067,8 @@ button.icon-button:focus-visible {
   --psi-grid-warning-hover: var(--psi-bg-warning-hover);
   --psi-grid-warning-selection: var(--psi-bg-warning-select);
   --psi-grid-warning-text: var(--psi-fg-warning);
+  --surface-warning: var(--psi-bg-warning);
+  --surface-inverted: var(--surface-table);
   --psi-grid-success: rgba(22, 163, 74, 0.32);
   --psi-grid-success-text: var(--badge-info-text);
   --psi-grid-negative: rgba(248, 113, 113, 0.35);
@@ -1372,6 +1374,11 @@ button.icon-button:focus-visible {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+.psi-rdg .rdg-cell.rdg-cell-focus.psi-grid-stock-warning {
+  background-color: var(--psi-bg-warning-hover) !important;
+  color: var(--psi-fg-warning);
+}
+
 .psi-grid-stock-warning:hover,
 .psi-grid-stock-warning:focus,
 .psi-grid-stock-warning:focus-within {
@@ -1385,6 +1392,11 @@ button.icon-button:focus-visible {
 }
 
 .psi-rdg .rdg-cell[aria-selected="true"].psi-grid-stock-warning {
+  background-color: var(--psi-bg-warning-select) !important;
+  color: var(--psi-fg-warning);
+}
+
+.psi-rdg .rdg-cell.rdg-cell-copied.psi-grid-stock-warning {
   background-color: var(--psi-bg-warning-select) !important;
   color: var(--psi-fg-warning);
 }
