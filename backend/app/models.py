@@ -100,7 +100,7 @@ class MasterRecord(Base, SchemaMixin, TimestampMixin):
 class PSIBase(Base, SchemaMixin):
     """Immutable PSI base data imported from operational systems.
 
-    Attributes match the ``psi.psi_base`` table as described in ``database.md``.
+    Attributes match the ``psi.psi_base`` table as described in ``docs/database.md``.
     """
 
     __tablename__ = "psi_base"
