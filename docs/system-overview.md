@@ -1,0 +1,89 @@
+# PSI Mini ERP — システム仕様概要
+
+## 全体像
+- **目的**: 生産 (Production)・販売 (Sales)・在庫 (Inventory) を一体管理するミニ ERP。
+- **構成**: フロントエンド (Vite + React)、バックエンド (FastAPI)、PostgreSQL データベースで構成。
+- **ホスティング想定**: ローカル開発環境に加え、Heroku + Heroku Postgres を利用したデプロイを前提とした設計。`DATABASE_URL` を正規化して `postgres://`・`postgresql://` いずれの形式にも対応し、`sslmode=require` を自動付与するため、Heroku の接続文字列をそのまま利用可能。
+
+## 技術スタック
+### フロントエンド
+- **フレームワーク**: React 18 + Vite。
+- **言語**: TypeScript。
+- **状態管理 / データ取得**: React Query (`@tanstack/react-query`)、axios。
+- **ルーティング**: React Router v6。
+- **UI**: CSS Modules / Tailwind ではなく素の CSS。PSI テーブルは `react-data-grid` 型定義をベースにしたカスタム UI。
+
+### バックエンド
+- **フレームワーク**: FastAPI。
+- **ORM / DB アクセス**: SQLAlchemy 2 系 Declarative。
+- **マイグレーション**: Alembic。
+- **設定**: `pydantic` + `.env` 読み込み (python-dotenv)。
+- **API**: RESTful。CORS 設定はワイルドカード許容でフロントエンドのホスト制限なし。
+- **静的配信**: `backend/static/` 配下にビルド成果物を配置すると、FastAPI アプリが SPA として配信 (SPA ルーティングフォールバックあり)。
+
+### データベース
+- **製品**: PostgreSQL。
+- **スキーマ**: 既定 `public`。環境変数 `DB_SCHEMA` で任意スキーマに切り替え可能。
+- **主要テーブル**:
+  - `sessions`: 計画セッションのメタ情報 (`is_leader` 一意制約でアクティブなセッションを管理)。
+  - `psi_base`: CSV 取り込みベースデータ (セッション × SKU × 倉庫 × チャネル × 日付)。
+  - `psi_edits`: UI からの上書き値。
+  - `psi_edit_log`: 手修正履歴。
+  - `channel_transfers`: チャネル間移動の管理 (複合 PK 的な一意制約)。
+  - `master_records`: マスタデータ (Products / Customers / Suppliers) を JSON で保持。
+
+## 主要機能
+### セッション管理
+- セッション一覧・作成・更新・削除。
+- 任意のセッションを「リーダー」に指定 (`PATCH /sessions/{id}/leader`)、他セッションの `is_leader` は自動で解除。
+- フロントエンドでは一覧表示、フォームでの作成、CSV アップロードへのショートカットを提供。
+
+### PSI 基礎データの取り込み (CSV)
+- エンドポイント: `POST /psi/{session_id}/upload`。
+- 文字コード自動判別 (UTF-8 / UTF-16 / CP932 等) と区切り文字 (カンマ / タブ / セミコロン) のヒューリスティック検出に対応。
+- 必須列: `sku_code`, `warehouse_name`, `channel`, `date`, `stock_at_anchor`, `inbound_qty`, `outbound_qty`, `net_flow`, `stock_closing`, `safety_stock`, `movable_stock`。`sku_name` 等は任意。
+- 同一キー (セッション × SKU × 倉庫 × チャネル × 日付) はアップロード毎に入れ替え。該当日の既存行を削除してから一括 INSERT。
+- フロントエンドのセッション画面から CSV をアップロード可能で、処理結果メッセージを表示。
+
+### PSI テーブル表示・手修正
+- エンドポイント: `GET /psi/{session_id}/daily`。
+  - `psi_base`、`psi_edits`、`channel_transfers` を突合し、指標ごとに日別集計。
+  - フィルタ: SKU コード / 倉庫名 / チャネル (部分一致) をサポート。
+  - チャネル移動量 (`channel_move`) を加味して `net_flow` と `stock_closing` を再計算。
+- 編集 API: `POST /psi/{session_id}/edits`。
+  - 任意指標 (入荷 / 出荷 / 安全在庫) を部分更新し、差分ログを `psi_edit_log` に記録。
+- フロントエンド: React Data Grid 風 UI で日別指標を表示。行選択やフィルタリング、編集ダイアログを通じて手修正を送信。
+
+### マスタ管理
+- モデル: `master_records` テーブル (type ごとに JSON 格納)。
+- エンドポイント: `/masters/{master_type}` 系 (一覧 / 作成 / 更新 / 削除)。
+- フロントエンド: `Masters` セクションに Product / Customer / Supplier のモック UI (JSON 形式をテーブル化) を実装。
+
+### チャネル間移動管理
+- エンドポイント:
+  - 一覧: `GET /channel-transfers` (検索条件: セッション / SKU / 倉庫 / 日付範囲)。
+  - 作成: `POST /channel-transfers` (複合キーで重複排除)。
+  - 更新: `PUT /channel-transfers/{...}`。
+  - 削除: `DELETE /channel-transfers/{...}`。
+  - CSV エクスポート: `GET /channel-transfers/{session_id}/export` (条件付き抽出)。
+  - CSV インポート: `POST /channel-transfers/{session_id}/upload` (区切り文字自動判別)。
+- `psi/{session_id}/daily` の集計に組み込まれ、チャネル移動量が `net_flow`・`stock_closing` に反映される。
+
+## データフローと連携
+1. **セッション作成**: `POST /sessions/` で新規セッションを登録。リーダー指定によりフロントのデフォルト参照セッションが決まる。
+2. **ベースデータ取り込み**: オペレーション部門から出力された CSV をアップロードして `psi_base` に格納。
+3. **チャネル移動登録** (任意): 将来在庫の出荷チャネル振替を登録。
+4. **PSI テーブル閲覧 / 編集**: フロントの PSI ページで指標を確認し、必要に応じて手修正 (`psi_edits`) を適用。変更履歴は `psi_edit_log` で監査可能。
+5. **集計参照**: `GET /psi/{session_id}/daily` のレスポンスをフロントが取得し、在庫推移・安全在庫などの KPI を表示。
+
+## デプロイ / 運用メモ
+- **Heroku デプロイ**: `Procfile` の `web` プロセスで FastAPI を起動。`runtime.txt` で Python バージョンを固定。
+- **マイグレーション**: Alembic (`alembic upgrade head`) を Heroku CLI から実行。
+- **静的ホスティング**: フロントを `npm run build` → `backend/static/` に配置すると単一 Dyno で完結。
+- **環境変数**:
+  - `DATABASE_URL`: PostgreSQL 接続文字列 (Heroku Postgres の URL をそのまま設定可能)。
+  - `DB_SCHEMA`: スキーマ切り替え用。省略時は `public`。
+
+## 参考
+- 詳細なテーブル定義は [`docs/database.md`](./database.md) を参照。
+- CSV 仕様・在庫移動手順など個別機能の詳細は `docs/csv-upload.md`、`docs/warehouse-transfer.md` を参照。
