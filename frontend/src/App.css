@@ -1063,10 +1063,10 @@ button.icon-button:focus-visible {
   --psi-grid-selection-outline: rgba(250, 204, 21, 0.8);
   --psi-grid-editable: rgba(37, 99, 235, 0.14);
   --psi-grid-group-divider: rgba(148, 163, 184, 0.45);
-  --psi-grid-warning: #facc15;
-  --psi-grid-warning-hover: #fbbf24;
-  --psi-grid-warning-selection: #f59e0b;
-  --psi-grid-warning-text: #b91c1c;
+  --psi-grid-warning: var(--psi-bg-warning);
+  --psi-grid-warning-hover: var(--psi-bg-warning-hover);
+  --psi-grid-warning-selection: var(--psi-bg-warning-select);
+  --psi-grid-warning-text: var(--psi-fg-warning);
   --psi-grid-success: rgba(22, 163, 74, 0.32);
   --psi-grid-success-text: var(--badge-info-text);
   --psi-grid-negative: rgba(248, 113, 113, 0.35);
@@ -1365,33 +1365,35 @@ button.icon-button:focus-visible {
   z-index: 2;
 }
 
-.psi-grid-stock-warning {
-  background-color: var(--psi-grid-warning);
-  color: var(--psi-grid-warning-text);
+.psi-rdg .rdg-cell.psi-grid-stock-warning {
+  background-color: var(--psi-bg-warning);
+  color: var(--psi-fg-warning);
   font-weight: 600;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.psi-grid-stock-warning:hover,
-.psi-grid-stock-warning:focus,
-.psi-grid-stock-warning:focus-within {
-  background-color: var(--psi-grid-warning-hover);
-  color: var(--psi-grid-warning-text);
+.psi-rdg .rdg-cell.psi-grid-stock-warning:hover,
+.psi-rdg .rdg-cell.psi-grid-stock-warning:focus,
+.psi-rdg .rdg-cell.psi-grid-stock-warning:focus-within {
+  background-color: var(--psi-bg-warning-hover) !important;
+  color: var(--psi-fg-warning);
 }
 
-.psi-rdg .rdg-row:hover .psi-grid-stock-warning:not(.rdg-cell-editing):not([aria-selected="true"]) {
-  background-color: var(--psi-grid-warning-hover);
-  color: var(--psi-grid-warning-text);
+.psi-rdg
+  .rdg-row:hover
+  .rdg-cell.psi-grid-stock-warning:not(.rdg-cell-editing):not([aria-selected="true"]) {
+  background-color: var(--psi-bg-warning-hover) !important;
+  color: var(--psi-fg-warning);
 }
 
 .psi-rdg .rdg-cell[aria-selected="true"].psi-grid-stock-warning {
-  background-color: var(--psi-grid-warning-selection);
-  color: var(--psi-grid-warning-text);
+  background-color: var(--psi-bg-warning-select) !important;
+  color: var(--psi-fg-warning);
 }
 
 .psi-rdg .rdg-cell.rdg-cell-editing.psi-grid-stock-warning {
-  background-color: var(--psi-grid-warning-hover);
-  color: var(--psi-grid-warning-text);
+  background-color: var(--psi-bg-warning-hover) !important;
+  color: var(--psi-fg-warning);
 }
 
 .psi-grid-value-surplus {
