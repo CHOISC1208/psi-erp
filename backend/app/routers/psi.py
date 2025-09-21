@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -17,6 +18,93 @@ from .. import models, schemas
 from ..deps import get_db
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def decode_bytes(data: bytes) -> str:
+    """Decode uploaded CSV/TSV bytes using heuristic encoding detection.
+
+    Args:
+        data: Raw bytes from the uploaded file.
+
+    Returns:
+        Decoded text string.
+
+    Raises:
+        HTTPException: Raised when decoding fails for all supported encodings.
+    """
+
+    head = data[:1024]
+    tried: list[str] = []
+    last_error: UnicodeDecodeError | None = None
+
+    def attempt(encodings: list[str]) -> str | None:
+        nonlocal last_error
+        for encoding in encodings:
+            if encoding in tried:
+                continue
+            tried.append(encoding)
+            try:
+                return data.decode(encoding)
+            except UnicodeDecodeError as exc:  # pragma: no cover - defensive fallback
+                last_error = exc
+        return None
+
+    text: str | None
+    if head.startswith((b"\xff\xfe", b"\xfe\xff")):
+        text = attempt(["utf-16"])
+    elif head.startswith(b"\xef\xbb\xbf"):
+        text = attempt(["utf-8-sig", "utf-8"])
+    else:
+        prefer_utf16 = b"\x00" in head
+        first_batch = ["utf-16", "utf-16le", "utf-16be"] if prefer_utf16 else [
+            "utf-8-sig",
+            "utf-8",
+        ]
+        text = attempt(first_batch)
+
+    if text is None:
+        text = attempt([
+            "utf-16",
+            "utf-16le",
+            "utf-16be",
+            "utf-8-sig",
+            "utf-8",
+            "cp932",
+        ])
+
+    if text is None:
+        logger.warning(
+            "Failed to decode upload: head=%s encodings=%s",
+            data[:64].hex(),
+            tried,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid encoding",
+        ) from last_error
+
+    return text
+
+
+def detect_sep(text: str) -> str:
+    """Detect the delimiter used within decoded CSV/TSV text."""
+
+    lines = text.splitlines()[:200]
+    sample = "\n".join(lines)
+    counts = {
+        "\t": sample.count("\t"),
+        ",": sample.count(","),
+        ";": sample.count(";"),
+    }
+    delimiter = ","
+    max_count = counts[delimiter]
+    for candidate in ("\t", ",", ";"):
+        count = counts[candidate]
+        if count > max_count:
+            max_count = count
+            delimiter = candidate
+    return delimiter
 
 def _ensure_channel_transfer_table(db: DBSession) -> None:
     """Create the channel transfers table when migrations haven't run."""
@@ -128,28 +216,10 @@ async def upload_csv_for_session(
     _get_session_or_404(db, session_id)
 
     raw_bytes = await file.read()
-    text: str | None = None
-    decode_errors: list[UnicodeDecodeError] = []
-    for encoding in ("utf-8-sig", "utf-16", "utf-16le", "utf-16be"):
-        try:
-            text = raw_bytes.decode(encoding)
-            break
-        except UnicodeDecodeError as exc:  # pragma: no cover - sanity check
-            decode_errors.append(exc)
+    text = decode_bytes(raw_bytes)
+    delimiter = detect_sep(text)
 
-    if text is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid encoding",
-        ) from (decode_errors[0] if decode_errors else None)
-
-    sample = text[:1024]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=[",", "\t", ";"])
-    except csv.Error:
-        dialect = csv.get_dialect("excel")
-
-    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
     if reader.fieldnames is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing header row")
 
