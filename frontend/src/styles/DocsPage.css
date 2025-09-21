@@ -164,7 +164,7 @@
 }
 
 .docs-markdown pre {
-  background-color: #0f172a;
+  background-color: var(--surface-table);
   border-radius: 0.75rem;
   padding: 1rem;
   overflow: auto;

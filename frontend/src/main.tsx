@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 
 import App from "./App";
+import "./styles/palette.css";
 import "./App.css";
 import "react-data-grid/lib/styles.css";
 

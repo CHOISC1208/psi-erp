@@ -8,7 +8,7 @@
   position: sticky;
   top: var(--psi-table-header-offset, 0px);
   z-index: 50;
-  background: var(--surface-panel, #111827);
+  background: var(--surface-panel);
   border-bottom: 1px solid var(--border-default);
 }
 
