@@ -1545,8 +1545,8 @@ button.danger {
 }
 
 .channel-move-modal {
-  background: var(--psi-surface, var(--surface-inverted));
-  color: inherit;
+  background: #fff;
+  color: #000;
   border-radius: 12px;
   width: min(760px, 100%);
   max-height: 90vh;
@@ -1564,11 +1564,25 @@ button.danger {
   padding: 24px 24px 0;
 }
 
-.channel-move-modal__subtitle {
-  margin: 8px 0 0;
-  line-height: 1.5;
-  color: var(--card-muted-text);
-  font-size: 14px;
+.channel-move-modal__metadata {
+  margin-top: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.channel-move-modal__metadata > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.channel-move-modal__metadata-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.channel-move-modal__metadata-value {
+  font-size: 13px;
 }
 
 .channel-move-modal__close {
@@ -1614,7 +1628,7 @@ button.danger {
   display: block;
   font-size: 12px;
   letter-spacing: 0.02em;
-  color: var(--card-muted-text);
+  color: #000;
   margin-bottom: 4px;
 }
 
@@ -1637,6 +1651,19 @@ button.danger {
   gap: 12px;
 }
 
+.channel-move-modal__inventory-preview {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.channel-move-modal__inventory-preview h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .channel-move-modal__section-header {
   display: flex;
   align-items: center;
@@ -1647,7 +1674,7 @@ button.danger {
 .channel-move-modal__status {
   margin: 0;
   font-size: 14px;
-  color: var(--card-muted-text);
+  color: #000;
 }
 
 .channel-move-modal__table {
@@ -1693,6 +1720,7 @@ button.danger {
   border: 1px solid var(--border-muted);
   border-radius: 4px;
   font-size: 14px;
+  box-sizing: border-box;
 }
 
 .channel-move-modal__content input:focus,

@@ -459,6 +459,24 @@ export default function PSITablePage() {
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
   }, [channelMoveSelection, tableData]);
 
+  const inventorySnapshot = useMemo(() => {
+    if (!channelMoveSelection) {
+      return [];
+    }
+
+    const { row, date } = channelMoveSelection;
+
+    return tableData
+      .filter((item) => item.sku_code === row.sku_code && item.warehouse_name === row.warehouse_name)
+      .map((item) => {
+        const entry = item.daily.find((daily) => daily.date === date);
+        return {
+          channel: item.channel,
+          stockClosing: entry?.stock_closing ?? null,
+        };
+      });
+  }, [channelMoveSelection, tableData]);
+
   const channelMoveModalContext = useMemo(() => {
     if (!channelMoveSelection || !selectedChannelForMove) {
       return null;
@@ -892,6 +910,7 @@ export default function PSITablePage() {
           formatNumber={formatNumber}
           currentNetMove={currentNetMove}
           channelMoveValue={currentChannelMoveValue}
+          inventorySnapshot={inventorySnapshot}
         />
       </div>
     </div>

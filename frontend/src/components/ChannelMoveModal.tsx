@@ -28,6 +28,7 @@ interface ChannelMoveModalProps {
   formatNumber: (value?: number | null) => string;
   currentNetMove: number;
   channelMoveValue: number | null;
+  inventorySnapshot: { channel: string; stockClosing: number | null }[];
 }
 
 interface DraftTransfer {
@@ -90,6 +91,7 @@ const ChannelMoveModal = ({
   formatNumber,
   currentNetMove,
   channelMoveValue,
+  inventorySnapshot,
 }: ChannelMoveModalProps) => {
   const [drafts, setDrafts] = useState<DraftTransfer[]>([]);
   const [removedTransfers, setRemovedTransfers] = useState<Record<string, true>>({});
@@ -98,7 +100,14 @@ const ChannelMoveModal = ({
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const headingId = useId();
   const descriptionId = useId();
-  const otherChannelListId = useId();
+  const formatSignedDelta = (value: number) => {
+    if (value === 0) {
+      return formatNumber(0);
+    }
+    const absolute = Math.abs(value);
+    const formatted = formatNumber(absolute);
+    return value > 0 ? `+${formatted}` : `-${formatted}`;
+  };
 
   const canRender = typeof document !== "undefined";
 
@@ -113,6 +122,8 @@ const ChannelMoveModal = ({
       const trimmedOther = draft.otherChannel.trim();
       if (!trimmedOther) {
         issues.otherChannel = "チャネルを入力してください";
+      } else if (!availableChannels.includes(trimmedOther)) {
+        issues.otherChannel = "チャネルを選択してください";
       } else if (trimmedOther === channel.channel) {
         issues.otherChannel = "同じチャネルを指定することはできません";
       }
@@ -131,7 +142,7 @@ const ChannelMoveModal = ({
     });
 
     return map;
-  }, [channel, drafts]);
+  }, [availableChannels, channel, drafts]);
 
   const validDrafts = useMemo(
     () => drafts.filter((draft) => validationMap.get(draft.id)?.valid),
@@ -205,6 +216,21 @@ const ChannelMoveModal = ({
     setIsDownloading(false);
     setDownloadError(null);
   }, [isOpen, channel?.channel, date, existingTransfers]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    setDrafts((previous) =>
+      previous.map((draft) => {
+        const trimmed = draft.otherChannel.trim();
+        if (!trimmed || availableChannels.includes(trimmed)) {
+          return draft;
+        }
+        return { ...draft, otherChannel: "" };
+      })
+    );
+  }, [availableChannels, isOpen]);
 
   if (!canRender || !isOpen || !channel || !date) {
     return null;
@@ -334,6 +360,48 @@ const ChannelMoveModal = ({
 
   const combinedError = localError ?? error;
 
+  const inventoryPreview = useMemo(() => {
+    const map = new Map<string, { before: number | null; delta: number }>();
+
+    inventorySnapshot.forEach((entry) => {
+      map.set(entry.channel, { before: entry.stockClosing ?? null, delta: 0 });
+    });
+
+    const ensureChannel = (name: string) => {
+      if (!map.has(name)) {
+        map.set(name, { before: null, delta: 0 });
+      }
+      return map.get(name)!;
+    };
+
+    removedList.forEach((transfer) => {
+      const qty = transfer.qty;
+      ensureChannel(transfer.from_channel).delta += qty;
+      ensureChannel(transfer.to_channel).delta -= qty;
+    });
+
+    validDrafts.forEach((draft) => {
+      const qty = Number(draft.qty);
+      const trimmedOther = draft.otherChannel.trim();
+      if (!Number.isFinite(qty) || !trimmedOther || !channel) {
+        return;
+      }
+      const from = draft.direction === "outgoing" ? channel.channel : trimmedOther;
+      const to = draft.direction === "incoming" ? channel.channel : trimmedOther;
+      ensureChannel(from).delta -= qty;
+      ensureChannel(to).delta += qty;
+    });
+
+    return Array.from(map.entries())
+      .map(([channelName, { before, delta }]) => ({
+        channelName,
+        before,
+        delta,
+        after: before === null || before === undefined ? null : before + delta,
+      }))
+      .sort((a, b) => a.channelName.localeCompare(b.channelName, "ja"));
+  }, [channel, inventorySnapshot, removedList, validDrafts]);
+
   const modal = (
     <div className="channel-move-modal-backdrop" onClick={onClose}>
       <div
@@ -347,11 +415,27 @@ const ChannelMoveModal = ({
         <header className="channel-move-modal__header">
           <div>
             <h2 id={headingId}>チャネル移動の編集</h2>
-            <p className="channel-move-modal__subtitle" id={descriptionId}>
-              {channel.sku_code} {channel.sku_name ? `(${channel.sku_name})` : ""} / {channel.warehouse_name} / {channel.channel}
-              <br />
-              {formatDisplayDate(date)} の移動履歴
-            </p>
+            <div className="channel-move-modal__metadata" id={descriptionId}>
+              <div>
+                <span className="channel-move-modal__metadata-label">date;</span>
+                <span className="channel-move-modal__metadata-value">{formatDisplayDate(date)}</span>
+              </div>
+              <div>
+                <span className="channel-move-modal__metadata-label">sku_info;</span>
+                <span className="channel-move-modal__metadata-value">
+                  {channel.sku_code}
+                  {channel.sku_name ? ` (${channel.sku_name})` : ""} /
+                </span>
+              </div>
+              <div>
+                <span className="channel-move-modal__metadata-label">warehouse_name;</span>
+                <span className="channel-move-modal__metadata-value">{channel.warehouse_name}</span>
+              </div>
+              <div>
+                <span className="channel-move-modal__metadata-label">chanel;</span>
+                <span className="channel-move-modal__metadata-value">{channel.channel}</span>
+              </div>
+            </div>
           </div>
           <button type="button" className="channel-move-modal__close" onClick={onClose} aria-label="閉じる">
             ×
@@ -433,7 +517,7 @@ const ChannelMoveModal = ({
                               className="psi-button secondary"
                               onClick={() => toggleRemoveTransfer(transfer)}
                             >
-                              {marked ? "削除を取り消す" : "削除する"}
+                              {marked ? "削除を取り消す" : "削除"}
                             </button>
                           </td>
                         </tr>
@@ -485,12 +569,18 @@ const ChannelMoveModal = ({
                           </select>
                         </td>
                         <td>
-                          <input
-                            list={otherChannelListId}
+                          <select
                             value={draft.otherChannel}
                             onChange={(event) => handleDraftChange(draft.id, { otherChannel: event.target.value })}
                             aria-invalid={validation?.otherChannel ? "true" : "false"}
-                          />
+                          >
+                            <option value="">チャネルを選択</option>
+                            {availableChannels.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
                           {validation?.otherChannel && (
                             <span className="channel-move-modal__field-error">{validation.otherChannel}</span>
                           )}
@@ -520,7 +610,7 @@ const ChannelMoveModal = ({
                             className="psi-button secondary"
                             onClick={() => handleRemoveDraft(draft.id)}
                           >
-                            行を削除
+                            削除
                           </button>
                         </td>
                       </tr>
@@ -529,18 +619,31 @@ const ChannelMoveModal = ({
                 </tbody>
               </table>
             )}
-            <datalist id={otherChannelListId}>
-              {availableChannels.map((option) => (
-                <option key={option} value={option} />
-              ))}
-              {drafts.map((draft) => {
-                const trimmedOther = draft.otherChannel.trim();
-                if (!trimmedOther || availableChannels.includes(trimmedOther)) {
-                  return null;
-                }
-                return <option key={`draft-${draft.id}`} value={trimmedOther} />;
-              })}
-            </datalist>
+            {inventoryPreview.length > 0 && (
+              <div className="channel-move-modal__inventory-preview">
+                <h4>在庫の変化</h4>
+                <table className="channel-move-modal__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">チャネル</th>
+                      <th scope="col">before</th>
+                      <th scope="col">after</th>
+                      <th scope="col">差分</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventoryPreview.map((entry) => (
+                      <tr key={entry.channelName}>
+                        <td>{entry.channelName}</td>
+                        <td>{formatNumber(entry.before)}</td>
+                        <td>{formatNumber(entry.after)}</td>
+                        <td>{formatSignedDelta(entry.delta)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {combinedError && <p className="channel-move-modal__error" role="alert">{combinedError}</p>}
