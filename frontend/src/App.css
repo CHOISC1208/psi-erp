@@ -389,9 +389,36 @@ button.collapse-toggle:focus-visible {
 
 .psi-grid-summary-sku-group {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   width: 100%;
+  min-height: 100%;
+}
+
+.psi-summary-data-grid .psi-grid-summary-sku-cell {
+  align-items: stretch;
+}
+
+.psi-grid-summary-sku {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.psi-grid-summary-sku-code {
+  font-weight: 600;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.psi-grid-summary-sku-name {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .psi-grid-summary-sku-toggle {
