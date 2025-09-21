@@ -1442,6 +1442,22 @@ button.icon-button:focus-visible {
   z-index: 1;
 }
 
+.psi-summary-data-grid .rdg-row .rdg-cell {
+  background-color: var(--surface-table);
+}
+
+.psi-summary-data-grid
+  .rdg-row:nth-child(even):not(.psi-summary-row-selected)
+  .rdg-cell:not(.psi-summary-cell-selected) {
+  background-color: var(--surface-table-zebra);
+}
+
+.psi-summary-data-grid
+  .rdg-row:hover:not(.psi-summary-row-selected)
+  .rdg-cell:not(.psi-summary-cell-selected):not(.rdg-cell-editing):not([aria-selected="true"]) {
+  background-color: var(--psi-grid-hover);
+}
+
 .psi-summary-row-placeholder {
   background-color: transparent;
 }
