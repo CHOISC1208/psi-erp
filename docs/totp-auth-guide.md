@@ -425,7 +425,7 @@ curl -i -c cookies.txt -X POST https://api.example.com/auth/login \
 # Step2: totp verify
 curl -i -b cookies.txt -c cookies.txt -X POST https://api.example.com/auth/totp/verify \
   -H 'Content-Type: application/json' \
-  -H "X-CSRF-Token: $(jq -r '.csrf' cookies.txt)" \
+  -H "X-CSRF-Token: $(awk '/csrf_token/ {print $7}' cookies.txt)" \
   -d '{"code":"123456"}'
 
 # Get current user
@@ -434,6 +434,8 @@ curl -b cookies.txt https://api.example.com/me
 # Logout
 curl -i -b cookies.txt -X POST https://api.example.com/auth/logout
 ```
+
+`curl` の `-c` オプションで生成される Netscape 形式の Cookie ジャーでは 7 列目に Cookie 値が入るため、`awk '/csrf_token/ {print $7}' cookies.txt` で `csrf_token` の値を抽出し、その結果をコマンド置換で `X-CSRF-Token` ヘッダーに渡している。
 
 ### pytest 最小例
 ```python
