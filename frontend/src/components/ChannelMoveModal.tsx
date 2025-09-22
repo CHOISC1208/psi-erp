@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { ChannelTransfer, ChannelTransferCreate } from "../types";
-import { api } from "../lib/api";
+import api from "../lib/api";
 
 interface ChannelMoveModalProps {
   isOpen: boolean;

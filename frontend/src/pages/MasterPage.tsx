@@ -3,7 +3,7 @@ import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 
-import { api } from "../lib/api";
+import api from "../lib/api";
 import type { MasterRecord } from "../types";
 
 type FieldType = "text" | "number";

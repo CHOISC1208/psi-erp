@@ -3,7 +3,7 @@ import axios from "axios";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
-import { api } from "../lib/api";
+import api from "../lib/api";
 import {
   ChannelTransfer,
   ChannelTransferCreate,
