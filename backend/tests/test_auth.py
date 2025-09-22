@@ -202,11 +202,20 @@ def test_verify_password_handles_invalid_hash_gracefully():
     assert verify_password("any", "argon2$invalid") is False
 
 
-def test_verify_password_accepts_readme_argon2_hash():
-    pytest.importorskip("argon2")
+def test_pbkdf2_fallback_round_trip(monkeypatch):
+    monkeypatch.setattr("backend.app.security._pwd_context", None)
+    monkeypatch.setattr("backend.app.security._argon2_hasher", None)
 
+    hashed = hash_password("fallback")
+    assert hashed.startswith("pbkdf2_sha256$")
+    assert verify_password("fallback", hashed) is True
+    assert verify_password("other", hashed) is False
+
+
+def test_verify_password_accepts_readme_pbkdf2_hash():
     hash_from_readme = (
-        "$argon2id$v=19$m=102400,t=2,p=8$wR3AbBVlcrEpcPGJ6cN4dg$oT0yrNqC6JGAu8Kqf5B95Q"
+        "pbkdf2_sha256$390000$xLZMCnQn7qjW030LISFGMw$"
+        "wmdKegibCSwbuMOl6MQ8UhqKEMUqwdSzLdePUgVveNQ"
     )
 
     assert verify_password("changeme!", hash_from_readme) is True
