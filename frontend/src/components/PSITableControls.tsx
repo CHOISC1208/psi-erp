@@ -1,10 +1,24 @@
-import { ForwardedRef, forwardRef, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  ForwardedRef,
+  forwardRef,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import { UseQueryResult } from "@tanstack/react-query";
 
 import iconUrls from "../lib/iconUrls.json";
 import { PSIChannel, PSISessionSummary, Session } from "../types";
 import PSISummaryTable from "./PSISummaryTable";
 import { buildSummary } from "../utils/psiSummary";
+import {
+  SummaryFilterDefinition,
+  applySummaryFilters,
+  resolveSummaryFilter,
+  summaryFilters,
+} from "../utils/psiSummaryFilters";
 
 interface PSITableControlsProps {
   isCollapsed: boolean;
@@ -85,7 +99,10 @@ const PSITableControls = forwardRef(function PSITableControls(
   ref: ForwardedRef<HTMLElement>
 ) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const pageSize = 4;
+  const filterSelectId = useId();
+  const filterHintId = `${filterSelectId}-hint`;
 
   const start = sessionSummaryQuery.data?.start_date ?? undefined;
   const end = sessionSummaryQuery.data?.end_date ?? undefined;
@@ -95,9 +112,14 @@ const PSITableControls = forwardRef(function PSITableControls(
     [psiData, start, end]
   );
 
+  const filtered = useMemo(
+    () => applySummaryFilters(summaryAll, activeFilters),
+    [summaryAll, activeFilters]
+  );
+
   const sorted = useMemo(
-    () => [...summaryAll].sort((a, b) => a.sku_code.localeCompare(b.sku_code)),
-    [summaryAll]
+    () => [...filtered].sort((a, b) => a.sku_code.localeCompare(b.sku_code)),
+    [filtered]
   );
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
@@ -105,9 +127,30 @@ const PSITableControls = forwardRef(function PSITableControls(
   const startIndex = (page - 1) * pageSize;
   const pageRows = useMemo(() => sorted.slice(startIndex, startIndex + pageSize), [sorted, startIndex]);
 
+  const selectedFilterDetails = useMemo(
+    () =>
+      activeFilters
+        .map((id) => resolveSummaryFilter(id))
+        .filter((filter): filter is SummaryFilterDefinition => Boolean(filter)),
+    [activeFilters]
+  );
+
+  const handleFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
+    setActiveFilters(selected);
+  };
+
+  const handleClearFilters = () => setActiveFilters([]);
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [sessionId, skuCode, warehouseName, channel]);
+  }, [sessionId, skuCode, warehouseName, channel, activeFilters]);
+
+  useEffect(() => {
+    if (selectedSku) {
+      onSelectSku(null);
+    }
+  }, [activeFilters, onSelectSku, selectedSku]);
 
   useEffect(() => {
     if (!selectedSku) {
@@ -117,7 +160,7 @@ const PSITableControls = forwardRef(function PSITableControls(
     if (!visible.has(selectedSku)) {
       onSelectSku(null);
     }
-  }, [pageRows, selectedSku, onSelectSku]);
+  }, [pageRows, selectedSku, onSelectSku, activeFilters]);
 
   const goPrev = () => setCurrentPage((previous) => Math.max(1, previous - 1));
   const goNext = () => setCurrentPage((previous) => Math.min(totalPages, previous + 1));
@@ -244,6 +287,55 @@ const PSITableControls = forwardRef(function PSITableControls(
           </section>
           <aside className="psi-right-pane">
             <div className="psi-summary-card">
+              <div className="psi-summary-header">
+                <div className="psi-summary-title">
+                  <h3>SKU集計</h3>
+                  <p className="psi-summary-subtitle">選択中のセッションに含まれるSKUを確認できます。</p>
+                </div>
+                <div className="psi-summary-filter-controls">
+                  <label className="psi-summary-filter-label" htmlFor={filterSelectId}>
+                    集計フィルタ
+                    <select
+                      id={filterSelectId}
+                      multiple
+                      value={activeFilters}
+                      onChange={handleFilterChange}
+                      className="psi-summary-filter-select"
+                      aria-describedby={filterHintId}
+                      size={Math.min(4, summaryFilters.length)}
+                    >
+                      {summaryFilters.map((filter) => (
+                        <option key={filter.id} value={filter.id} title={filter.description}>
+                          {filter.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedFilterDetails.length > 0 ? (
+                    <div className="psi-summary-filter-tokens" role="list">
+                      {selectedFilterDetails.map((filter) => (
+                        <span key={filter.id} className="psi-summary-filter-token" role="listitem" title={filter.description}>
+                          {filter.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p id={filterHintId} className="psi-summary-filter-hint">
+                      フィルタを選択すると条件に合うSKUだけを表示できます。
+                      Ctrl / ⌘ キーで複数選択が可能です。
+                    </p>
+                  )}
+                  {selectedFilterDetails.length > 0 && (
+                    <button
+                      type="button"
+                      className="psi-button secondary psi-summary-clear-filters"
+                      onClick={handleClearFilters}
+                    >
+                      フィルタをクリア
+                    </button>
+                  )}
+                </div>
+              </div>
               {sorted.length > 0 ? (
                 <PSISummaryTable
                   rows={pageRows}
