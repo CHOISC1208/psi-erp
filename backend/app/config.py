@@ -21,6 +21,66 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def normalize_database_url(value: str | None) -> str:
+    """Normalize a PostgreSQL connection URL for psycopg2 usage."""
+
+    if not value:
+        return ""
+
+    value = value.strip()
+    if not value:
+        return ""
+
+    parsed = urlsplit(value)
+
+    lowered_scheme = parsed.scheme.lower()
+    if lowered_scheme in {"postgres", "postgresql", "postgresql+psycopg"}:
+        scheme = "postgresql+psycopg2"
+    elif lowered_scheme == "postgresql+psycopg2":
+        scheme = "postgresql+psycopg2"
+    else:
+        scheme = parsed.scheme
+
+    path = parsed.path
+    query = parsed.query
+
+    if "sslmode=" in path and not query:
+        base_path, _, sslmode_value = path.partition("sslmode=")
+        base_path = base_path.rstrip("?&")
+        path = base_path or "/"
+        if not path.startswith("/"):
+            path = f"/{path}"
+        query = f"sslmode={sslmode_value.lstrip('?&')}"
+
+    query_params = parse_qsl(query, keep_blank_values=True)
+    filtered_params = [(key, value) for key, value in query_params if key != "sslmode"]
+    filtered_params.append(("sslmode", "require"))
+    normalized_query = urlencode(filtered_params, doseq=True)
+
+    normalized = urlunsplit(
+        (
+            scheme,
+            parsed.netloc,
+            path,
+            normalized_query,
+            parsed.fragment,
+        )
+    )
+
+    if not parsed.netloc and scheme:
+        prefix = f"{scheme}:/"
+        if normalized.startswith(prefix) and not normalized.startswith(f"{scheme}://"):
+            normalized = normalized.replace(prefix, f"{scheme}:///", 1)
+
+    return normalized
+
+
+def normalized_db_url() -> str:
+    """Return the normalized DATABASE_URL from the environment."""
+
+    return normalize_database_url(os.getenv("DATABASE_URL", ""))
+
+
 class Settings(BaseModel):
     """Runtime configuration loaded from environment variables."""
 
@@ -70,55 +130,7 @@ class Settings(BaseModel):
     def _normalize_database_url(cls, value: str | None) -> str:
         """Normalize the DATABASE_URL for SQLAlchemy / psycopg2 usage."""
 
-        if not value:
-            return ""
-
-        value = value.strip()
-        if not value:
-            return ""
-
-        parsed = urlsplit(value)
-
-        lowered_scheme = parsed.scheme.lower()
-        if lowered_scheme in {"postgres", "postgresql"}:
-            scheme = "postgresql+psycopg2"
-        elif lowered_scheme == "postgresql+psycopg2":
-            scheme = "postgresql+psycopg2"
-        else:
-            scheme = parsed.scheme
-
-        path = parsed.path
-        query = parsed.query
-
-        if "sslmode=" in path and not query:
-            base_path, _, sslmode_value = path.partition("sslmode=")
-            base_path = base_path.rstrip("?&")
-            path = base_path or "/"
-            if not path.startswith("/"):
-                path = f"/{path}"
-            query = f"sslmode={sslmode_value.lstrip('?&')}"
-
-        query_params = parse_qsl(query, keep_blank_values=True)
-        filtered_params = [(key, value) for key, value in query_params if key != "sslmode"]
-        filtered_params.append(("sslmode", "require"))
-        normalized_query = urlencode(filtered_params, doseq=True)
-
-        normalized = urlunsplit(
-            (
-                scheme,
-                parsed.netloc,
-                path,
-                normalized_query,
-                parsed.fragment,
-            )
-        )
-
-        if not parsed.netloc and scheme:
-            prefix = f"{scheme}:/"
-            if normalized.startswith(prefix) and not normalized.startswith(f"{scheme}://"):
-                normalized = normalized.replace(prefix, f"{scheme}:///", 1)
-
-        return normalized
+        return normalize_database_url(value)
 
     @property
     def DATABASE_URL(self) -> str:  # pragma: no cover - backwards compat helper

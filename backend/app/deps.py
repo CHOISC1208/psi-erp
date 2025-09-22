@@ -3,14 +3,13 @@ from __future__ import annotations
 
 from collections.abc import Generator
 import uuid
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import models
-from .config import settings
+from .config import normalize_database_url, settings
 from .security import load_session, session_signature_from_hash
 
 connect_args = (
@@ -19,17 +18,7 @@ connect_args = (
     else {}
 )
 
-# ✅ DB URL 正規化（Heroku の postgres:// → postgresql+psycopg://）
-db_url = settings.database_url
-if db_url and db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
-
-# ✅ sslmode=require を付与（既にあれば維持）
-if db_url:
-    u = urlparse(db_url)
-    q = dict(parse_qsl(u.query))
-    q.setdefault("sslmode", "require")
-    db_url = urlunparse(u._replace(query=urlencode(q)))
+db_url = normalize_database_url(settings.database_url)
 
 engine = create_engine(
     db_url,
