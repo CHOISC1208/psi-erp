@@ -350,17 +350,10 @@ const PSISummaryTable = memo(function PSISummaryTable({
         return classNames("psi-grid-value-cell", "psi-summary-cell-placeholder");
       }
 
-      const rawValue = row[key];
-      const numericValue = typeof rawValue === "number" ? rawValue : null;
-      const isStockClosing = row.metricKey === "last_closing";
-      const isNegative = numericValue !== null && numericValue < 0;
-
       return classNames(
         "psi-grid-value-cell",
         row.groupPosition && `psi-grid-group-${row.groupPosition}`,
         row.isSelected && "psi-summary-cell-selected",
-        isNegative && "psi-grid-value-negative",
-        isStockClosing && isNegative && "psi-grid-stock-warning"
       );
     },
     []
