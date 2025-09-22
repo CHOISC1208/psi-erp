@@ -27,6 +27,15 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from .config import settings
 
 
+def _qualified(table: str, column: str = "id") -> str:
+    """Return a fully qualified table reference respecting the schema."""
+
+    schema = settings.db_schema.strip()
+    if schema:
+        return f"{schema}.{table}.{column}"
+    return f"{table}.{column}"
+
+
 class Base(DeclarativeBase):
     """Declarative base that is aware of the configured schema."""
 
@@ -135,7 +144,7 @@ class PSIBase(Base, SchemaMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
         nullable=False,
     )
     sku_code: Mapped[str] = mapped_column(Text, nullable=False)
@@ -168,7 +177,7 @@ class PSIEdit(Base, SchemaMixin, TimestampMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
         nullable=False,
     )
     sku_code: Mapped[str] = mapped_column(Text, nullable=False)
@@ -190,7 +199,7 @@ class PSIEditLog(Base, SchemaMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
         nullable=False,
     )
     sku_code: Mapped[str] = mapped_column(Text, nullable=False)
@@ -225,7 +234,7 @@ class ChannelTransfer(Base, SchemaMixin, TimestampMixin):
 
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
     )
