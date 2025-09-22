@@ -11,6 +11,7 @@ import {
 import SessionsPage from "./pages/SessionsPage";
 import PSITablePage from "./pages/PSITablePage";
 import MasterPage from "./pages/MasterPage";
+import TransferPage from "./pages/TransferPage";
 import DocsPage from "./pages/DocsPage";
 import LoginPage from "./pages/LoginPage";
 import { useAuth } from "./hooks/useAuth";
@@ -32,20 +33,10 @@ function ProtectedLayout() {
     }
   }, [location.pathname]);
 
-  const masters = useMemo(() => {
-    const baseMasters = [
-      { path: "/masters/products", label: "Product Master", icon: "📦" },
-      { path: "/masters/customers", label: "Customer Master", icon: "🧑" },
-      { path: "/masters/suppliers", label: "Supplier Master", icon: "🚚" },
-    ];
-    if (user?.is_admin) {
-      return [
-        { path: "/masters/users", label: "User Management", icon: "👥" },
-        ...baseMasters,
-      ];
-    }
-    return baseMasters;
-  }, [user?.is_admin]);
+  const masters = useMemo(
+    () => [{ path: "/masters/psi-metrics", label: "PSI Metrics Master", icon: "🧮" }],
+    [],
+  );
 
   const handleLogout = async () => {
     await logout();
@@ -90,6 +81,17 @@ function ProtectedLayout() {
                 📊
               </span>
               <span className="menu-label">PSI Table</span>
+            </NavLink>
+          </li>
+          <li>
+            <NavLink
+              to="/transfer"
+              className={({ isActive }) => (isActive ? "active" : undefined)}
+            >
+              <span className="menu-icon" aria-hidden="true">
+                🔄
+              </span>
+              <span className="menu-label">Transfer</span>
             </NavLink>
           </li>
           <li>
@@ -139,6 +141,7 @@ function ProtectedLayout() {
           <Route path="/masters/:masterId" element={<MasterPage />} />
           <Route path="/psi" element={<PSITablePage />} />
           <Route path="/docs" element={<DocsPage />} />
+          <Route path="/transfer" element={<TransferPage />} />
           <Route path="/masters" element={<Navigate to={masters[0].path} replace />} />
         </Routes>
       </main>

@@ -13,7 +13,15 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from .config import settings
 from .middleware import CSRFMiddleware, SecurityHeadersMiddleware
-from .routers import auth, channel_transfers, masters, psi, sessions, users
+from .routers import (
+    auth,
+    channel_transfers,
+    masters,
+    psi,
+    psi_metrics,
+    sessions,
+    users,
+)
 
 app = FastAPI(title="GEN-like PSI API")
 
@@ -36,8 +44,9 @@ app.add_middleware(
 # 既存の互換エンドポイント
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
-app.include_router(masters.router,  prefix="/masters",  tags=["masters"])
-app.include_router(psi.router,      prefix="/psi",      tags=["psi"])
+app.include_router(masters.router, prefix="/masters", tags=["masters"])
+app.include_router(psi_metrics.router, prefix="/psi-metrics", tags=["psi-metrics"])
+app.include_router(psi.router, prefix="/psi", tags=["psi"])
 app.include_router(
     channel_transfers.router,
     prefix="/channel-transfers",
@@ -48,8 +57,11 @@ app.include_router(users.router, prefix="/users", tags=["users"])
 # /api 配下にもミラー（フロントが /api/* を叩いてもOKに）
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
-app.include_router(masters.router,  prefix="/api/masters",  tags=["masters"])
-app.include_router(psi.router,      prefix="/api/psi",      tags=["psi"])
+app.include_router(masters.router, prefix="/api/masters", tags=["masters"])
+app.include_router(
+    psi_metrics.router, prefix="/api/psi-metrics", tags=["psi-metrics"]
+)
+app.include_router(psi.router, prefix="/api/psi", tags=["psi"])
 app.include_router(
     channel_transfers.router,
     prefix="/api/channel-transfers",
@@ -89,6 +101,7 @@ API_PREFIXES = (
     "api/",
     "sessions",
     "masters",
+    "psi-metrics",
     "psi",
     "channel-transfers",
     "auth",

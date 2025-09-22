@@ -4,81 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 
 import api from "../lib/api";
-import { useAuth } from "../hooks/useAuth";
-import type { MasterRecord, UserAccount } from "../types";
+import type { PSIMetricDefinition } from "../types";
 
-type FieldType = "text" | "number";
-
-interface MasterField {
-  key: string;
-  label: string;
-  helper: string;
-  type?: FieldType;
-  required?: boolean;
-}
-
-interface MasterConfig {
-  title: string;
-  description: string;
-  fields: MasterField[];
-}
-
-type MasterFormState = Record<string, string>;
-type MasterPayload = Record<string, string | number | null>;
 type StatusMessage = { type: "success" | "error"; text: string };
-interface CreateUserFormState {
-  username: string;
-  password: string;
-}
 
-const masterConfigs: Record<string, MasterConfig> = {
-  products: {
-    title: "Product Master",
-    description:
-      "Manage product catalog information including SKU, name, and stock control details.",
-    fields: [
-      { key: "sku_code", label: "SKU", helper: "Unique product identifier", required: true },
-      { key: "name", label: "Name", helper: "Display name", required: true },
-      { key: "category", label: "Category", helper: "Grouping for reporting" },
-      {
-        key: "safety_stock",
-        label: "Safety Stock",
-        helper: "Minimum quantity to keep on hand",
-        type: "number",
-      },
-    ],
-  },
-  customers: {
-    title: "Customer Master",
-    description: "Maintain customer records used for order and PSI planning.",
-    fields: [
-      { key: "code", label: "Customer Code", helper: "Unique customer reference", required: true },
-      { key: "name", label: "Name", helper: "Billing or trading name", required: true },
-      { key: "contact", label: "Contact", helper: "Primary contact information" },
-      { key: "region", label: "Region", helper: "Sales territory" },
-    ],
-  },
-  suppliers: {
-    title: "Supplier Master",
-    description: "Define suppliers that provide materials feeding the PSI calculations.",
-    fields: [
-      {
-        key: "code",
-        label: "Supplier Code",
-        helper: "Unique supplier reference",
-        required: true,
-      },
-      { key: "name", label: "Name", helper: "Supplier name", required: true },
-      {
-        key: "lead_time",
-        label: "Lead Time (days)",
-        helper: "Average delivery lead time",
-        type: "number",
-      },
-      { key: "currency", label: "Currency", helper: "Default purchasing currency" },
-    ],
-  },
-};
+interface MetricFormState {
+  name: string;
+  is_editable: boolean;
+  display_order: string;
+}
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -96,187 +30,130 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-const createEmptyFormState = (config: MasterConfig): MasterFormState => {
-  return config.fields.reduce<MasterFormState>((accumulator, field) => {
-    accumulator[field.key] = "";
-    return accumulator;
-  }, {});
+const fetchMetrics = async (): Promise<PSIMetricDefinition[]> => {
+  const { data } = await api.get<PSIMetricDefinition[]>("/psi-metrics/");
+  return data;
 };
 
-const buildPayload = (config: MasterConfig, values: MasterFormState): MasterPayload => {
-  return config.fields.reduce<MasterPayload>((accumulator, field) => {
-    const rawValue = values[field.key] ?? "";
-    const trimmed = rawValue.trim();
-
-    if (!trimmed) {
-      accumulator[field.key] = null;
-      return accumulator;
-    }
-
-    if (field.type === "number") {
-      const numericValue = Number(trimmed);
-      accumulator[field.key] = Number.isNaN(numericValue) ? trimmed : numericValue;
-    } else {
-      accumulator[field.key] = trimmed;
-    }
-
-    return accumulator;
-  }, {});
+const createMetric = async (payload: PSIMetricDefinition): Promise<PSIMetricDefinition> => {
+  const { data } = await api.post<PSIMetricDefinition>("/psi-metrics/", payload);
+  return data;
 };
 
-const formatValue = (value: unknown): string => {
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value.toString() : String(value);
-  }
-
-  return String(value);
+const updateMetric = async (
+  metricName: string,
+  payload: Partial<PSIMetricDefinition>,
+): Promise<PSIMetricDefinition> => {
+  const { data } = await api.put<PSIMetricDefinition>(`/psi-metrics/${encodeURIComponent(metricName)}`, payload);
+  return data;
 };
 
-const PASSWORD_CHARSET =
-  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*?";
-
-const generateRandomPassword = (length = 12): string => {
-  const characters = PASSWORD_CHARSET;
-  const result: string[] = [];
-  const cryptoObj = typeof window !== "undefined" ? window.crypto : undefined;
-
-  if (cryptoObj?.getRandomValues) {
-    const values = new Uint32Array(length);
-    cryptoObj.getRandomValues(values);
-    for (let index = 0; index < length; index += 1) {
-      result.push(characters[values[index] % characters.length]);
-    }
-  } else {
-    for (let index = 0; index < length; index += 1) {
-      const randomIndex = Math.floor(Math.random() * characters.length);
-      result.push(characters[randomIndex]);
-    }
-  }
-
-  return result.join("");
+const deleteMetric = async (metricName: string): Promise<void> => {
+  await api.delete(`/psi-metrics/${encodeURIComponent(metricName)}`);
 };
 
-const buildCredentialMessage = (username: string, password: string): string =>
-  `Username；${username}\nPASS；${password}`;
+export default function MasterPage() {
+  const { masterId } = useParams();
+  const isMetricsRoute = !masterId || masterId === "psi-metrics";
 
-function MasterRecordsPage({ masterId }: { masterId?: string }) {
   const queryClient = useQueryClient();
-
-  const config = useMemo(() => {
-    if (!masterId) return undefined;
-    return masterConfigs[masterId];
-  }, [masterId]);
-
-  const [formState, setFormState] = useState<MasterFormState>({});
-  const [editState, setEditState] = useState<MasterFormState>({});
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [formState, setFormState] = useState<MetricFormState>({
+    name: "",
+    is_editable: false,
+    display_order: "1",
+  });
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editState, setEditState] = useState<MetricFormState>({
+    name: "",
+    is_editable: false,
+    display_order: "1",
+  });
+
+  const metricsQuery = useQuery({
+    queryKey: ["psi-metrics"],
+    queryFn: fetchMetrics,
+  });
+
+  const metrics = metricsQuery.data ?? [];
+  const nextDisplayOrder = useMemo(() => {
+    if (!metrics.length) {
+      return "1";
+    }
+    const maxOrder = metrics.reduce((max, metric) => Math.max(max, metric.display_order), 0);
+    return String(maxOrder + 1);
+  }, [metrics]);
 
   useEffect(() => {
-    if (config) {
-      setFormState(createEmptyFormState(config));
-      setEditState(createEmptyFormState(config));
-      setEditingId(null);
-      setStatus(null);
-    }
-  }, [config]);
-
-  const recordsQuery = useQuery({
-    queryKey: ["masters", masterId],
-    queryFn: async (): Promise<MasterRecord[]> => {
-      if (!masterId) {
-        return [];
+    setFormState((previous) => {
+      if (previous.name || previous.display_order !== "1") {
+        return previous;
       }
-      const { data } = await api.get<MasterRecord[]>(`/masters/${masterId}`);
-      return data;
-    },
-    enabled: Boolean(masterId && config),
-  });
+      return { ...previous, display_order: nextDisplayOrder };
+    });
+  }, [nextDisplayOrder]);
 
-  const createRecord = useMutation<MasterRecord, unknown, MasterPayload>({
-    mutationFn: async (payload: MasterPayload) => {
-      if (!masterId) throw new Error("Master not selected");
-      const { data } = await api.post<MasterRecord>(`/masters/${masterId}`, { data: payload });
-      return data;
-    },
-    onSuccess: () => {
-      if (config) {
-        setFormState(createEmptyFormState(config));
-      }
-      setStatus({ type: "success", text: "Record added." });
-      queryClient.invalidateQueries({ queryKey: ["masters", masterId] });
-    },
-    onError: (error) => {
-      setStatus({
-        type: "error",
-        text: getErrorMessage(error, "Unable to add record. Try again."),
-      });
-    },
+  const createMetricMutation = useMutation({
+    mutationFn: (payload: PSIMetricDefinition) => createMetric(payload),
     onMutate: () => {
       setStatus(null);
     },
-  });
-
-  const updateRecord = useMutation<MasterRecord, unknown, { id: string; payload: MasterPayload }>({
-    mutationFn: async ({ id, payload }) => {
-      if (!masterId) throw new Error("Master not selected");
-      const { data } = await api.put<MasterRecord>(`/masters/${masterId}/${id}`, { data: payload });
-      return data;
-    },
     onSuccess: () => {
-      setEditingId(null);
-      if (config) {
-        setEditState(createEmptyFormState(config));
-      }
-      setStatus({ type: "success", text: "Record updated." });
-      queryClient.invalidateQueries({ queryKey: ["masters", masterId] });
+      setStatus({ type: "success", text: "Metric created." });
+      queryClient.invalidateQueries({ queryKey: ["psi-metrics"] });
+      setFormState({ name: "", is_editable: false, display_order: String(Number(nextDisplayOrder) + 1) });
     },
     onError: (error) => {
       setStatus({
         type: "error",
-        text: getErrorMessage(error, "Unable to update record. Try again."),
+        text: getErrorMessage(error, "Unable to create metric. Try again."),
       });
     },
+  });
+
+  const updateMetricMutation = useMutation({
+    mutationFn: ({ metricName, payload }: { metricName: string; payload: Partial<PSIMetricDefinition> }) =>
+      updateMetric(metricName, payload),
     onMutate: () => {
       setStatus(null);
     },
-  });
-
-  const deleteRecord = useMutation<void, unknown, string>({
-    mutationFn: async (recordId: string) => {
-      if (!masterId) throw new Error("Master not selected");
-      await api.delete(`/masters/${masterId}/${recordId}`);
-    },
     onSuccess: () => {
-      setStatus({ type: "success", text: "Record deleted." });
-      queryClient.invalidateQueries({ queryKey: ["masters", masterId] });
+      setStatus({ type: "success", text: "Metric updated." });
+      queryClient.invalidateQueries({ queryKey: ["psi-metrics"] });
+      setEditingName(null);
+      setEditState({ name: "", is_editable: false, display_order: "1" });
     },
     onError: (error) => {
       setStatus({
         type: "error",
-        text: getErrorMessage(error, "Unable to delete record. Try again."),
+        text: getErrorMessage(error, "Unable to update metric. Try again."),
       });
-    },
-    onMutate: (recordId) => {
-      setStatus(null);
-      setDeletingId(recordId);
-    },
-    onSettled: () => {
-      setDeletingId(null);
     },
   });
 
-  if (!config) {
+  const deleteMetricMutation = useMutation({
+    mutationFn: deleteMetric,
+    onMutate: () => {
+      setStatus(null);
+    },
+    onSuccess: () => {
+      setStatus({ type: "success", text: "Metric deleted." });
+      queryClient.invalidateQueries({ queryKey: ["psi-metrics"] });
+    },
+    onError: (error) => {
+      setStatus({
+        type: "error",
+        text: getErrorMessage(error, "Unable to delete metric. Try again."),
+      });
+    },
+  });
+
+  if (!isMetricsRoute) {
     return (
       <div className="page">
         <header>
           <h1>Masters</h1>
-          <p>Select a master from the sidebar to view and manage its records.</p>
+          <p>This master does not have a dedicated management screen yet.</p>
         </header>
       </div>
     );
@@ -284,326 +161,257 @@ function MasterRecordsPage({ masterId }: { masterId?: string }) {
 
   const handleCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!masterId) return;
+    const name = formState.name.trim();
+    const order = Number.parseInt(formState.display_order, 10);
 
-    const missingRequired = config.fields.filter(
-      (field) => field.required && !(formState[field.key] ?? "").trim(),
-    );
-
-    if (missingRequired.length > 0) {
-      setStatus({ type: "error", text: "Fill in all required fields before saving." });
+    if (!name) {
+      setStatus({ type: "error", text: "Metric name is required." });
       return;
     }
 
-    createRecord.mutate(buildPayload(config, formState));
+    if (Number.isNaN(order) || order < 0) {
+      setStatus({ type: "error", text: "Display order must be zero or a positive number." });
+      return;
+    }
+
+    createMetricMutation.mutate({
+      name,
+      is_editable: formState.is_editable,
+      display_order: order,
+    });
   };
 
-  const startEditing = (record: MasterRecord) => {
+  const startEditing = (metric: PSIMetricDefinition) => {
     setStatus(null);
-    setEditingId(record.id);
-    const nextState = config.fields.reduce<MasterFormState>((accumulator, field) => {
-      const value = (record.data as Record<string, unknown>)[field.key];
-      accumulator[field.key] = value === null || value === undefined ? "" : String(value);
-      return accumulator;
-    }, createEmptyFormState(config));
-    setEditState(nextState);
-  };
-
-  const handleEditSave = () => {
-    if (!editingId) return;
-
-    const missingRequired = config.fields.filter(
-      (field) => field.required && !(editState[field.key] ?? "").trim(),
-    );
-
-    if (missingRequired.length > 0) {
-      setStatus({ type: "error", text: "Fill in all required fields before saving." });
-      return;
-    }
-
-    updateRecord.mutate({ id: editingId, payload: buildPayload(config, editState) });
+    setEditingName(metric.name);
+    setEditState({
+      name: metric.name,
+      is_editable: metric.is_editable,
+      display_order: String(metric.display_order),
+    });
   };
 
   const handleEditCancel = () => {
-    setEditingId(null);
-    setEditState(createEmptyFormState(config));
-    setStatus(null);
+    setEditingName(null);
+    setEditState({ name: "", is_editable: false, display_order: "1" });
+  };
+
+  const handleEditSave = () => {
+    if (!editingName) {
+      return;
+    }
+
+    const trimmedName = editState.name.trim();
+    const order = Number.parseInt(editState.display_order, 10);
+    const original = metrics.find((metric) => metric.name === editingName);
+
+    if (!original) {
+      setStatus({ type: "error", text: "Original metric no longer exists." });
+      return;
+    }
+
+    if (!trimmedName) {
+      setStatus({ type: "error", text: "Metric name is required." });
+      return;
+    }
+
+    if (Number.isNaN(order) || order < 0) {
+      setStatus({ type: "error", text: "Display order must be zero or a positive number." });
+      return;
+    }
+
+    const payload: Partial<PSIMetricDefinition> = {};
+
+    if (trimmedName !== original.name) {
+      payload.name = trimmedName;
+    }
+    if (editState.is_editable !== original.is_editable) {
+      payload.is_editable = editState.is_editable;
+    }
+    if (order !== original.display_order) {
+      payload.display_order = order;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setStatus({ type: "error", text: "No changes to apply." });
+      return;
+    }
+
+    updateMetricMutation.mutate({ metricName: editingName, payload });
+  };
+
+  const handleDelete = (metricName: string) => {
+    if (!window.confirm(`Delete metric "${metricName}"?`)) {
+      return;
+    }
+    deleteMetricMutation.mutate(metricName);
   };
 
   return (
     <div className="page master-page">
       <header>
-        <h1>{config.title}</h1>
-        <p>{config.description}</p>
+        <h1>PSI Metrics Master</h1>
+        <p>Manage the metrics shown on the PSI table, their order, and whether they are editable.</p>
       </header>
 
+      {status ? <div className={`status-message ${status.type}`}>{status.text}</div> : null}
+
       <section>
-        <h2>Add New Record</h2>
+        <h2>Add Metric</h2>
         <form onSubmit={handleCreate} className="form-grid">
-          {config.fields.map((field) => (
-            <label key={field.key}>
-              {field.label}
-              <input
-                type={field.type ?? "text"}
-                value={formState[field.key] ?? ""}
-                onChange={(event) =>
-                  setFormState((previous) => ({ ...previous, [field.key]: event.target.value }))
-                }
-                required={field.required}
-              />
-              <small>{field.helper}</small>
-            </label>
-          ))}
-          <button type="submit" disabled={createRecord.isPending}>
-            {createRecord.isPending ? "Saving..." : "Add"}
+          <label>
+            Metric Name
+            <input
+              type="text"
+              value={formState.name}
+              onChange={(event) =>
+                setFormState((previous) => ({ ...previous, name: event.target.value }))
+              }
+              required
+            />
+            <small>Unique identifier used to reference the metric.</small>
+          </label>
+          <label className="checkbox-field">
+            <span>Editable</span>
+            <input
+              type="checkbox"
+              checked={formState.is_editable}
+              onChange={(event) =>
+                setFormState((previous) => ({ ...previous, is_editable: event.target.checked }))
+              }
+            />
+            <small>Allow manual adjustments for this metric in the PSI table.</small>
+          </label>
+          <label>
+            Display Order
+            <input
+              type="number"
+              min={0}
+              value={formState.display_order}
+              onChange={(event) =>
+                setFormState((previous) => ({ ...previous, display_order: event.target.value }))
+              }
+              required
+            />
+            <small>Lower numbers appear first in the PSI table.</small>
+          </label>
+          <button type="submit" disabled={createMetricMutation.isPending}>
+            {createMetricMutation.isPending ? "Saving..." : "Add"}
           </button>
         </form>
       </section>
 
       <section>
-        <h2>Existing Records</h2>
-        {recordsQuery.isLoading && <p>Loading records...</p>}
-        {recordsQuery.isError && (
-          <p className="error" role="alert">
-            {getErrorMessage(recordsQuery.error, "Failed to load master data.")}
-          </p>
-        )}
-        {status && <p className={status.type === "error" ? "error" : "success"}>{status.text}</p>}
-        {recordsQuery.data && recordsQuery.data.length > 0 ? (
-          <table className="table">
+        <h2>Existing Metrics</h2>
+        {metricsQuery.isLoading && !metrics.length ? <p>Loading metrics…</p> : null}
+        {metricsQuery.error ? (
+          <p className="error-text">Failed to load metrics. Please try again.</p>
+        ) : null}
+        <div className="table-container">
+          <table className="data-table">
             <thead>
               <tr>
-                {config.fields.map((field) => (
-                  <th key={field.key}>{field.label}</th>
-                ))}
+                <th>Name</th>
+                <th>Editable</th>
+                <th>Display Order</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {recordsQuery.data.map((record) => {
-                const isEditing = editingId === record.id;
-                const isDeleting = deletingId === record.id && deleteRecord.isPending;
-                const isSaving = updateRecord.isPending && updateRecord.variables?.id === record.id;
-
+              {metrics.map((metric) => {
+                const isEditing = editingName === metric.name;
                 return (
-                  <tr key={record.id}>
-                    {config.fields.map((field) => (
-                      <td key={field.key}>
-                        {isEditing ? (
-                          <input
-                            type={field.type ?? "text"}
-                            value={editState[field.key] ?? ""}
-                            onChange={(event) =>
-                              setEditState((previous) => ({
-                                ...previous,
-                                [field.key]: event.target.value,
-                              }))
-                            }
-                            required={field.required}
-                          />
-                        ) : (
-                          formatValue((record.data as Record<string, unknown>)[field.key])
-                        )}
-                      </td>
-                    ))}
+                  <tr key={metric.name}>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={editState.name}
+                          onChange={(event) =>
+                            setEditState((previous) => ({ ...previous, name: event.target.value }))
+                          }
+                        />
+                      ) : (
+                        metric.name
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="checkbox"
+                          checked={editState.is_editable}
+                          onChange={(event) =>
+                            setEditState((previous) => ({
+                              ...previous,
+                              is_editable: event.target.checked,
+                            }))
+                          }
+                        />
+                      ) : metric.is_editable ? (
+                        "Yes"
+                      ) : (
+                        "No"
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          min={0}
+                          value={editState.display_order}
+                          onChange={(event) =>
+                            setEditState((previous) => ({
+                              ...previous,
+                              display_order: event.target.value,
+                            }))
+                          }
+                        />
+                      ) : (
+                        metric.display_order
+                      )}
+                    </td>
                     <td className="actions">
                       {isEditing ? (
-                        <>
-                          <button type="button" onClick={handleEditSave} disabled={isSaving}>
-                            {isSaving ? "Saving..." : "Save"}
-                          </button>
+                        <div className="action-buttons">
                           <button
                             type="button"
-                            className="secondary"
-                            onClick={handleEditCancel}
-                            disabled={isSaving}
+                            onClick={handleEditSave}
+                            disabled={updateMetricMutation.isPending}
                           >
+                            {updateMetricMutation.isPending ? "Saving..." : "Apply"}
+                          </button>
+                          <button type="button" onClick={handleEditCancel} disabled={updateMetricMutation.isPending}>
                             Cancel
                           </button>
-                        </>
+                        </div>
                       ) : (
-                        <>
-                          <button type="button" onClick={() => startEditing(record)}>
+                        <div className="action-buttons">
+                          <button type="button" onClick={() => startEditing(metric)}>
                             Edit
                           </button>
                           <button
                             type="button"
                             className="danger"
-                            onClick={() => deleteRecord.mutate(record.id)}
-                            disabled={isDeleting}
+                            onClick={() => handleDelete(metric.name)}
+                            disabled={deleteMetricMutation.isPending}
                           >
-                            {isDeleting ? "Deleting..." : "Delete"}
+                            Delete
                           </button>
-                        </>
+                        </div>
                       )}
                     </td>
                   </tr>
                 );
               })}
+              {metrics.length === 0 ? (
+                <tr>
+                  <td colSpan={4}>No metrics defined yet.</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
-        ) : (
-          !recordsQuery.isLoading && <p>No records yet.</p>
-        )}
+        </div>
       </section>
     </div>
   );
-}
-
-function UserManagementSection({ isAdmin }: { isAdmin: boolean }) {
-  const [formState, setFormState] = useState<CreateUserFormState>({
-    username: "",
-    password: generateRandomPassword(),
-  });
-  const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [createdCredentials, setCreatedCredentials] = useState<CreateUserFormState | null>(null);
-  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
-
-  const createUser = useMutation<UserAccount, unknown, CreateUserFormState>({
-    mutationFn: async (payload) => {
-      const { data } = await api.post<UserAccount>("/users", payload);
-      return data;
-    },
-    onSuccess: (data, variables) => {
-      setStatus({ type: "success", text: `Created user "${data.username}".` });
-      setCreatedCredentials({ username: data.username, password: variables.password });
-      setFormState({ username: "", password: generateRandomPassword() });
-      setCopyStatus("idle");
-    },
-    onError: (error) => {
-      setStatus({
-        type: "error",
-        text: getErrorMessage(error, "Unable to create user. Try again."),
-      });
-    },
-    onMutate: () => {
-      setStatus(null);
-      setCopyStatus("idle");
-    },
-  });
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmedUsername = formState.username.trim();
-    if (!trimmedUsername) {
-      setStatus({ type: "error", text: "Enter a username before creating the user." });
-      return;
-    }
-    if (formState.password.length < 8) {
-      setStatus({ type: "error", text: "Password must be at least 8 characters." });
-      return;
-    }
-
-    createUser.mutate({ username: trimmedUsername, password: formState.password });
-  };
-
-  const handleGeneratePassword = () => {
-    setFormState((previous) => ({ ...previous, password: generateRandomPassword() }));
-    setCopyStatus("idle");
-    setStatus(null);
-  };
-
-  const credentialMessage =
-    createdCredentials?.username && createdCredentials?.password
-      ? buildCredentialMessage(createdCredentials.username, createdCredentials.password)
-      : "";
-
-  const handleCopy = async () => {
-    if (!credentialMessage) return;
-    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-      setCopyStatus("error");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(credentialMessage);
-      setCopyStatus("copied");
-    } catch {
-      setCopyStatus("error");
-    }
-  };
-
-  if (!isAdmin) {
-    return (
-      <div className="page master-page">
-        <header>
-          <h1>User Management</h1>
-          <p>Administrator privileges are required to manage user accounts.</p>
-        </header>
-        <p>You are signed in without admin rights. Contact an administrator if you need access.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="page master-page">
-      <header>
-        <h1>User Management</h1>
-        <p>Create login credentials for new team members.</p>
-      </header>
-
-      <section>
-        <h2>Create New User</h2>
-        <form onSubmit={handleSubmit} className="form-grid">
-          <label>
-            Username
-            <input
-              type="text"
-              value={formState.username}
-              onChange={(event) =>
-                setFormState((previous) => ({ ...previous, username: event.target.value }))
-              }
-              autoComplete="off"
-              required
-            />
-            <small>Displayed when signing in.</small>
-          </label>
-          <label>
-            Password
-            <input
-              type="text"
-              value={formState.password}
-              onChange={(event) =>
-                setFormState((previous) => ({ ...previous, password: event.target.value }))
-              }
-              required
-            />
-            <small>Minimum 8 characters. Use the generator for a strong value.</small>
-          </label>
-          <button type="button" className="secondary" onClick={handleGeneratePassword}>
-            Generate secure password
-          </button>
-          <button type="submit" disabled={createUser.isPending}>
-            {createUser.isPending ? "Creating..." : "Create user"}
-          </button>
-        </form>
-        {status && <p className={status.type === "error" ? "error" : "success"}>{status.text}</p>}
-      </section>
-
-      {credentialMessage && (
-        <section>
-          <h2>Share Credentials</h2>
-          <p>Send the template below to the new user.</p>
-          <pre className="credential-preview">{credentialMessage}</pre>
-          <button type="button" onClick={handleCopy}>
-            Copy credentials to clipboard
-          </button>
-          {copyStatus === "copied" && <p className="success">Copied to clipboard.</p>}
-          {copyStatus === "error" && (
-            <p className="error">Unable to access the clipboard. Copy manually instead.</p>
-          )}
-        </section>
-      )}
-    </div>
-  );
-}
-
-export default function MasterPage() {
-  const { masterId } = useParams<{ masterId: string }>();
-  const { user } = useAuth();
-
-  if (masterId === "users") {
-    return <UserManagementSection isAdmin={Boolean(user?.is_admin)} />;
-  }
-
-  return <MasterRecordsPage masterId={masterId} />;
 }
