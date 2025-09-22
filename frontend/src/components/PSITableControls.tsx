@@ -101,7 +101,7 @@ const PSITableControls = forwardRef(function PSITableControls(
   const [currentPage, setCurrentPage] = useState(1);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
-  const pageSize = 4;
+  const pageSize = 3;
   const filterButtonId = useId();
   const filterLabelId = `${filterButtonId}-label`;
   const filterHintId = `${filterButtonId}-hint`;
@@ -253,6 +253,7 @@ const PSITableControls = forwardRef(function PSITableControls(
           <section className="psi-left-pane">
             <div className="psi-panel psi-filter-panel row-full">
               <h3>フィルタ</h3>
+              <h3>→選択することで、絞り込みができます</h3>
               <div className="psi-filter-grid">
                 <label className="row-full">
                   Session
@@ -364,12 +365,10 @@ const PSITableControls = forwardRef(function PSITableControls(
             <div className="psi-summary-card">
               <div className="psi-summary-header">
                 <div className="psi-summary-title">
-                  <h3>SKU集計</h3>
-                  <p className="psi-summary-subtitle">選択中のセッションに含まれるSKUを確認できます。</p>
                 </div>
                 <div className="psi-summary-filter-controls">
                   <div className="psi-summary-filter-label">
-                    <span id={filterLabelId}>集計フィルタ</span>
+                    <span id={filterLabelId}></span>
                     <div className="psi-summary-filter-dropdown" ref={filterDropdownRef}>
                       <button
                         type="button"
@@ -420,8 +419,6 @@ const PSITableControls = forwardRef(function PSITableControls(
                     </div>
                   ) : (
                     <p id={filterHintId} className="psi-summary-filter-hint">
-                      フィルタを選択すると条件に合うSKUだけを表示できます。
-                      ボタンをクリックしてチェックボックスを選択してください。
                     </p>
                   )}
                   {selectedFilterDetails.length > 0 && (
