@@ -27,7 +27,9 @@ def _normalize_db_url(url: str | None) -> str | None:
         return url
     # Herokuは postgres:// を渡す → SQLAlchemyは postgresql(+driver) を要求
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+psycopg://", 1)
+        return url.replace("postgres://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
     return url
 
 DB_URL = _normalize_db_url(settings.database_url)
