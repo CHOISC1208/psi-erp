@@ -33,8 +33,8 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
    | `DATABASE_URL` | PostgreSQL connection string (SQLAlchemy compatible). |
    | `DB_SCHEMA` | Database schema (defaults to `psi`). |
    | `SESSION_SIGN_KEY` / `SECRET_KEY` | Random strings used to sign session payloads. |
-   | `ALLOWED_ORIGINS` | Comma separated list of front-end origins (e.g. `http://localhost:5173`). |
-   | `SESSION_COOKIE_SECURE` | Set to `false` for local HTTP, keep `true` for HTTPS/Heroku. |
+   | `ALLOWED_ORIGINS` | Comma separated list of front-end origins (e.g. `http://localhost:5173,http://localhost:5174`). |
+   | `SESSION_COOKIE_SECURE` | Defaults to `false` locally. Set to `true` only when serving over HTTPS. |
 
 2. **Install backend dependencies**
 
@@ -84,31 +84,31 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
    npm run dev
    ```
 
-   The Vite dev server runs on <http://localhost:5173>. Ensure this origin is present in `ALLOWED_ORIGINS` so that cookies can be shared when using `credentials: 'include'`.
+   The Vite dev server runs on <http://localhost:5173>. If you open a second instance (e.g. Vite preview) it usually listens on <http://localhost:5174>. Ensure both origins are present in `ALLOWED_ORIGINS` so that cookies can be shared when using `credentials: 'include'`.
 
 ## Authentication API quick check
 
 1. **Login**
 
    ```bash
-   curl -i -X POST http://127.0.0.1:8000/auth/login \
+   curl -i -X POST http://localhost:8000/auth/login \
      -H "Content-Type: application/json" \
      -d '{"username":"admin","password":"changeme!"}'
    ```
 
-   A `Set-Cookie: session=...; HttpOnly; Secure` header is returned on success.
+   A `Set-Cookie: session=...; HttpOnly; Path=/; SameSite=Lax` header is returned on success.
 
 2. **Fetch the profile**
 
    ```bash
-   curl -i http://127.0.0.1:8000/auth/me \
+   curl -i http://localhost:8000/auth/me \
      --cookie "session=<value from login>"
    ```
 
 3. **Logout**
 
    ```bash
-   curl -i -X POST http://127.0.0.1:8000/auth/logout \
+   curl -i -X POST http://localhost:8000/auth/logout \
      --cookie "session=<value from login>"
    ```
 

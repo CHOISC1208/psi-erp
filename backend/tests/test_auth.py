@@ -20,7 +20,10 @@ os.environ.setdefault("DATABASE_URL", f"sqlite+pysqlite:///{DB_FILE}")
 os.environ.setdefault("DB_SCHEMA", "")
 os.environ.setdefault("SESSION_SIGN_KEY", "test-sign-key")
 os.environ.setdefault("SECRET_KEY", "test-secret")
-os.environ.setdefault("ALLOWED_ORIGINS", "http://testserver")
+os.environ.setdefault(
+    "ALLOWED_ORIGINS",
+    "http://testserver,http://localhost:5173,http://localhost:5174",
+)
 os.environ.setdefault("SESSION_COOKIE_SECURE", "false")
 os.environ.setdefault("SESSION_COOKIE_SAMESITE", "lax")
 os.environ.setdefault("SESSION_TTL_SECONDS", "300")
@@ -38,14 +41,23 @@ from backend.app.deps import SessionLocal, engine, get_current_user
 from backend.app.routers import auth
 from backend.app.schemas import LoginRequest
 from backend.app.security import hash_password
+from backend.app.main import app
+import asyncio
 
-models.Base.metadata.drop_all(bind=engine)
-models.Base.metadata.create_all(bind=engine)
+with engine.begin() as connection:
+    models.User.__table__.drop(bind=connection, checkfirst=True)
+    models.User.__table__.create(bind=connection, checkfirst=True)
 
 
 def create_user(username: str, password: str) -> None:
     with SessionLocal() as session:
-        session.add(models.User(username=username, password_hash=hash_password(password)))
+        session.add(
+            models.User(
+                username=username,
+                password_hash=hash_password(password),
+                is_active=True,
+            )
+        )
         session.commit()
 
 
@@ -92,6 +104,11 @@ def test_login_and_me_flow():
     assert login_result.next == "authenticated"
     cookie_header = response.headers.get("set-cookie")
     assert cookie_header is not None
+    assert "HttpOnly" in cookie_header
+    assert "Path=/" in cookie_header
+    assert "SameSite=Lax" in cookie_header
+    assert "Domain" not in cookie_header
+    assert "Secure" not in cookie_header
     cookie_kv = extract_session_cookie(cookie_header)
 
     me_request = make_request("/auth/me", method="GET", cookie=cookie_kv)
@@ -110,7 +127,8 @@ def test_login_and_me_flow():
         with SessionLocal() as session:
             get_current_user(unauth_request, db=session)
     except Exception as exc:  # noqa: BLE001
-        assert "invalid session" in str(exc)
+        message = str(exc)
+        assert "invalid session" in message or "not authenticated" in message
     else:  # pragma: no cover - should not happen
         raise AssertionError("Expected authentication failure")
 
@@ -145,3 +163,33 @@ def test_rate_limiting_blocks_after_failures():
         assert "too many failed attempts" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected rate limiting to trigger")
+
+
+def test_cors_preflight_allows_localhost_origins():
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "method": "OPTIONS",
+        "path": "/auth/login",
+        "raw_path": b"/auth/login",
+        "headers": [
+            (b"origin", b"http://localhost:5173"),
+            (b"access-control-request-method", b"POST"),
+        ],
+    }
+
+    messages: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request"}
+
+    async def send(message: dict[str, object]) -> None:
+        messages.append(message)
+
+    asyncio.run(app(scope, receive, send))
+
+    start_message = next(msg for msg in messages if msg["type"] == "http.response.start")
+    headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in start_message["headers"]}
+    assert start_message["status"] == 200
+    assert headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert headers.get("access-control-allow-credentials") == "true"

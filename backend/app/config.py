@@ -12,6 +12,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Return a boolean flag read from the environment."""
+
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Settings(BaseModel):
     """Runtime configuration loaded from environment variables."""
 
@@ -34,8 +43,7 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("SESSION_COOKIE_SAMESITE", "lax")
     )
     session_cookie_secure: bool = Field(
-        default_factory=lambda: os.getenv("SESSION_COOKIE_SECURE", "true").lower()
-        in {"1", "true", "yes", "on"}
+        default_factory=lambda: _env_flag("SESSION_COOKIE_SECURE", default=False)
     )
     session_ttl_seconds: int = Field(
         default_factory=lambda: int(os.getenv("SESSION_TTL_SECONDS", "3600"))
@@ -129,9 +137,15 @@ class Settings(BaseModel):
         """Return a sanitized list of allowed CORS origins."""
 
         if not self.allowed_origins_raw:
-            return []
+            return ["http://localhost:5173", "http://localhost:5174"]
+
         parts = [part.strip() for part in self.allowed_origins_raw.split(",")]
-        return [part for part in parts if part]
+        origins = [part for part in parts if part]
+
+        if not origins:
+            return ["http://localhost:5173", "http://localhost:5174"]
+
+        return origins
 
     @property
     def csrf_header(self) -> str:
@@ -145,8 +159,20 @@ class Settings(BaseModel):
 
         value = self.session_cookie_samesite.strip().lower()
         if value not in {"lax", "strict", "none"}:
-            return "lax"
-        return value
+            value = "lax"
+        if value == "none":
+            return "None"
+        return value.capitalize()
+
+    @field_validator("session_cookie_domain", mode="before")
+    @classmethod
+    def _blank_domain_to_none(cls, value: str | None) -> str | None:
+        """Treat blank cookie domain values as ``None``."""
+
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
     model_config: dict[str, Any] = {"frozen": True}
 
