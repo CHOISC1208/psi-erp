@@ -50,7 +50,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
     try:
         return _pwd_context.verify(password, hashed)
-    except ValueError:
+    except (TypeError, ValueError):
         return False
 
 
