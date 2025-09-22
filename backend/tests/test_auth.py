@@ -40,7 +40,7 @@ from backend.app.config import settings
 from backend.app.deps import SessionLocal, engine, get_current_user
 from backend.app.routers import auth
 from backend.app.schemas import LoginRequest
-from backend.app.security import hash_password
+from backend.app.security import hash_password, verify_password
 from backend.app.main import app
 import asyncio
 
@@ -193,3 +193,8 @@ def test_cors_preflight_allows_localhost_origins():
     assert start_message["status"] == 200
     assert headers.get("access-control-allow-origin") == "http://localhost:5173"
     assert headers.get("access-control-allow-credentials") == "true"
+
+
+def test_verify_password_handles_invalid_hash_gracefully():
+    # ``verify_password`` should not propagate exceptions for malformed hashes
+    assert verify_password("any", "argon2$invalid") is False
