@@ -3,8 +3,9 @@ import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 
-import { api } from "../lib/api";
-import type { MasterRecord } from "../types";
+import api from "../lib/api";
+import { useAuth } from "../hooks/useAuth";
+import type { MasterRecord, UserAccount } from "../types";
 
 type FieldType = "text" | "number";
 
@@ -24,6 +25,11 @@ interface MasterConfig {
 
 type MasterFormState = Record<string, string>;
 type MasterPayload = Record<string, string | number | null>;
+type StatusMessage = { type: "success" | "error"; text: string };
+interface CreateUserFormState {
+  username: string;
+  password: string;
+}
 
 const masterConfigs: Record<string, MasterConfig> = {
   products: {
@@ -130,8 +136,34 @@ const formatValue = (value: unknown): string => {
   return String(value);
 };
 
-export default function MasterPage() {
-  const { masterId } = useParams<{ masterId: string }>();
+const PASSWORD_CHARSET =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*?";
+
+const generateRandomPassword = (length = 12): string => {
+  const characters = PASSWORD_CHARSET;
+  const result: string[] = [];
+  const cryptoObj = typeof window !== "undefined" ? window.crypto : undefined;
+
+  if (cryptoObj?.getRandomValues) {
+    const values = new Uint32Array(length);
+    cryptoObj.getRandomValues(values);
+    for (let index = 0; index < length; index += 1) {
+      result.push(characters[values[index] % characters.length]);
+    }
+  } else {
+    for (let index = 0; index < length; index += 1) {
+      const randomIndex = Math.floor(Math.random() * characters.length);
+      result.push(characters[randomIndex]);
+    }
+  }
+
+  return result.join("");
+};
+
+const buildCredentialMessage = (username: string, password: string): string =>
+  `Username；${username}\nPASS；${password}`;
+
+function MasterRecordsPage({ masterId }: { masterId?: string }) {
   const queryClient = useQueryClient();
 
   const config = useMemo(() => {
@@ -143,7 +175,7 @@ export default function MasterPage() {
   const [editState, setEditState] = useState<MasterFormState>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [status, setStatus] = useState<StatusMessage | null>(null);
 
   useEffect(() => {
     if (config) {
@@ -416,4 +448,162 @@ export default function MasterPage() {
       </section>
     </div>
   );
+}
+
+function UserManagementSection({ isAdmin }: { isAdmin: boolean }) {
+  const [formState, setFormState] = useState<CreateUserFormState>({
+    username: "",
+    password: generateRandomPassword(),
+  });
+  const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [createdCredentials, setCreatedCredentials] = useState<CreateUserFormState | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+
+  const createUser = useMutation<UserAccount, unknown, CreateUserFormState>({
+    mutationFn: async (payload) => {
+      const { data } = await api.post<UserAccount>("/users", payload);
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      setStatus({ type: "success", text: `Created user "${data.username}".` });
+      setCreatedCredentials({ username: data.username, password: variables.password });
+      setFormState({ username: "", password: generateRandomPassword() });
+      setCopyStatus("idle");
+    },
+    onError: (error) => {
+      setStatus({
+        type: "error",
+        text: getErrorMessage(error, "Unable to create user. Try again."),
+      });
+    },
+    onMutate: () => {
+      setStatus(null);
+      setCopyStatus("idle");
+    },
+  });
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedUsername = formState.username.trim();
+    if (!trimmedUsername) {
+      setStatus({ type: "error", text: "Enter a username before creating the user." });
+      return;
+    }
+    if (formState.password.length < 8) {
+      setStatus({ type: "error", text: "Password must be at least 8 characters." });
+      return;
+    }
+
+    createUser.mutate({ username: trimmedUsername, password: formState.password });
+  };
+
+  const handleGeneratePassword = () => {
+    setFormState((previous) => ({ ...previous, password: generateRandomPassword() }));
+    setCopyStatus("idle");
+    setStatus(null);
+  };
+
+  const credentialMessage =
+    createdCredentials?.username && createdCredentials?.password
+      ? buildCredentialMessage(createdCredentials.username, createdCredentials.password)
+      : "";
+
+  const handleCopy = async () => {
+    if (!credentialMessage) return;
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      setCopyStatus("error");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(credentialMessage);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="page master-page">
+        <header>
+          <h1>User Management</h1>
+          <p>Administrator privileges are required to manage user accounts.</p>
+        </header>
+        <p>You are signed in without admin rights. Contact an administrator if you need access.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page master-page">
+      <header>
+        <h1>User Management</h1>
+        <p>Create login credentials for new team members.</p>
+      </header>
+
+      <section>
+        <h2>Create New User</h2>
+        <form onSubmit={handleSubmit} className="form-grid">
+          <label>
+            Username
+            <input
+              type="text"
+              value={formState.username}
+              onChange={(event) =>
+                setFormState((previous) => ({ ...previous, username: event.target.value }))
+              }
+              autoComplete="off"
+              required
+            />
+            <small>Displayed when signing in.</small>
+          </label>
+          <label>
+            Password
+            <input
+              type="text"
+              value={formState.password}
+              onChange={(event) =>
+                setFormState((previous) => ({ ...previous, password: event.target.value }))
+              }
+              required
+            />
+            <small>Minimum 8 characters. Use the generator for a strong value.</small>
+          </label>
+          <button type="button" className="secondary" onClick={handleGeneratePassword}>
+            Generate secure password
+          </button>
+          <button type="submit" disabled={createUser.isPending}>
+            {createUser.isPending ? "Creating..." : "Create user"}
+          </button>
+        </form>
+        {status && <p className={status.type === "error" ? "error" : "success"}>{status.text}</p>}
+      </section>
+
+      {credentialMessage && (
+        <section>
+          <h2>Share Credentials</h2>
+          <p>Send the template below to the new user.</p>
+          <pre className="credential-preview">{credentialMessage}</pre>
+          <button type="button" onClick={handleCopy}>
+            Copy credentials to clipboard
+          </button>
+          {copyStatus === "copied" && <p className="success">Copied to clipboard.</p>}
+          {copyStatus === "error" && (
+            <p className="error">Unable to access the clipboard. Copy manually instead.</p>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+export default function MasterPage() {
+  const { masterId } = useParams<{ masterId: string }>();
+  const { user } = useAuth();
+
+  if (masterId === "users") {
+    return <UserManagementSection isAdmin={Boolean(user?.is_admin)} />;
+  }
+
+  return <MasterRecordsPage masterId={masterId} />;
 }

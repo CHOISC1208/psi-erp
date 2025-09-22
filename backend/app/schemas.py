@@ -173,3 +173,45 @@ class ChannelTransferRead(ChannelTransferBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class LoginRequest(BaseModel):
+    """Login payload for username/password authentication."""
+
+    username: Annotated[str, Field(min_length=1, max_length=150)]
+    password: Annotated[str, Field(min_length=1, max_length=256)]
+
+
+class LoginResult(BaseModel):
+    """Response returned after a successful login attempt."""
+
+    next: str = "authenticated"
+    csrf_token: str | None = None
+
+
+class UserProfile(BaseModel):
+    """Authenticated user information."""
+
+    id: UUID
+    username: str
+    is_active: bool
+    is_admin: bool
+
+    model_config = {"from_attributes": True}
+
+
+class UserCreateRequest(BaseModel):
+    """Payload for creating a new user."""
+
+    username: Annotated[str, Field(min_length=1, max_length=150)]
+    password: Annotated[str, Field(min_length=8, max_length=256)]
+
+
+class UserCreateResult(BaseModel):
+    """Response returned after successfully creating a user."""
+
+    id: UUID
+    username: str
+    is_active: bool
+    is_admin: bool
+    created_at: datetime

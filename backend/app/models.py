@@ -12,18 +12,29 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     JSON,
     Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from .config import settings
+
+
+def _qualified(table: str, column: str = "id") -> str:
+    """Return a fully qualified table reference respecting the schema."""
+
+    schema = settings.db_schema.strip()
+    if schema:
+        return f"{schema}.{table}.{column}"
+    return f"{table}.{column}"
 
 
 class Base(DeclarativeBase):
@@ -41,7 +52,8 @@ class Base(DeclarativeBase):
 class SchemaMixin:
     """Mixin ensuring tables are created within the configured schema."""
 
-    __table_args__ = {"schema": settings.db_schema or "public"}
+    _schema = settings.db_schema.strip() if settings.db_schema else ""
+    __table_args__ = {"schema": _schema} if _schema else {}
 
 
 class TimestampMixin:
@@ -52,6 +64,32 @@ class TimestampMixin:
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class User(Base, SchemaMixin):
+    """Application user able to sign into the dashboard."""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        Index("idx_users_username", "username", unique=True),
+        SchemaMixin.__table_args__ if SchemaMixin.__table_args__ else {},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    username: Mapped[str] = mapped_column(String(150), nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=func.true()
+    )
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
@@ -108,7 +146,7 @@ class PSIBase(Base, SchemaMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
         nullable=False,
     )
     sku_code: Mapped[str] = mapped_column(Text, nullable=False)
@@ -141,7 +179,7 @@ class PSIEdit(Base, SchemaMixin, TimestampMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
         nullable=False,
     )
     sku_code: Mapped[str] = mapped_column(Text, nullable=False)
@@ -163,7 +201,7 @@ class PSIEditLog(Base, SchemaMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
         nullable=False,
     )
     sku_code: Mapped[str] = mapped_column(Text, nullable=False)
@@ -198,7 +236,7 @@ class ChannelTransfer(Base, SchemaMixin, TimestampMixin):
 
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(f"{settings.db_schema}.sessions.id", ondelete="CASCADE"),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
     )

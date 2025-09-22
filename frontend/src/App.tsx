@@ -1,17 +1,30 @@
-import { useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 import SessionsPage from "./pages/SessionsPage";
 import PSITablePage from "./pages/PSITablePage";
 import MasterPage from "./pages/MasterPage";
 import DocsPage from "./pages/DocsPage";
+import LoginPage from "./pages/LoginPage";
+import { useAuth } from "./hooks/useAuth";
 import "./App.css";
 import "./styles/psi-sticky.css";
 
-export default function App() {
+function ProtectedLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout, user } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(location.pathname.startsWith("/masters"));
+  const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(
+    location.pathname.startsWith("/masters"),
+  );
 
   useEffect(() => {
     if (location.pathname.startsWith("/masters")) {
@@ -19,11 +32,25 @@ export default function App() {
     }
   }, [location.pathname]);
 
-  const masters = [
-    { path: "/masters/products", label: "Product Master", icon: "📦" },
-    { path: "/masters/customers", label: "Customer Master", icon: "🧑" },
-    { path: "/masters/suppliers", label: "Supplier Master", icon: "🚚" },
-  ];
+  const masters = useMemo(() => {
+    const baseMasters = [
+      { path: "/masters/products", label: "Product Master", icon: "📦" },
+      { path: "/masters/customers", label: "Customer Master", icon: "🧑" },
+      { path: "/masters/suppliers", label: "Supplier Master", icon: "🚚" },
+    ];
+    if (user?.is_admin) {
+      return [
+        { path: "/masters/users", label: "User Management", icon: "👥" },
+        ...baseMasters,
+      ];
+    }
+    return baseMasters;
+  }, [user?.is_admin]);
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <div className={`app ${isSidebarOpen ? "" : "sidebar-collapsed"}`}>
@@ -38,6 +65,14 @@ export default function App() {
             aria-expanded={isSidebarOpen}
           >
             ☰
+          </button>
+        </div>
+        <div className="sidebar-user">
+          <span className="user-name" title={user?.username}>
+            {user?.username}
+          </span>
+          <button type="button" className="logout-button" onClick={handleLogout}>
+            Log out
           </button>
         </div>
         <ul className="sidebar-menu">
@@ -55,6 +90,14 @@ export default function App() {
                 📊
               </span>
               <span className="menu-label">PSI Table</span>
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/docs" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">
+                📚
+              </span>
+              <span className="menu-label">Docs</span>
             </NavLink>
           </li>
           <li className={`has-children ${isMasterMenuOpen ? "open" : ""}`}>
@@ -87,14 +130,6 @@ export default function App() {
               ))}
             </ul>
           </li>
-          <li>
-            <NavLink to="/docs" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <span className="menu-icon" aria-hidden="true">
-                📚
-              </span>
-              <span className="menu-label">Docs</span>
-            </NavLink>
-          </li>
         </ul>
       </nav>
       <main className="content">
@@ -108,5 +143,39 @@ export default function App() {
         </Routes>
       </main>
     </div>
+  );
+}
+
+export default function App() {
+  const { user, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return <div className="app-loading">Checking session…</div>;
+  }
+
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="*"
+          element={(
+            <Navigate
+              to="/login"
+              replace
+              state={{ from: location.pathname + location.search }}
+            />
+          )}
+        />
+      </Routes>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/login" element={<Navigate to="/sessions" replace />} />
+      <Route path="/*" element={<ProtectedLayout />} />
+    </Routes>
   );
 }

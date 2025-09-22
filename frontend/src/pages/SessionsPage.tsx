@@ -3,7 +3,7 @@ import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
-import { api } from "../lib/api";
+import api from "../lib/api";
 import { Session } from "../types";
 
 interface SessionFormState {
