@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     JSON,
     Numeric,
     String,
@@ -133,6 +134,18 @@ class MasterRecord(Base, SchemaMixin, TimestampMixin):
     )
     master_type: Mapped[str] = mapped_column(String(length=64), index=True, nullable=False)
     data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class PSIMetricDefinition(Base, SchemaMixin):
+    """Definition of metrics displayed on the PSI table."""
+
+    __tablename__ = "psi_metrics_master"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    is_editable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class PSIBase(Base, SchemaMixin):

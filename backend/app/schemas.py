@@ -135,6 +135,34 @@ class MasterRecordRead(MasterRecordBase):
     model_config = {"from_attributes": True}
 
 
+class PSIMetricBase(BaseModel):
+    """Shared attributes for PSI metric definitions."""
+
+    name: Annotated[str, Field(min_length=1, max_length=255)]
+    is_editable: bool = False
+    display_order: Annotated[int, Field(ge=0)]
+
+
+class PSIMetricCreate(PSIMetricBase):
+    """Schema for creating a PSI metric definition."""
+
+    pass
+
+
+class PSIMetricUpdate(BaseModel):
+    """Schema for updating a PSI metric definition."""
+
+    name: Annotated[str, Field(min_length=1, max_length=255)] | None = None
+    is_editable: bool | None = None
+    display_order: Annotated[int, Field(ge=0)] | None = None
+
+
+class PSIMetricRead(PSIMetricBase):
+    """PSI metric definition returned by the API."""
+
+    model_config = {"from_attributes": True}
+
+
 class ChannelTransferBase(BaseModel):
     """Shared attributes for channel transfer write models."""
 

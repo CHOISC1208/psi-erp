@@ -236,6 +236,133 @@ body {
   font-weight: 600;
 }
 
+.checkbox-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.checkbox-field input {
+  justify-self: start;
+}
+
+.checkbox-field small {
+  grid-column: 1 / -1;
+  font-weight: 400;
+  color: var(--text-secondary, #4b5563);
+}
+
+.status-message {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+.status-message.success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.status-message.error {
+  background: rgba(248, 113, 113, 0.12);
+  color: #b91c1c;
+}
+
+.table-container {
+  border: 1px solid var(--border-subtle, #d1d5db);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  background: var(--surface-panel, #f9fafb);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle, #d1d5db);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.data-table th {
+  background: var(--surface-panel, #f3f4f6);
+  font-weight: 600;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-subtle, #d1d5db);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-buttons button {
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-subtle, #d1d5db);
+  background: white;
+  cursor: pointer;
+}
+
+.action-buttons button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.action-buttons .danger {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.5);
+}
+
+.filter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+
+.filter-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-actions button {
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-subtle, #d1d5db);
+  background: white;
+  cursor: pointer;
+}
+
+.filter-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .credential-preview {
   background: var(--surface-panel, #f5f5f7);
   border: 1px solid var(--border-subtle, #d1d5db);

@@ -54,6 +54,7 @@ def list_channel_transfers(
     session_id: UUID | None = None,
     sku_code: str | None = None,
     warehouse_name: str | None = None,
+    updated_at: date | None = Query(None),
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: DBSession = Depends(get_db),
@@ -82,6 +83,8 @@ def list_channel_transfers(
         query = query.where(models.ChannelTransfer.transfer_date >= start_date)
     if end_date is not None:
         query = query.where(models.ChannelTransfer.transfer_date <= end_date)
+    if updated_at is not None:
+        query = query.where(func.date(models.ChannelTransfer.updated_at) == updated_at)
 
     query = query.order_by(
         models.ChannelTransfer.transfer_date.asc(),
@@ -100,6 +103,7 @@ def _build_export_query(
     sku_code: str | None,
     warehouse_name: str | None,
     channel: str | None,
+    updated_at: date | None,
     start_date: date | None,
     end_date: date | None,
 ) -> Select:
@@ -129,6 +133,10 @@ def _build_export_query(
         base_query = base_query.where(models.ChannelTransfer.transfer_date >= start_date)
     if end_date is not None:
         base_query = base_query.where(models.ChannelTransfer.transfer_date <= end_date)
+    if updated_at is not None:
+        base_query = base_query.where(
+            func.date(models.ChannelTransfer.updated_at) == updated_at
+        )
 
     return base_query
 
@@ -140,6 +148,7 @@ def export_channel_transfers(
     sku_code: str | None = None,
     warehouse_name: str | None = None,
     channel: str | None = None,
+    updated_at: date | None = Query(None),
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: DBSession = Depends(get_db),
@@ -156,6 +165,7 @@ def export_channel_transfers(
         sku_code=sku_code,
         warehouse_name=warehouse_name,
         channel=channel,
+        updated_at=updated_at,
         start_date=start_date,
         end_date=end_date,
     )

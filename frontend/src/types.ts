@@ -57,6 +57,12 @@ export interface ChannelTransfer extends ChannelTransferCreate {
   updated_at: string;
 }
 
+export interface PSIMetricDefinition {
+  name: string;
+  is_editable: boolean;
+  display_order: number;
+}
+
 export interface MasterRecord {
   id: string;
   master_type: string;
