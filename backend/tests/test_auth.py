@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import sqlalchemy as sa
+from fastapi import HTTPException, status
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -39,9 +41,9 @@ for module in list(sys.modules):
 
 from backend.app import models
 from backend.app.config import settings
-from backend.app.deps import SessionLocal, engine, get_current_user
-from backend.app.routers import auth
-from backend.app.schemas import LoginRequest
+from backend.app.deps import SessionLocal, engine, get_admin_user, get_current_user
+from backend.app.routers import auth, users
+from backend.app.schemas import LoginRequest, UserCreateRequest
 from backend.app.security import hash_password, verify_password
 from backend.app.main import app
 import asyncio
@@ -51,13 +53,14 @@ with engine.begin() as connection:
     models.User.__table__.create(bind=connection, checkfirst=True)
 
 
-def create_user(username: str, password: str) -> None:
+def create_user(username: str, password: str, *, is_admin: bool = False) -> None:
     with SessionLocal() as session:
         session.add(
             models.User(
                 username=username,
                 password_hash=hash_password(password),
                 is_active=True,
+                is_admin=is_admin,
             )
         )
         session.commit()
@@ -119,6 +122,7 @@ def test_login_and_me_flow():
     profile = auth.me(current_user=current_user)
     assert profile.username == "alice"
     assert profile.is_active is True
+    assert profile.is_admin is False
 
     logout_response = Response()
     auth.logout(logout_response)
@@ -219,3 +223,54 @@ def test_verify_password_accepts_readme_pbkdf2_hash():
     )
 
     assert verify_password("changeme!", hash_from_readme) is True
+
+
+def test_admin_can_create_user():
+    create_user("admin", "topsecret", is_admin=True)
+
+    with SessionLocal() as session:
+        admin = session.scalars(
+            sa.select(models.User).where(models.User.username == "admin")
+        ).first()
+        assert admin is not None
+
+        result = users.create_user(
+            payload=UserCreateRequest(username="new_member", password="passphrase123"),
+            _=admin,
+            db=session,
+        )
+
+    assert result.username == "new_member"
+    assert result.is_admin is False
+    assert result.is_active is True
+
+    with SessionLocal() as session:
+        stmt = sa.select(models.User).where(models.User.username == "new_member")
+        created = session.scalars(stmt).first()
+        assert created is not None
+        assert verify_password("passphrase123", created.password_hash) is True
+
+
+def test_non_admin_cannot_create_user():
+    create_user("regular", "s3cret", is_admin=False)
+
+    response = Response()
+    request = make_request("/auth/login")
+    with SessionLocal() as session:
+        auth.login(
+            payload=LoginRequest(username="regular", password="s3cret"),
+            request=request,
+            response=response,
+            db=session,
+        )
+
+    cookie_header = response.headers.get("set-cookie")
+    assert cookie_header is not None
+    cookie = extract_session_cookie(cookie_header)
+
+    non_admin_request = make_request("/users", cookie=cookie)
+    with SessionLocal() as session:
+        with pytest.raises(HTTPException) as exc_info:
+            get_admin_user(non_admin_request, db=session)
+    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
+    assert "admin access required" in exc_info.value.detail
