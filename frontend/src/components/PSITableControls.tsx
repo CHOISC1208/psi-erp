@@ -1,10 +1,10 @@
 import {
-  ChangeEvent,
   ForwardedRef,
   forwardRef,
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { UseQueryResult } from "@tanstack/react-query";
@@ -100,9 +100,15 @@ const PSITableControls = forwardRef(function PSITableControls(
 ) {
   const [currentPage, setCurrentPage] = useState(1);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const pageSize = 4;
-  const filterSelectId = useId();
-  const filterHintId = `${filterSelectId}-hint`;
+  const filterButtonId = useId();
+  const filterLabelId = `${filterButtonId}-label`;
+  const filterHintId = `${filterButtonId}-hint`;
+  const filterDropdownRef = useRef<HTMLDivElement | null>(null);
+  const filterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const firstFilterInputRef = useRef<HTMLInputElement | null>(null);
+  const previousFiltersRef = useRef<string[]>([]);
 
   const start = sessionSummaryQuery.data?.start_date ?? undefined;
   const end = sessionSummaryQuery.data?.end_date ?? undefined;
@@ -135,21 +141,85 @@ const PSITableControls = forwardRef(function PSITableControls(
     [activeFilters]
   );
 
-  const handleFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
-    setActiveFilters(selected);
+  const handleFilterToggle = (filterId: string) => {
+    setActiveFilters((previous) => {
+      if (previous.includes(filterId)) {
+        return previous.filter((id) => id !== filterId);
+      }
+
+      const withNew = [...previous, filterId];
+      const ordered = summaryFilters
+        .map((filter) => filter.id)
+        .filter((id) => withNew.includes(id));
+
+      return ordered;
+    });
   };
 
-  const handleClearFilters = () => setActiveFilters([]);
+  const handleClearFilters = () => {
+    setActiveFilters([]);
+    setIsFilterMenuOpen(false);
+    filterButtonRef.current?.focus();
+  };
+
+  const handleFilterMenuToggle = () => {
+    setIsFilterMenuOpen((previous) => !previous);
+  };
+
+  useEffect(() => {
+    if (!isFilterMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (filterDropdownRef.current?.contains(target)) {
+        return;
+      }
+      setIsFilterMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsFilterMenuOpen(false);
+        filterButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFilterMenuOpen]);
+
+  useEffect(() => {
+    if (isFilterMenuOpen) {
+      firstFilterInputRef.current?.focus({ preventScroll: true });
+    }
+  }, [isFilterMenuOpen]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [sessionId, skuCode, warehouseName, channel, activeFilters]);
 
   useEffect(() => {
-    if (selectedSku) {
+    const previous = previousFiltersRef.current;
+    const filtersChanged =
+      previous.length !== activeFilters.length ||
+      previous.some((value, index) => value !== activeFilters[index]);
+
+    if (filtersChanged && selectedSku) {
       onSelectSku(null);
     }
+
+    previousFiltersRef.current = activeFilters;
   }, [activeFilters, onSelectSku, selectedSku]);
 
   useEffect(() => {
@@ -164,6 +234,11 @@ const PSITableControls = forwardRef(function PSITableControls(
 
   const goPrev = () => setCurrentPage((previous) => Math.max(1, previous - 1));
   const goNext = () => setCurrentPage((previous) => Math.min(totalPages, previous + 1));
+
+  const filterSummaryLabel =
+    selectedFilterDetails.length === 0
+      ? "フィルタを選択"
+      : `選択中: ${selectedFilterDetails.map((filter) => filter.label).join(", ")}`;
 
   return (
     <section ref={ref} className={`psi-controls${isCollapsed ? " collapsed" : ""}`}>
@@ -293,24 +368,48 @@ const PSITableControls = forwardRef(function PSITableControls(
                   <p className="psi-summary-subtitle">選択中のセッションに含まれるSKUを確認できます。</p>
                 </div>
                 <div className="psi-summary-filter-controls">
-                  <label className="psi-summary-filter-label" htmlFor={filterSelectId}>
-                    集計フィルタ
-                    <select
-                      id={filterSelectId}
-                      multiple
-                      value={activeFilters}
-                      onChange={handleFilterChange}
-                      className="psi-summary-filter-select"
-                      aria-describedby={filterHintId}
-                      size={Math.min(4, summaryFilters.length)}
-                    >
-                      {summaryFilters.map((filter) => (
-                        <option key={filter.id} value={filter.id} title={filter.description}>
-                          {filter.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="psi-summary-filter-label">
+                    <span id={filterLabelId}>集計フィルタ</span>
+                    <div className="psi-summary-filter-dropdown" ref={filterDropdownRef}>
+                      <button
+                        type="button"
+                        id={filterButtonId}
+                        ref={filterButtonRef}
+                        className="psi-summary-filter-trigger"
+                        aria-haspopup="true"
+                        aria-expanded={isFilterMenuOpen}
+                        aria-labelledby={`${filterLabelId} ${filterButtonId}`}
+                        aria-describedby={selectedFilterDetails.length === 0 ? filterHintId : undefined}
+                        onClick={handleFilterMenuToggle}
+                      >
+                        <span className="psi-summary-filter-trigger-label">{filterSummaryLabel}</span>
+                        <span className="psi-summary-filter-trigger-icon" aria-hidden="true">
+                          ▾
+                        </span>
+                      </button>
+                      {isFilterMenuOpen && (
+                        <div className="psi-summary-filter-menu" role="group" aria-labelledby={filterLabelId}>
+                          {summaryFilters.map((filter, index) => {
+                            const checked = activeFilters.includes(filter.id);
+                            return (
+                              <label key={filter.id} className="psi-summary-filter-option">
+                                <input
+                                  ref={index === 0 ? firstFilterInputRef : undefined}
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => handleFilterToggle(filter.id)}
+                                />
+                                <span className="psi-summary-filter-option-text">
+                                  <span className="psi-summary-filter-option-label">{filter.label}</span>
+                                  <span className="psi-summary-filter-option-description">{filter.description}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   {selectedFilterDetails.length > 0 ? (
                     <div className="psi-summary-filter-tokens" role="list">
                       {selectedFilterDetails.map((filter) => (
@@ -322,7 +421,7 @@ const PSITableControls = forwardRef(function PSITableControls(
                   ) : (
                     <p id={filterHintId} className="psi-summary-filter-hint">
                       フィルタを選択すると条件に合うSKUだけを表示できます。
-                      Ctrl / ⌘ キーで複数選択が可能です。
+                      ボタンをクリックしてチェックボックスを選択してください。
                     </p>
                   )}
                   {selectedFilterDetails.length > 0 && (
