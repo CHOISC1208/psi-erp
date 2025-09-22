@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -198,3 +200,13 @@ def test_cors_preflight_allows_localhost_origins():
 def test_verify_password_handles_invalid_hash_gracefully():
     # ``verify_password`` should not propagate exceptions for malformed hashes
     assert verify_password("any", "argon2$invalid") is False
+
+
+def test_verify_password_accepts_readme_argon2_hash():
+    pytest.importorskip("argon2")
+
+    hash_from_readme = (
+        "$argon2id$v=19$m=102400,t=2,p=8$wR3AbBVlcrEpcPGJ6cN4dg$oT0yrNqC6JGAu8Kqf5B95Q"
+    )
+
+    assert verify_password("changeme!", hash_from_readme) is True

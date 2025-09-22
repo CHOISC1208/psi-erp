@@ -22,6 +22,20 @@ else:  # pragma: no cover - import succeeds in production environments
 if "_pwd_context" not in globals():  # pragma: no cover - evaluated in test environment
     _pwd_context = None
 
+
+try:  # pragma: no cover - optional dependency
+    from argon2 import PasswordHasher
+    from argon2.exceptions import InvalidHash, VerifyMismatchError
+except ModuleNotFoundError:  # pragma: no cover - exercised when argon2-cffi isn't installed
+    PasswordHasher = None
+    InvalidHash = VerifyMismatchError = Exception
+else:  # pragma: no cover - import succeeds when argon2-cffi is present
+    _argon2_hasher = PasswordHasher()
+
+
+if "_argon2_hasher" not in globals():  # pragma: no cover - evaluated in test environment
+    _argon2_hasher = None
+
 from .config import settings
 
 
@@ -30,6 +44,8 @@ def hash_password(password: str) -> str:
 
     if _pwd_context is not None:
         return _pwd_context.hash(password)
+    if _argon2_hasher is not None:
+        return _argon2_hasher.hash(password)
     # Fallback for environments where passlib isn't available (e.g. CI without
     # network access). ``plain:`` is intentionally obvious so operators avoid
     # using it outside development.
@@ -42,16 +58,22 @@ def verify_password(password: str, hashed: str) -> bool:
     if hashed.startswith("plain:"):
         return hmac.compare_digest(password, hashed.removeprefix("plain:"))
 
-    if _pwd_context is None:
-        # Without passlib we cannot validate hashed passwords created with
-        # argon2/bcrypt. Return ``False`` instead of raising so the caller
-        # handles it as an authentication failure.
-        return False
+    if _pwd_context is not None:
+        try:
+            return _pwd_context.verify(password, hashed)
+        except (TypeError, ValueError):
+            return False
 
-    try:
-        return _pwd_context.verify(password, hashed)
-    except (TypeError, ValueError):
-        return False
+    if _argon2_hasher is not None and hashed.startswith("$argon2"):
+        try:
+            return _argon2_hasher.verify(hashed, password)
+        except (VerifyMismatchError, InvalidHash, TypeError, ValueError):
+            return False
+
+    # Without passlib/argon2 we cannot validate hashed passwords created with
+    # strong algorithms. Return ``False`` instead of raising so the caller
+    # handles it as an authentication failure.
+    return False
 
 
 def _password_signature(password_hash: str) -> str:
