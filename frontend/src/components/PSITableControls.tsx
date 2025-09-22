@@ -103,8 +103,6 @@ const PSITableControls = forwardRef(function PSITableControls(
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const pageSize = 3;
   const filterButtonId = useId();
-  const filterLabelId = `${filterButtonId}-label`;
-  const filterHintId = `${filterButtonId}-hint`;
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
   const firstFilterInputRef = useRef<HTMLInputElement | null>(null);
@@ -367,8 +365,7 @@ const PSITableControls = forwardRef(function PSITableControls(
                 <div className="psi-summary-title">
                 </div>
                 <div className="psi-summary-filter-controls">
-                  <div className="psi-summary-filter-label">
-                    <span id={filterLabelId}></span>
+                  <div className="psi-summary-filter-inline">
                     <div className="psi-summary-filter-dropdown" ref={filterDropdownRef}>
                       <button
                         type="button"
@@ -377,8 +374,7 @@ const PSITableControls = forwardRef(function PSITableControls(
                         className="psi-summary-filter-trigger"
                         aria-haspopup="true"
                         aria-expanded={isFilterMenuOpen}
-                        aria-labelledby={`${filterLabelId} ${filterButtonId}`}
-                        aria-describedby={selectedFilterDetails.length === 0 ? filterHintId : undefined}
+                        aria-label="フィルタを開く"
                         onClick={handleFilterMenuToggle}
                       >
                         <span className="psi-summary-filter-trigger-label">{filterSummaryLabel}</span>
@@ -387,7 +383,7 @@ const PSITableControls = forwardRef(function PSITableControls(
                         </span>
                       </button>
                       {isFilterMenuOpen && (
-                        <div className="psi-summary-filter-menu" role="group" aria-labelledby={filterLabelId}>
+                        <div className="psi-summary-filter-menu" role="group" aria-label="利用可能なフィルタ">
                           {summaryFilters.map((filter, index) => {
                             const checked = activeFilters.includes(filter.id);
                             return (
@@ -408,28 +404,16 @@ const PSITableControls = forwardRef(function PSITableControls(
                         </div>
                       )}
                     </div>
+                    {selectedFilterDetails.length > 0 && (
+                      <button
+                        type="button"
+                        className="psi-button secondary psi-summary-clear-filters"
+                        onClick={handleClearFilters}
+                      >
+                        フィルタをクリア
+                      </button>
+                    )}
                   </div>
-                  {selectedFilterDetails.length > 0 ? (
-                    <div className="psi-summary-filter-tokens" role="list">
-                      {selectedFilterDetails.map((filter) => (
-                        <span key={filter.id} className="psi-summary-filter-token" role="listitem" title={filter.description}>
-                          {filter.label}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p id={filterHintId} className="psi-summary-filter-hint">
-                    </p>
-                  )}
-                  {selectedFilterDetails.length > 0 && (
-                    <button
-                      type="button"
-                      className="psi-button secondary psi-summary-clear-filters"
-                      onClick={handleClearFilters}
-                    >
-                      フィルタをクリア
-                    </button>
-                  )}
                 </div>
               </div>
               {sorted.length > 0 ? (
