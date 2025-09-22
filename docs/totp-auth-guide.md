@@ -158,10 +158,11 @@ def generate_otpauth_url(secret: str, username: str, issuer: str = "MyApp") -> s
 - 管理者は `generate_otpauth_url` で得た URL を QR 化（`qrcode` ライブラリなど）してユーザーへ共有。
 
 ### 例: FastAPI Router
+`/auth/login` は `username` / `password` を含む JSON ボディを必須とし、Pydantic モデル（例: `schemas.LoginRequest`）で受け付ける。
+`Content-Type: application/json` を強制することで、React/pytest/cURL などのクライアント例と同じペイロード形式に揃える。
 ```python
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from starlette import status
 
@@ -181,9 +182,9 @@ COOKIE_COMMON = {
 
 
 @router.post("/login")
-def login(form: OAuth2PasswordRequestForm = Depends(), response: Response, db: Session = Depends(get_db)):
-    user = models.User.get_by_username(db, form.username)
-    if not user or not user.is_active or not verify_password(form.password, user.password_hash):
+def login(data: schemas.LoginRequest, response: Response, db: Session = Depends(get_db)):
+    user = models.User.get_by_username(db, data.username)
+    if not user or not user.is_active or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="認証に失敗しました")
 
     temp_token = create_temp_session(user.id)
