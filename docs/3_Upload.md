@@ -1,4 +1,4 @@
-# CSV / TSV アップロード仕様
+# 03_CSV / TSV アップロード仕様
 
 PSI 基礎データ取り込み API (`POST /psi/{session_id}/upload`) の入力ファイル仕様をまとめています。
 
