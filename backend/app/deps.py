@@ -69,3 +69,14 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid session")
 
     return user
+
+
+def get_admin_user(
+    request: Request, db: Session = Depends(get_db)
+) -> models.User:
+    """Return the authenticated user ensuring they have admin privileges."""
+
+    user = get_current_user(request, db)
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
+    return user

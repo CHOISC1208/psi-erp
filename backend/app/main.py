@@ -13,7 +13,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from .config import settings
 from .middleware import CSRFMiddleware, SecurityHeadersMiddleware
-from .routers import auth, channel_transfers, masters, psi, sessions
+from .routers import auth, channel_transfers, masters, psi, sessions, users
 
 app = FastAPI(title="GEN-like PSI API")
 
@@ -43,6 +43,7 @@ app.include_router(
     prefix="/channel-transfers",
     tags=["channel-transfers"],
 )
+app.include_router(users.router, prefix="/users", tags=["users"])
 
 # /api 配下にもミラー（フロントが /api/* を叩いてもOKに）
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
@@ -54,6 +55,7 @@ app.include_router(
     prefix="/api/channel-transfers",
     tags=["channel-transfers"],
 )
+app.include_router(users.router, prefix="/api/users", tags=["users"])
 
 @app.get("/health")
 def health() -> dict[str, bool]:

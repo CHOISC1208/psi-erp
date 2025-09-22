@@ -97,6 +97,7 @@ def me(current_user: models.User = Depends(get_current_user)) -> schemas.UserPro
         id=current_user.id,
         username=current_user.username,
         is_active=current_user.is_active,
+        is_admin=current_user.is_admin,
     )
 
 

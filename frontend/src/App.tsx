@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Navigate,
   NavLink,
@@ -32,11 +32,20 @@ function ProtectedLayout() {
     }
   }, [location.pathname]);
 
-  const masters = [
-    { path: "/masters/products", label: "Product Master", icon: "📦" },
-    { path: "/masters/customers", label: "Customer Master", icon: "🧑" },
-    { path: "/masters/suppliers", label: "Supplier Master", icon: "🚚" },
-  ];
+  const masters = useMemo(() => {
+    const baseMasters = [
+      { path: "/masters/products", label: "Product Master", icon: "📦" },
+      { path: "/masters/customers", label: "Customer Master", icon: "🧑" },
+      { path: "/masters/suppliers", label: "Supplier Master", icon: "🚚" },
+    ];
+    if (user?.is_admin) {
+      return [
+        { path: "/masters/users", label: "User Management", icon: "👥" },
+        ...baseMasters,
+      ];
+    }
+    return baseMasters;
+  }, [user?.is_admin]);
 
   const handleLogout = async () => {
     await logout();
@@ -83,6 +92,14 @@ function ProtectedLayout() {
               <span className="menu-label">PSI Table</span>
             </NavLink>
           </li>
+          <li>
+            <NavLink to="/docs" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">
+                📚
+              </span>
+              <span className="menu-label">Docs</span>
+            </NavLink>
+          </li>
           <li className={`has-children ${isMasterMenuOpen ? "open" : ""}`}>
             <button
               type="button"
@@ -112,14 +129,6 @@ function ProtectedLayout() {
                 </li>
               ))}
             </ul>
-          </li>
-          <li>
-            <NavLink to="/docs" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <span className="menu-icon" aria-hidden="true">
-                📚
-              </span>
-              <span className="menu-label">Docs</span>
-            </NavLink>
           </li>
         </ul>
       </nav>

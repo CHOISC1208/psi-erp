@@ -14,6 +14,7 @@ export interface UserProfile {
   id: string;
   username: string;
   is_active: boolean;
+  is_admin: boolean;
 }
 
 export async function login(payload: LoginPayload): Promise<LoginResponse> {

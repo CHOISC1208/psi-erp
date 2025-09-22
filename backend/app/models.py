@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.engine import Connection, Engine
@@ -83,6 +84,7 @@ class User(Base, SchemaMixin):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=func.true()
     )
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
