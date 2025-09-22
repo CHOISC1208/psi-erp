@@ -136,14 +136,21 @@ class Settings(BaseModel):
     def allowed_origins(self) -> list[str]:
         """Return a sanitized list of allowed CORS origins."""
 
+        default_origins = [
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+        ]
+
         if not self.allowed_origins_raw:
-            return ["http://localhost:5173", "http://localhost:5174"]
+            return default_origins
 
         parts = [part.strip() for part in self.allowed_origins_raw.split(",")]
         origins = [part for part in parts if part]
 
         if not origins:
-            return ["http://localhost:5173", "http://localhost:5174"]
+            return default_origins
 
         return origins
 

@@ -34,6 +34,10 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
    | `DB_SCHEMA` | Database schema (defaults to `psi`). |
    | `SESSION_SIGN_KEY` / `SECRET_KEY` | Random strings used to sign session payloads. |
    | `ALLOWED_ORIGINS` | Comma separated list of front-end origins (e.g. `http://localhost:5173,http://localhost:5174`). |
+
+   > 📡 When you access the frontend from another device on your LAN, you **must** include that device's Vite origin in
+   > `ALLOWED_ORIGINS` (for example: `http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174,http://192.168.11.64:5174`).
+   > Otherwise, cross-origin cookies and authentication requests will be blocked by the browser.
    | `SESSION_COOKIE_SECURE` | Defaults to `false` locally. Set to `true` only when serving over HTTPS. |
 
 2. **Install backend dependencies**
@@ -84,7 +88,7 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
    npm run dev
    ```
 
-   The Vite dev server runs on <http://localhost:5173>. If you open a second instance (e.g. Vite preview) it usually listens on <http://localhost:5174>. Ensure both origins are present in `ALLOWED_ORIGINS` so that cookies can be shared when using `credentials: 'include'`.
+   The Vite dev server runs on <http://localhost:5173>. If you open a second instance (e.g. Vite preview) it usually listens on <http://localhost:5174>. Ensure both origins are present in `ALLOWED_ORIGINS` so that cookies can be shared when using `credentials: 'include'`. When exposing the dev server over your LAN (e.g. <http://192.168.11.64:5174>), append that host to `ALLOWED_ORIGINS` as well.
 
 ## Authentication API quick check
 
