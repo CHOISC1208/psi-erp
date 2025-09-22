@@ -8,7 +8,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+#from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from .config import settings
 from .middleware import CSRFMiddleware, SecurityHeadersMiddleware

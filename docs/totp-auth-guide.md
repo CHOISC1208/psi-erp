@@ -125,7 +125,7 @@ pip install fastapi uvicorn passlib[argon2] pyotp python-multipart itsdangerous 
 ```python
 from passlib.context import CryptContext
 
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
@@ -170,6 +170,12 @@ from .dependencies import get_db, get_current_user_from_session, create_temp_ses
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "lax").lower()
+SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")
+TTL = int(os.getenv("SESSION_TTL_SECONDS", "3600"))
+DOMAIN = os.getenv("SESSION_COOKIE_DOMAIN") or None  # ← 空文字なら None に
+
 TEMP_SESSION_COOKIE = "temp_session"
 SESSION_COOKIE = "session"
 CSRF_COOKIE = "csrf_token"
@@ -180,28 +186,24 @@ COOKIE_COMMON = {
 }
 
 
-@router.post("/login")
-def login(form: OAuth2PasswordRequestForm = Depends(), response: Response, db: Session = Depends(get_db)):
-    user = models.User.get_by_username(db, form.username)
-    if not user or not user.is_active or not verify_password(form.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="認証に失敗しました")
+@router.post("/login", response_model=LoginResult)
+def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == payload.username).first()
+    if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
 
-    temp_token = create_temp_session(user.id)
+    token = create_session_token(str(user.id))  # itsdangerous などで署名
     response.set_cookie(
-        TEMP_SESSION_COOKIE,
-        temp_token,
-        max_age=300,
-        **COOKIE_COMMON,
+        COOKIE_NAME,
+        token,
+        max_age=TTL,
+        httponly=True,
+        secure=SECURE,
+        samesite=SAMESITE,   # "lax" / "none" / "strict"
+        domain=DOMAIN,       # None のときは付けない
+        path="/",
     )
-    if user.is_2fa_enabled:
-        return {"next": "totp"}
-    # 2FA 無効ユーザーのためのフォールバック
-    session_token = create_session(user.id)
-    set_session_cookie(response, session_token)
-    user.last_login_at = datetime.utcnow()
-    db.commit()
-    return {"next": "authenticated"}
-
+    return LoginResult(next="authenticated", csrf_token=None)
 
 def set_session_cookie(response: Response, token: str):
     response.set_cookie(
@@ -255,13 +257,9 @@ def logout(response: Response):
     return {"status": "ok"}
 
 
-@router.get("/me")
-def read_me(current_user: models.User = Depends(get_current_user_from_session)):
-    return {
-        "id": str(current_user.id),
-        "username": current_user.username,
-        "is_2fa_enabled": current_user.is_2fa_enabled,
-    }
+@router.get("/me", response_model=UserProfile)
+def me(current_user: User = Depends(...)):  # ← session cookie を検証する依存
+    return UserProfile.model_validate(current_user)
 ```
 
 #### セッション管理補助（itsdangerous など）
@@ -318,9 +316,11 @@ from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 app = FastAPI()
 
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",") if os.getenv("ALLOWED_ORIGINS") else []
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://frontend.example.com"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
