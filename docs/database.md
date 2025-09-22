@@ -327,3 +327,73 @@ SELECT * FROM psi.psi_base ORDER BY date ASC LIMIT 5;
 * アプリ側の `.env` は `DB_SCHEMA=psi` を設定。
 * Alembic を使う場合、`alembic/env.py` で `SET search_path TO {settings.db_schema}, public` を実行する構成であれば、この DDL と整合します。
 * 既に `public` に同名テーブルがある場合は、`search_path` や明示スキーマ指定（`psi.`）の混在に注意してください。
+
+
+# 6) 認証（2FA/TOTP） — users / user\_totp / user\_recovery\_codes
+
+**目的**: FastAPI × React × Heroku 構成における TOTP 二要素認証のための最小 DDL。`psi` スキーマ固定、原則として **冪等**（`IF NOT EXISTS` 等）です。上位章（0〜5 章）の前提（`pgcrypto` 拡張 / `psi` スキーマ / `search_path` 設定）が済んでいることを想定します。
+
+---
+
+## 6.1 users テーブル（認証ユーザー）
+
+```sql
+-- すでに public に users がある場合は衝突に注意（search_path 明示推奨）
+CREATE TABLE IF NOT EXISTS psi.users (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  username        text UNIQUE NOT NULL,
+  password_hash   text NOT NULL,
+  is_active       boolean NOT NULL DEFAULT TRUE,
+  is_2fa_enabled  boolean NOT NULL DEFAULT FALSE,
+  last_login_at   timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+-- username 検索が多い場合の補助（UNIQUE だけで十分なら不要）
+CREATE INDEX IF NOT EXISTS idx_users_username ON psi.users (username);
+```
+
+**用途/注意**
+
+* `password_hash` は Argon2/Bcrypt などのハッシュ値を保存（平文保存禁止）。
+* `is_2fa_enabled` が `TRUE` のユーザーは TOTP 検証を必須化。
+* 既存アプリの `users` と別名で共存させる場合は、アプリ層の参照スキーマを `psi` に揃える。
+
+---
+
+## 6.2 user\_totp テーブル（TOTP シークレット）
+
+```sql
+CREATE TABLE IF NOT EXISTS psi.user_totp (
+  user_id     uuid PRIMARY KEY REFERENCES psi.users(id) ON DELETE CASCADE,
+  totp_secret text NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz
+);
+```
+
+**用途/注意**
+
+* `totp_secret` は Base32 文字列（例: `pyotp.random_base32()`）。
+* ユーザー 1 名につき 1 レコード（`PRIMARY KEY (user_id)`）。複数デバイス対応が必要なら PK をサロゲートにして `device_label` を追加する拡張が容易。
+
+---
+
+## 6.3 user\_recovery\_codes テーブル（任意・バックアップコード）
+
+```sql
+CREATE TABLE IF NOT EXISTS psi.user_recovery_codes (
+  id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id   uuid NOT NULL REFERENCES psi.users(id) ON DELETE CASCADE,
+  code_hash text NOT NULL,           -- 平文は保存しない
+  used_at   timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_recovery_codes_user
+  ON psi.user_recovery_codes(user_id);
+```
+
+**用途/注意**
+
+* 10 個程度のワンタイム回復コードを事前発行し、**ハッシュ化**して保存（Argon2/Bcrypt）。
+* 使用時は `used_at` を更新して再利用不可に。
