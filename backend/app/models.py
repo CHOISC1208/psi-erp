@@ -12,6 +12,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     JSON,
     Numeric,
     String,
@@ -41,7 +42,8 @@ class Base(DeclarativeBase):
 class SchemaMixin:
     """Mixin ensuring tables are created within the configured schema."""
 
-    __table_args__ = {"schema": settings.db_schema or "public"}
+    _schema = settings.db_schema.strip() if settings.db_schema else ""
+    __table_args__ = {"schema": _schema} if _schema else {}
 
 
 class TimestampMixin:
@@ -52,6 +54,31 @@ class TimestampMixin:
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class User(Base, SchemaMixin):
+    """Application user able to sign into the dashboard."""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        Index("idx_users_username", "username", unique=True),
+        SchemaMixin.__table_args__ if SchemaMixin.__table_args__ else {},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    username: Mapped[str] = mapped_column(String(150), nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=func.true()
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

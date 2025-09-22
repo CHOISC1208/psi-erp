@@ -1,64 +1,142 @@
 # PSI Mini ERP
 
-A minimal GEN-like PSI (Production, Sales, Inventory) mini-ERP built with FastAPI, SQLAlchemy, Alembic, and a Vite + React frontend. The backend is compatible with PostgreSQL both locally and on Heroku (using `psycopg2-binary`).
+A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with FastAPI, SQLAlchemy, Alembic and a Vite + React SPA. The backend speaks PostgreSQL (schema `psi` by default) and now ships with a hardened username/password login that issues signed session cookies suitable for Heroku deployments.
 
-## Features
+## What's inside
 
-- Session CRUD with leader designation.
-- CSV import for daily PSI data (`date, production, sales, inventory`).
-- Aggregated daily PSI calculations with projected inventory.
+- Username/password authentication (`/auth/login`) with Argon2 hashes, signed session cookies and optional double submit CSRF protection.
+- `GET /auth/me` + `POST /auth/logout` endpoints and a React login form that persists authentication state via `credentials: 'include'` requests.
+- Session CRUD with leader designation, PSI table editing APIs and master data endpoints.
 - React + Vite + TypeScript frontend using axios and React Query.
+- Alembic migrations living under `backend/alembic/versions`.
 
 ## Prerequisites
 
-- Python 3.12
+- Python 3.12+
 - Node.js 20+
-- PostgreSQL database (local or hosted, e.g. Heroku Postgres)
+- PostgreSQL 14+ (local or hosted — e.g. Heroku Postgres)
 
-## Backend setup
+## Quick start (local development)
 
-Create a virtual environment and install dependencies:
+1. **Clone env vars**
+
+   Copy the sample environment file and adjust values as required.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   The most important variables are:
+
+   | Variable | Purpose |
+   | --- | --- |
+   | `DATABASE_URL` | PostgreSQL connection string (SQLAlchemy compatible). |
+   | `DB_SCHEMA` | Database schema (defaults to `psi`). |
+   | `SESSION_SIGN_KEY` / `SECRET_KEY` | Random strings used to sign session payloads. |
+   | `ALLOWED_ORIGINS` | Comma separated list of front-end origins (e.g. `http://localhost:5173`). |
+   | `SESSION_COOKIE_SECURE` | Set to `false` for local HTTP, keep `true` for HTTPS/Heroku. |
+
+2. **Install backend dependencies**
+
+   ```bash
+   cd backend
+   python -m venv .venv
+   source .venv/bin/activate  # Windows: .venv\Scripts\activate
+   pip install -r app/requirements.txt
+   ```
+
+3. **Run database migrations**
+
+   ```bash
+   alembic upgrade head
+   ```
+
+4. **Create an initial user (no UI)**
+
+   ```sql
+   INSERT INTO psi.users (username, password_hash)
+   VALUES (
+     'admin',
+     '$argon2id$v=19$m=102400,t=2,p=8$wR3AbBVlcrEpcPGJ6cN4dg$oT0yrNqC6JGAu8Kqf5B95Q'
+   );
+   ```
+
+   > ℹ️ The hash above corresponds to the password `changeme!`. Generate fresh hashes with:
+   > ```bash
+   > python - <<'PY'
+   > from backend.app.security import hash_password
+   > print(hash_password("your-secret"))
+   > PY
+   > ```
+   > (Refer to `docs/totp-auth-guide.md` for additional operational guidance.)
+
+5. **Start the FastAPI app**
+
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+6. **Install and run the frontend**
+
+   ```bash
+   cd ../frontend
+   npm install
+   npm run dev
+   ```
+
+   The Vite dev server runs on <http://localhost:5173>. Ensure this origin is present in `ALLOWED_ORIGINS` so that cookies can be shared when using `credentials: 'include'`.
+
+## Authentication API quick check
+
+1. **Login**
+
+   ```bash
+   curl -i -X POST http://127.0.0.1:8000/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"admin","password":"changeme!"}'
+   ```
+
+   A `Set-Cookie: session=...; HttpOnly; Secure` header is returned on success.
+
+2. **Fetch the profile**
+
+   ```bash
+   curl -i http://127.0.0.1:8000/auth/me \
+     --cookie "session=<value from login>"
+   ```
+
+3. **Logout**
+
+   ```bash
+   curl -i -X POST http://127.0.0.1:8000/auth/logout \
+     --cookie "session=<value from login>"
+   ```
+
+## Running automated tests
 
 ```bash
-cd backend
-python -m venv .venv
-. .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install -r app/requirements.txt
+pytest backend/tests/test_auth.py
 ```
 
-Set environment variables (or use a `.env` file):
+The suite provisions a throwaway SQLite database and covers happy-path login + `/auth/me`, logout behaviour and rate limiting after repeated failures.
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/psi
-DB_SCHEMA=public
-```
+## Heroku deployment notes
 
-Normalize `DATABASE_URL` is automatic; `postgres://` URLs are converted to `postgresql+psycopg2://` with `sslmode=require` for Heroku compatibility.
+- Use the provided `Procfile` which starts Uvicorn with `--proxy-headers` so secure cookies respect `X-Forwarded-Proto`.
+- Set the following config vars:
 
-Run migrations:
+  | Config Var | Example |
+  | --- | --- |
+  | `DATABASE_URL` | Provided by Heroku Postgres |
+  | `DB_SCHEMA` | `psi` |
+  | `SESSION_SIGN_KEY` / `SECRET_KEY` | Long random strings (`heroku config:set SESSION_SIGN_KEY=$(openssl rand -hex 32)`). |
+  | `ALLOWED_ORIGINS` | `https://<your-app>.herokuapp.com` (and any custom domains). |
+  | `SESSION_COOKIE_SECURE` | `true` (default) |
 
-```bash
-cd backend
-alembic upgrade head
-```
+- Deploy the frontend build artefacts (`frontend/dist`) to `backend/static` (or configure a CDN) so the SPA is served alongside the API.
+- Apply database migrations on release: `heroku run alembic upgrade head` (already wired via the `release` process type).
 
-Start the API:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-## Frontend setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The Vite dev server runs on http://localhost:5173. Configure the backend URL with `VITE_API_BASE_URL` (or the legacy `VITE_API_BASE`) if needed.
-
-## CSV format
+## CSV format reminder
 
 Upload UTF-8 CSV files with headers:
 
@@ -68,18 +146,3 @@ date,production,sales,inventory
 ```
 
 `inventory` is optional. When present it is returned as `reported_inventory`; projected inventory is calculated from the running net change and the optional `starting_inventory` query parameter.
-
-## Running on Heroku
-
-- Set `DATABASE_URL` and optional `DB_SCHEMA` config vars.
-- Use `Procfile` entries such as `web: uvicorn app.main:app --host=0.0.0.0 --port=${PORT}`.
-- Alembic migrations can be executed with `heroku run alembic upgrade head`.
-
-
-## 起動
-
-cd .\backend\
-uvicorn app.main:app --reload
-
-npm i
-npm run dev

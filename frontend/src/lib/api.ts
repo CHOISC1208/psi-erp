@@ -16,5 +16,9 @@ if (typeof console !== "undefined") {
 
 export const api = axios.create({
   baseURL,
-  headers: { "Content-Type": "application/json" }
+  headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 });
+
+api.defaults.xsrfCookieName = "csrf_token";
+api.defaults.xsrfHeaderName = "X-CSRF-Token";
