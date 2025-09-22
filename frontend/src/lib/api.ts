@@ -16,5 +16,7 @@ if (typeof console !== "undefined") {
 
 export const api = axios.create({
   baseURL,
-  headers: { "Content-Type": "application/json" }
+  headers: { "Content-Type": "application/json" },
+  // Cookie ベースのセッションを利用するため、常に `credentials` を送る
+  withCredentials: true
 });
