@@ -12,11 +12,40 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _split_csv_env(value: str | None) -> list[str]:
+    """Return a list of non-empty values from a comma separated string."""
+
+    if not value:
+        return []
+
+    parts = [item.strip() for item in value.split(",")]
+    return [item for item in parts if item]
+
+
+def _default_cors_allow_origins() -> list[str]:
+    """Return the default set of allowed CORS origins."""
+
+    env_value = os.getenv("CORS_ALLOW_ORIGINS")
+    if env_value is None:
+        return [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+
+    return _split_csv_env(env_value)
+
+
 class Settings(BaseModel):
     """Runtime configuration loaded from environment variables."""
 
     database_url: str = Field(default_factory=lambda: os.getenv("DATABASE_URL", ""))
     db_schema: str = Field(default_factory=lambda: os.getenv("DB_SCHEMA", "public"))
+    cors_allow_origins: list[str] = Field(default_factory=_default_cors_allow_origins)
+    cors_allow_origin_regex: str | None = Field(
+        default_factory=lambda: os.getenv("CORS_ALLOW_ORIGIN_REGEX")
+    )
 
     @field_validator("database_url", mode="before")
     @classmethod

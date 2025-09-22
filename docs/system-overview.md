@@ -18,7 +18,7 @@
 - **ORM / DB アクセス**: SQLAlchemy 2 系 Declarative。
 - **マイグレーション**: Alembic。
 - **設定**: `pydantic` + `.env` 読み込み (python-dotenv)。
-- **API**: RESTful。CORS 設定はワイルドカード許容でフロントエンドのホスト制限なし。
+- **API**: RESTful。CORS 設定は `CORS_ALLOW_ORIGINS` / `CORS_ALLOW_ORIGIN_REGEX` で管理し、既定ではローカル開発用オリジンのみを許可。
 - **静的配信**: `backend/static/` 配下にビルド成果物を配置すると、FastAPI アプリが SPA として配信 (SPA ルーティングフォールバックあり)。
 
 ### データベース

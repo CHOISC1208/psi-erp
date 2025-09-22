@@ -8,17 +8,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 
+from .config import settings
 from .routers import channel_transfers, masters, psi, sessions
 
 app = FastAPI(title="GEN-like PSI API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors_kwargs: dict[str, object] = {
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+
+configured_origins = [origin for origin in settings.cors_allow_origins if origin]
+
+if configured_origins and "*" not in configured_origins:
+    cors_kwargs["allow_origins"] = configured_origins
+    cors_kwargs["allow_credentials"] = True
+elif settings.cors_allow_origin_regex:
+    cors_kwargs["allow_origin_regex"] = settings.cors_allow_origin_regex
+    cors_kwargs["allow_credentials"] = False
+else:
+    cors_kwargs["allow_origins"] = configured_origins if "*" not in configured_origins else ["*"]
+    cors_kwargs["allow_credentials"] = False
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 # ========= 1) API を最初に登録 =========
 # 既存の互換エンドポイント
