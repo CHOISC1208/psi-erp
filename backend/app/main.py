@@ -3,18 +3,29 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
+from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from .routers import channel_transfers, masters, psi, sessions
+from .config import settings
+from .middleware import CSRFMiddleware, SecurityHeadersMiddleware
+from .routers import auth, channel_transfers, masters, psi, sessions
 
 app = FastAPI(title="GEN-like PSI API")
 
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+app.add_middleware(SecurityHeadersMiddleware)
+if settings.csrf_enabled:
+    app.add_middleware(CSRFMiddleware)
+
+cors_origins = settings.allowed_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
+    allow_origin_regex=None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -22,6 +33,7 @@ app.add_middleware(
 
 # ========= 1) API を最初に登録 =========
 # 既存の互換エンドポイント
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(masters.router,  prefix="/masters",  tags=["masters"])
 app.include_router(psi.router,      prefix="/psi",      tags=["psi"])
@@ -32,6 +44,7 @@ app.include_router(
 )
 
 # /api 配下にもミラー（フロントが /api/* を叩いてもOKに）
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(masters.router,  prefix="/api/masters",  tags=["masters"])
 app.include_router(psi.router,      prefix="/api/psi",      tags=["psi"])
@@ -75,6 +88,7 @@ API_PREFIXES = (
     "masters",
     "psi",
     "channel-transfers",
+    "auth",
     "health",
     "assets",
     "favicon.ico",

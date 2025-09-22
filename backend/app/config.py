@@ -16,7 +16,46 @@ class Settings(BaseModel):
     """Runtime configuration loaded from environment variables."""
 
     database_url: str = Field(default_factory=lambda: os.getenv("DATABASE_URL", ""))
-    db_schema: str = Field(default_factory=lambda: os.getenv("DB_SCHEMA", "public"))
+    db_schema: str = Field(default_factory=lambda: os.getenv("DB_SCHEMA", "psi"))
+    allowed_origins_raw: str = Field(
+        default_factory=lambda: os.getenv("ALLOWED_ORIGINS", "")
+    )
+    session_sign_key: str = Field(
+        default_factory=lambda: os.getenv("SESSION_SIGN_KEY", "change-me")
+    )
+    secret_key: str = Field(default_factory=lambda: os.getenv("SECRET_KEY", "change-me"))
+    session_cookie_name: str = Field(
+        default_factory=lambda: os.getenv("SESSION_COOKIE_NAME", "session")
+    )
+    session_cookie_domain: str | None = Field(
+        default_factory=lambda: os.getenv("SESSION_COOKIE_DOMAIN")
+    )
+    session_cookie_samesite: str = Field(
+        default_factory=lambda: os.getenv("SESSION_COOKIE_SAMESITE", "lax")
+    )
+    session_cookie_secure: bool = Field(
+        default_factory=lambda: os.getenv("SESSION_COOKIE_SECURE", "true").lower()
+        in {"1", "true", "yes", "on"}
+    )
+    session_ttl_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("SESSION_TTL_SECONDS", "3600"))
+    )
+    csrf_cookie_name: str = Field(
+        default_factory=lambda: os.getenv("CSRF_COOKIE_NAME", "csrf_token")
+    )
+    csrf_header_name: str = Field(
+        default_factory=lambda: os.getenv("CSRF_HEADER_NAME", "x-csrf-token")
+    )
+    csrf_enabled: bool = Field(
+        default_factory=lambda: os.getenv("CSRF_ENABLED", "false").lower()
+        in {"1", "true", "yes", "on"}
+    )
+    login_max_attempts: int = Field(
+        default_factory=lambda: int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
+    )
+    login_block_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("LOGIN_BLOCK_SECONDS", "300"))
+    )
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -84,6 +123,30 @@ class Settings(BaseModel):
         """Backwards compatible accessor for ``db_schema``."""
 
         return self.db_schema
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """Return a sanitized list of allowed CORS origins."""
+
+        if not self.allowed_origins_raw:
+            return []
+        parts = [part.strip() for part in self.allowed_origins_raw.split(",")]
+        return [part for part in parts if part]
+
+    @property
+    def csrf_header(self) -> str:
+        """Return the canonical CSRF header name."""
+
+        return self.csrf_header_name.strip() or "x-csrf-token"
+
+    @property
+    def normalized_samesite(self) -> str:
+        """Return a normalized SameSite value recognised by Starlette."""
+
+        value = self.session_cookie_samesite.strip().lower()
+        if value not in {"lax", "strict", "none"}:
+            return "lax"
+        return value
 
     model_config: dict[str, Any] = {"frozen": True}
 
