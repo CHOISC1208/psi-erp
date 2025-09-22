@@ -157,6 +157,10 @@ def export_channel_transfers(
 
     _ensure_channel_transfer_table(db)
 
+    session = db.get(models.Session, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+
     query = select(models.ChannelTransfer).where(
         models.ChannelTransfer.session_id == session_id
     )
@@ -186,7 +190,7 @@ def export_channel_transfers(
 
         writer.writerow(
             [
-                "session_id",
+                "session_title",
                 "transfer_date",
                 "sku_code",
                 "warehouse_name",
@@ -203,7 +207,7 @@ def export_channel_transfers(
         for transfer in transfers:
             writer.writerow(
                 [
-                    str(transfer.session_id),
+                    session.title,
                     transfer.transfer_date.isoformat(),
                     transfer.sku_code,
                     transfer.warehouse_name,

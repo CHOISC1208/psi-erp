@@ -87,6 +87,33 @@ const buildRowKey = (transfer: ChannelTransfer | ChannelTransferIdentifier) =>
     transfer.to_channel,
   ].join("|");
 
+const buildUpdatePayload = (
+  transfer: ChannelTransfer,
+  draft: RowEditState,
+) => {
+  const qtyValue = Number.parseFloat(draft.qty);
+  if (Number.isNaN(qtyValue)) {
+    return { type: "error" as const, message: "Quantity must be a valid number." };
+  }
+
+  const trimmedNote = draft.note.trim();
+  const nextNote = trimmedNote.length > 0 ? trimmedNote : null;
+
+  const payload: UpdateArgs["payload"] = {};
+  if (qtyValue !== transfer.qty) {
+    payload.qty = qtyValue;
+  }
+  if (nextNote !== (transfer.note ?? null)) {
+    payload.note = nextNote;
+  }
+
+  return {
+    type: "success" as const,
+    payload,
+    hasChanges: Object.keys(payload).length > 0,
+  };
+};
+
 const defaultFilters = (): FilterState => ({
   sku_code: "",
   warehouse_name: "",
@@ -107,7 +134,7 @@ export default function TransferPage() {
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(defaultFilters);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [editState, setEditState] = useState<Record<string, RowEditState>>({});
-  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
+  const [updatingKeys, setUpdatingKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!selectedSessionId && sessions.length) {
@@ -147,24 +174,27 @@ export default function TransferPage() {
 
   const updateMutation = useMutation({
     mutationFn: updateTransfer,
-    onMutate: ({ identifier }) => {
-      setStatus(null);
-      setUpdatingKey(buildRowKey(identifier));
-    },
-    onSuccess: () => {
-      setStatus({ type: "success", text: "Transfer updated." });
-      queryClient.invalidateQueries({ queryKey: transfersQueryKey });
-    },
-    onError: (error) => {
-      setStatus({
-        type: "error",
-        text: getErrorMessage(error, "Unable to update transfer. Try again."),
-      });
-    },
-    onSettled: () => {
-      setUpdatingKey(null);
-    },
   });
+
+  const transfersByKey = useMemo(() => {
+    const map = new Map<string, ChannelTransfer>();
+    transfers.forEach((transferItem) => {
+      map.set(buildRowKey(transferItem), transferItem);
+    });
+    return map;
+  }, [transfers]);
+
+  const findCounterpart = (transfer: ChannelTransfer) => {
+    const counterpartIdentifier: ChannelTransferIdentifier = {
+      session_id: transfer.session_id,
+      sku_code: transfer.sku_code,
+      warehouse_name: transfer.warehouse_name,
+      transfer_date: transfer.transfer_date,
+      from_channel: transfer.to_channel,
+      to_channel: transfer.from_channel,
+    };
+    return transfersByKey.get(buildRowKey(counterpartIdentifier)) ?? null;
+  };
 
   const handleApplyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -187,34 +217,20 @@ export default function TransferPage() {
     }));
   };
 
-  const handleApplyRow = (transfer: ChannelTransfer) => {
+  const handleApplyRow = async (transfer: ChannelTransfer) => {
     const key = buildRowKey(transfer);
     const draft = editState[key];
     if (!draft) {
       return;
     }
 
-    const qtyValue = Number.parseFloat(draft.qty);
-    if (Number.isNaN(qtyValue)) {
-      setStatus({ type: "error", text: "Quantity must be a valid number." });
+    const primaryResult = buildUpdatePayload(transfer, draft);
+    if (primaryResult.type === "error") {
+      setStatus({ type: "error", text: primaryResult.message });
       return;
     }
 
-    const trimmedNote = draft.note.trim();
-    const nextNote = trimmedNote.length > 0 ? trimmedNote : null;
-
-    const payload: { qty?: number; note?: string | null } = {};
-    if (qtyValue !== transfer.qty) {
-      payload.qty = qtyValue;
-    }
-    if (nextNote !== (transfer.note ?? null)) {
-      payload.note = nextNote;
-    }
-
-    if (Object.keys(payload).length === 0) {
-      setStatus({ type: "error", text: "No changes to apply." });
-      return;
-    }
+    const primaryHasChanges = primaryResult.hasChanges;
 
     const identifier: ChannelTransferIdentifier = {
       session_id: transfer.session_id,
@@ -225,17 +241,115 @@ export default function TransferPage() {
       to_channel: transfer.to_channel,
     };
 
-    updateMutation.mutate({ identifier, payload });
+    const updates: UpdateArgs[] = [];
+
+    const counterpart = findCounterpart(transfer);
+    let counterpartHasChanges = false;
+
+    if (counterpart) {
+      const counterpartKey = buildRowKey(counterpart);
+      const counterpartDraft = editState[counterpartKey];
+
+      if (!counterpartDraft) {
+        setStatus({
+          type: "error",
+          text: "Paired transfer data is unavailable. Refresh and try again.",
+        });
+        return;
+      }
+
+      const counterpartResult = buildUpdatePayload(counterpart, counterpartDraft);
+      if (counterpartResult.type === "error") {
+        setStatus({ type: "error", text: counterpartResult.message });
+        return;
+      }
+
+      counterpartHasChanges = counterpartResult.hasChanges;
+
+      if (primaryHasChanges !== counterpartHasChanges) {
+        if (primaryHasChanges) {
+          setStatus({
+            type: "error",
+            text: `This transfer is paired with ${counterpart.from_channel} → ${counterpart.to_channel}. Update both entries before applying.`,
+          });
+        } else {
+          setStatus({
+            type: "error",
+            text: `Changes exist on the paired transfer (${counterpart.from_channel} → ${counterpart.to_channel}). Apply updates from that row or align both entries.`,
+          });
+        }
+        return;
+      }
+
+      if (counterpartHasChanges) {
+        updates.push({
+          identifier: {
+            session_id: counterpart.session_id,
+            sku_code: counterpart.sku_code,
+            warehouse_name: counterpart.warehouse_name,
+            transfer_date: counterpart.transfer_date,
+            from_channel: counterpart.from_channel,
+            to_channel: counterpart.to_channel,
+          },
+          payload: counterpartResult.payload,
+        });
+      }
+    }
+
+    if (!primaryHasChanges && !counterpartHasChanges) {
+      setStatus({ type: "error", text: "No changes to apply." });
+      return;
+    }
+
+    if (primaryHasChanges) {
+      updates.push({ identifier, payload: primaryResult.payload });
+    }
+
+    setStatus(null);
+    const keysInFlight = new Set(updates.map((update) => buildRowKey(update.identifier)));
+    setUpdatingKeys(keysInFlight);
+
+    try {
+      for (const update of updates) {
+        // eslint-disable-next-line no-await-in-loop
+        await updateMutation.mutateAsync(update);
+      }
+      setStatus({
+        type: "success",
+        text: updates.length > 1 ? "Transfers updated." : "Transfer updated.",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        text: getErrorMessage(error, "Unable to update transfer. Try again."),
+      });
+    } finally {
+      setUpdatingKeys(new Set());
+      queryClient.invalidateQueries({ queryKey: transfersQueryKey });
+    }
   };
 
   const handleResetRow = (transfer: ChannelTransfer) => {
     const key = buildRowKey(transfer);
-    setEditState((previous) => ({
-      ...previous,
+    const nextState: Record<string, RowEditState> = {
       [key]: {
         qty: String(transfer.qty ?? ""),
         note: transfer.note ?? "",
       },
+    };
+
+    const counterpart = findCounterpart(transfer);
+    if (counterpart) {
+      const counterpartKey = buildRowKey(counterpart);
+      nextState[counterpartKey] = {
+        qty: String(counterpart.qty ?? ""),
+        note: counterpart.note ?? "",
+      };
+    }
+
+    setEditState((previous) => ({
+      ...previous,
+      ...nextState,
     }));
     setStatus(null);
   };
@@ -348,10 +462,15 @@ export default function TransferPage() {
             <button type="submit" disabled={!selectedSessionId}>
               Apply Filters
             </button>
-            <button type="button" onClick={handleResetFilters}>
+            <button type="button" className="secondary" onClick={handleResetFilters}>
               Reset
             </button>
-            <button type="button" onClick={handleDownload} disabled={!selectedSessionId}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleDownload}
+              disabled={!selectedSessionId}
+            >
               Download CSV
             </button>
           </div>
@@ -410,15 +529,18 @@ export default function TransferPage() {
                       <div className="action-buttons">
                         <button
                           type="button"
-                          onClick={() => handleApplyRow(transfer)}
-                          disabled={updatingKey === key}
+                          onClick={() => {
+                            void handleApplyRow(transfer);
+                          }}
+                          disabled={updatingKeys.has(key)}
                         >
-                          {updatingKey === key ? "Saving..." : "Apply"}
+                          {updatingKeys.has(key) ? "Saving..." : "Apply"}
                         </button>
                         <button
                           type="button"
+                          className="secondary"
                           onClick={() => handleResetRow(transfer)}
-                          disabled={updatingKey === key}
+                          disabled={updatingKeys.has(key)}
                         >
                           Reset
                         </button>
