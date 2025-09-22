@@ -311,24 +311,46 @@ body {
 .action-buttons {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .action-buttons button {
-  padding: 0.35rem 0.75rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--border-subtle, #d1d5db);
-  background: white;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: var(--button-primary-bg);
+  color: var(--button-contrast-text);
   cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.action-buttons button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--button-primary-hover-bg);
 }
 
 .action-buttons button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
+}
+
+.action-buttons button.secondary {
+  background: var(--button-neutral-bg);
+}
+
+.action-buttons button.secondary:hover:not(:disabled) {
+  background: var(--button-neutral-hover-bg);
 }
 
 .action-buttons .danger {
-  color: #dc2626;
-  border-color: rgba(220, 38, 38, 0.5);
+  background: var(--accent-red);
+  color: var(--button-contrast-text);
+}
+
+.action-buttons .danger:hover:not(:disabled) {
+  background: #dc2626;
 }
 
 .filter-form {
@@ -351,16 +373,33 @@ body {
 }
 
 .filter-actions button {
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--border-subtle, #d1d5db);
-  background: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: var(--button-primary-bg);
+  color: var(--button-contrast-text);
   cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.filter-actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--button-primary-hover-bg);
 }
 
 .filter-actions button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
+}
+
+.filter-actions button.secondary {
+  background: var(--button-neutral-bg);
+}
+
+.filter-actions button.secondary:hover:not(:disabled) {
+  background: var(--button-neutral-hover-bg);
 }
 
 .credential-preview {
@@ -1924,17 +1963,23 @@ button.icon-button:focus-visible {
 }
 
 button.secondary {
-  background-color: var(--surface-input);
-  color: var(--text-primary);
-  border: 1px solid var(--border-input);
+  background-color: var(--button-neutral-bg);
+  color: var(--button-contrast-text);
+  border: none;
 }
 
 button.secondary:hover {
-  background-color: var(--card-background);
+  background-color: var(--button-neutral-hover-bg);
 }
 
 button.danger {
   background-color: var(--accent-red);
+  color: var(--button-contrast-text);
+  border: none;
+}
+
+button.danger:hover {
+  background-color: #dc2626;
 }
 
 @media print {

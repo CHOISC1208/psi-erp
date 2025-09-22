@@ -380,13 +380,18 @@ export default function MasterPage() {
                           >
                             {updateMetricMutation.isPending ? "Saving..." : "Apply"}
                           </button>
-                          <button type="button" onClick={handleEditCancel} disabled={updateMetricMutation.isPending}>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={handleEditCancel}
+                            disabled={updateMetricMutation.isPending}
+                          >
                             Cancel
                           </button>
                         </div>
                       ) : (
                         <div className="action-buttons">
-                          <button type="button" onClick={() => startEditing(metric)}>
+                          <button type="button" className="secondary" onClick={() => startEditing(metric)}>
                             Edit
                           </button>
                           <button
