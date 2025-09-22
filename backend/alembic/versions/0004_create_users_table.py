@@ -8,8 +8,8 @@ from sqlalchemy.dialects import postgresql
 from app.config import settings
 
 # revision identifiers, used by Alembic.
-revision = "0004_create_users_table"
-down_revision = "0003_create_channel_transfers_table"
+revision = "0004"
+down_revision = "0003"
 branch_labels = None
 depends_on = None
 
