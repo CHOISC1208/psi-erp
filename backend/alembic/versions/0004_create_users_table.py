@@ -16,26 +16,23 @@ depends_on = None
 SCHEMA = settings.db_schema or None
 
 
-def upgrade() -> None:
-    op.create_table(
-        "users",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("username", sa.String(length=150), nullable=False),
-        sa.Column("password_hash", sa.Text(), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        schema=SCHEMA,
-    )
-    op.create_index(
-        "idx_users_username",
-        "users",
-        ["username"],
-        unique=True,
-        schema=SCHEMA,
-    )
+def upgrade():
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if not insp.has_table("users", schema="psi"):      # ★存在しなければ作成
+        op.create_table(
+            "users",
+            sa.Column("id", sa.UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
+            sa.Column("username", sa.String(150), nullable=False, unique=True),
+            sa.Column("password_hash", sa.Text, nullable=False),
+            sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.text("true")),
+            sa.Column("last_login_at", sa.TIMESTAMP(timezone=True)),
+            sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
+            schema="psi",
+        )
 
-
-def downgrade() -> None:
-    op.drop_index("idx_users_username", table_name="users", schema=SCHEMA)
-    op.drop_table("users", schema=SCHEMA)
+def downgrade():
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if insp.has_table("users", schema="psi"):          # ★あるときだけDROP
+        op.drop_table("users", schema="psi")
