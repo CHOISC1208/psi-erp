@@ -39,6 +39,52 @@ if "_argon2_hasher" not in globals():  # pragma: no cover - evaluated in test en
 from .config import settings
 
 
+_PBKDF2_ALGORITHM = "pbkdf2_sha256"
+_PBKDF2_ITERATIONS = 390_000
+_PBKDF2_SALT_BYTES = 16
+
+
+def _urlsafe_b64encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _urlsafe_b64decode(data: str) -> bytes:
+    padding = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode((data + padding).encode("ascii"))
+
+
+def _pbkdf2_hash(password: str) -> str:
+    """Return a PBKDF2-SHA256 hash encoded for storage."""
+
+    salt = secrets.token_bytes(_PBKDF2_SALT_BYTES)
+    derived = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS
+    )
+    return (
+        f"{_PBKDF2_ALGORITHM}${_PBKDF2_ITERATIONS}$"
+        f"{_urlsafe_b64encode(salt)}${_urlsafe_b64encode(derived)}"
+    )
+
+
+def _pbkdf2_verify(password: str, encoded: str) -> bool:
+    """Return ``True`` if ``password`` matches the PBKDF2 hash ``encoded``."""
+
+    try:
+        algorithm, iterations_str, salt_b64, hash_b64 = encoded.split("$", 3)
+        if algorithm != _PBKDF2_ALGORITHM:
+            return False
+        iterations = int(iterations_str)
+        salt = _urlsafe_b64decode(salt_b64)
+        expected = _urlsafe_b64decode(hash_b64)
+    except (ValueError, binascii.Error):
+        return False
+
+    derived = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt, iterations
+    )
+    return hmac.compare_digest(derived, expected)
+
+
 def hash_password(password: str) -> str:
     """Return a secure hash for ``password``."""
 
@@ -46,10 +92,10 @@ def hash_password(password: str) -> str:
         return _pwd_context.hash(password)
     if _argon2_hasher is not None:
         return _argon2_hasher.hash(password)
-    # Fallback for environments where passlib isn't available (e.g. CI without
-    # network access). ``plain:`` is intentionally obvious so operators avoid
-    # using it outside development.
-    return f"plain:{password}"
+    # Fallback for environments where passlib/argon2 isn't available (e.g. CI
+    # without network access). PBKDF2-SHA256 relies only on the standard
+    # library, providing a secure option without optional dependencies.
+    return _pbkdf2_hash(password)
 
 
 def verify_password(password: str, hashed: str) -> bool:
@@ -57,6 +103,9 @@ def verify_password(password: str, hashed: str) -> bool:
 
     if hashed.startswith("plain:"):
         return hmac.compare_digest(password, hashed.removeprefix("plain:"))
+
+    if hashed.startswith(f"{_PBKDF2_ALGORITHM}$"):
+        return _pbkdf2_verify(password, hashed)
 
     if _pwd_context is not None:
         try:

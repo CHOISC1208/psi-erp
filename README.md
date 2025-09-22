@@ -59,10 +59,10 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
 
    ```sql
    INSERT INTO psi.users (username, password_hash)
-   VALUES (
-     'admin',
-     '$argon2id$v=19$m=102400,t=2,p=8$wR3AbBVlcrEpcPGJ6cN4dg$oT0yrNqC6JGAu8Kqf5B95Q'
-   );
+    VALUES (
+      'admin',
+      'pbkdf2_sha256$390000$xLZMCnQn7qjW030LISFGMw$wmdKegibCSwbuMOl6MQ8UhqKEMUqwdSzLdePUgVveNQ'
+    );
    ```
 
    > ℹ️ The hash above corresponds to the password `changeme!`. Generate fresh hashes with:
@@ -72,6 +72,9 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
    > print(hash_password("your-secret"))
    > PY
    > ```
+   > The fallback implementation uses PBKDF2-SHA256 when optional dependencies
+   > aren't installed, so the command works even in lightweight development
+   > environments.
    > (Refer to `docs/totp-auth-guide.md` for additional operational guidance.)
 
 5. **Start the FastAPI app**
