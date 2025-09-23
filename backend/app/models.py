@@ -133,6 +133,16 @@ class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     channel_transfers: Mapped[list["ChannelTransfer"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
+    created_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="Session.created_by",
+        lazy="selectin",
+    )
+    updated_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="Session.updated_by",
+        lazy="selectin",
+    )
 
 
 class MasterRecord(Base, SchemaMixin, TimestampMixin):
