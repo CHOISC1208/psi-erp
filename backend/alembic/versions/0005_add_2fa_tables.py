@@ -1,61 +1,87 @@
-# backend/alembic/versions/0005_add_2fa_tables.py
-from alembic import op
+"""add tables to support two-factor authentication"""
+from __future__ import annotations
+
+from typing import Sequence, Union
+
 import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
 
-# --- ヘッダ（数字IDで統一） ---
-revision = "0005"
-down_revision = "0004"
-branch_labels = None
-depends_on = None
+from app.config import settings
+
+revision: str = "0005"
+down_revision: Union[str, Sequence[str], None] = "0004"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+SCHEMA = settings.db_schema or None
 
 
-def upgrade():
-    # 1) 必要なら拡張 (gen_random_uuid)
+def upgrade() -> None:
     op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto";')
 
     bind = op.get_bind()
-    insp = sa.inspect(bind)
+    inspector = sa.inspect(bind)
 
-    # 2) user_totp
-    if not insp.has_table("user_totp", schema="psi"):
+    if not inspector.has_table("user_totp", schema=SCHEMA):
         op.create_table(
             "user_totp",
-            sa.Column("user_id", sa.UUID, primary_key=True),
-            sa.Column("totp_secret", sa.Text, nullable=False),
-            sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
-            sa.Column("last_used_at", sa.TIMESTAMP(timezone=True)),
-            sa.ForeignKeyConstraint(["user_id"], ["psi.users.id"], ondelete="CASCADE"),
-            schema="psi",
+            sa.Column("user_id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+            sa.Column("totp_secret", sa.Text(), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+            sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+            sa.ForeignKeyConstraint(
+                ["user_id"],
+                [f"{SCHEMA}.users.id" if SCHEMA else "users.id"],
+                ondelete="CASCADE",
+            ),
+            schema=SCHEMA,
         )
 
-    # 3) user_recovery_codes + index
-    if not insp.has_table("user_recovery_codes", schema="psi"):
+    if not inspector.has_table("user_recovery_codes", schema=SCHEMA):
         op.create_table(
             "user_recovery_codes",
-            sa.Column("id", sa.UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
-            sa.Column("user_id", sa.UUID, nullable=False),
-            sa.Column("code_hash", sa.Text, nullable=False),  # 平文は保存しない
-            sa.Column("used_at", sa.TIMESTAMP(timezone=True)),
-            sa.ForeignKeyConstraint(["user_id"], ["psi.users.id"], ondelete="CASCADE"),
-            schema="psi",
+            sa.Column(
+                "id",
+                postgresql.UUID(as_uuid=True),
+                primary_key=True,
+                nullable=False,
+                server_default=sa.text("gen_random_uuid()"),
+            ),
+            sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("code_hash", sa.Text(), nullable=False),
+            sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
+            sa.ForeignKeyConstraint(
+                ["user_id"],
+                [f"{SCHEMA}.users.id" if SCHEMA else "users.id"],
+                ondelete="CASCADE",
+            ),
+            schema=SCHEMA,
         )
         op.create_index(
             "idx_user_recovery_codes_user",
             "user_recovery_codes",
             ["user_id"],
-            schema="psi",
-            unique=False,
+            schema=SCHEMA,
         )
 
 
-def downgrade():
+def downgrade() -> None:
     bind = op.get_bind()
-    insp = sa.inspect(bind)
+    inspector = sa.inspect(bind)
 
-    # 逆順で削除
-    if insp.has_table("user_recovery_codes", schema="psi"):
-        op.drop_index("idx_user_recovery_codes_user", table_name="user_recovery_codes", schema="psi")
-        op.drop_table("user_recovery_codes", schema="psi")
+    if inspector.has_table("user_recovery_codes", schema=SCHEMA):
+        op.drop_index(
+            "idx_user_recovery_codes_user",
+            table_name="user_recovery_codes",
+            schema=SCHEMA,
+        )
+        op.drop_table("user_recovery_codes", schema=SCHEMA)
 
-    if insp.has_table("user_totp", schema="psi"):
-        op.drop_table("user_totp", schema="psi")
+    if inspector.has_table("user_totp", schema=SCHEMA):
+        op.drop_table("user_totp", schema=SCHEMA)
