@@ -9,19 +9,22 @@ from sqlalchemy.dialects import postgresql
 
 from app.config import settings
 
-# revision identifiers, used by Alembic.
 revision: str = "0003"
 down_revision: Union[str, Sequence[str], None] = "0002"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
+SCHEMA = settings.db_schema or None
 
 
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
-    if inspector.has_table("channel_transfers", schema=settings.db_schema):
+    if inspector.has_table("channel_transfers", schema=SCHEMA):
         return
+
+    target = f"{SCHEMA}.sessions.id" if SCHEMA else "sessions.id"
 
     op.create_table(
         "channel_transfers",
@@ -31,7 +34,7 @@ def upgrade() -> None:
         sa.Column("transfer_date", sa.Date(), nullable=False),
         sa.Column("from_channel", sa.Text(), nullable=False),
         sa.Column("to_channel", sa.Text(), nullable=False),
-        sa.Column("qty", sa.Numeric(20, 6), nullable=False),
+        sa.Column("qty", sa.Numeric(), nullable=False),
         sa.Column("note", sa.Text(), nullable=True),
         sa.Column(
             "created_at",
@@ -45,11 +48,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.ForeignKeyConstraint(
-            ["session_id"],
-            [f"{settings.db_schema}.sessions.id"],
-            ondelete="CASCADE",
-        ),
+        sa.ForeignKeyConstraint(["session_id"], [target], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint(
             "session_id",
             "sku_code",
@@ -67,9 +66,9 @@ def upgrade() -> None:
             "to_channel",
             name="uq_channel_transfers_key",
         ),
-        schema=settings.db_schema,
+        schema=SCHEMA,
     )
 
 
 def downgrade() -> None:
-    op.drop_table("channel_transfers", schema=settings.db_schema)
+    op.drop_table("channel_transfers", schema=SCHEMA)
