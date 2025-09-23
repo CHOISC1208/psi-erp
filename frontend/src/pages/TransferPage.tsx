@@ -10,6 +10,7 @@ interface FilterState {
   sku_code: string;
   warehouse_name: string;
   updated_at: string;
+  username: string;
 }
 
 type StatusMessage = { type: "success" | "error"; text: string };
@@ -60,6 +61,9 @@ const fetchTransfers = async (
   }
   if (filters.updated_at) {
     params.updated_at = filters.updated_at;
+  }
+  if (filters.username.trim()) {
+    params.username = filters.username.trim();
   }
 
   const { data } = await api.get<ChannelTransfer[]>("/channel-transfers/", { params });
@@ -118,6 +122,7 @@ const defaultFilters = (): FilterState => ({
   sku_code: "",
   warehouse_name: "",
   updated_at: getTodayIso(),
+  username: "",
 });
 
 export default function TransferPage() {
@@ -149,7 +154,14 @@ export default function TransferPage() {
   }, [selectedSessionId]);
 
   const transfersQueryKey = useMemo(
-    () => ["transfer-list", selectedSessionId, appliedFilters.sku_code, appliedFilters.warehouse_name, appliedFilters.updated_at],
+    () => [
+      "transfer-list",
+      selectedSessionId,
+      appliedFilters.sku_code,
+      appliedFilters.warehouse_name,
+      appliedFilters.updated_at,
+      appliedFilters.username,
+    ],
     [selectedSessionId, appliedFilters],
   );
 
@@ -369,6 +381,9 @@ export default function TransferPage() {
       if (appliedFilters.updated_at) {
         params.updated_at = appliedFilters.updated_at;
       }
+      if (appliedFilters.username.trim()) {
+        params.username = appliedFilters.username.trim();
+      }
 
       const response = await api.get<Blob>(`/channel-transfers/${selectedSessionId}/export`, {
         params,
@@ -458,6 +473,17 @@ export default function TransferPage() {
               }
             />
           </label>
+          <label>
+            Username
+            <input
+              type="text"
+              value={filterDraft.username}
+              onChange={(event) =>
+                setFilterDraft((previous) => ({ ...previous, username: event.target.value }))
+              }
+              placeholder="Contains…"
+            />
+          </label>
           <div className="filter-actions">
             <button type="submit" disabled={!selectedSessionId}>
               Apply Filters
@@ -494,7 +520,8 @@ export default function TransferPage() {
                 <th>To</th>
                 <th>Quantity</th>
                 <th>Note</th>
-                <th>Updated At</th>
+                <th>Created By</th>
+                <th>Updated By</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -524,7 +551,14 @@ export default function TransferPage() {
                         onChange={(event) => handleRowChange(key, "note", event.target.value)}
                       />
                     </td>
-                    <td>{new Date(transfer.updated_at).toLocaleString()}</td>
+                    <td>
+                      <div>{transfer.created_by_username ?? "—"}</div>
+                      <small>{new Date(transfer.created_at).toLocaleString()}</small>
+                    </td>
+                    <td>
+                      <div>{transfer.updated_by_username ?? "—"}</div>
+                      <small>{new Date(transfer.updated_at).toLocaleString()}</small>
+                    </td>
                     <td className="actions">
                       <div className="action-buttons">
                         <button
@@ -549,11 +583,11 @@ export default function TransferPage() {
                   </tr>
                 );
               })}
-              {transfers.length === 0 ? (
-                <tr>
-                  <td colSpan={9}>No transfers match the selected filters.</td>
-                </tr>
-              ) : null}
+                {transfers.length === 0 ? (
+                  <tr>
+                    <td colSpan={10}>No transfers match the selected filters.</td>
+                  </tr>
+                ) : null}
             </tbody>
           </table>
         </div>

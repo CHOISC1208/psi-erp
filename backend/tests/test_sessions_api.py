@@ -8,6 +8,7 @@ import sys
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlencode
 
 import pytest
 
@@ -21,6 +22,7 @@ def _perform_request(
     method: str,
     path: str,
     json_body: dict[str, object] | None = None,
+    query_params: dict[str, object] | None = None,
     headers: list[tuple[str, str]] | None = None,
 ) -> tuple[int, dict[str, str], bytes]:
     body = b""
@@ -34,6 +36,16 @@ def _perform_request(
         body = json.dumps(json_body).encode("utf-8")
         header_list.append((b"content-type", b"application/json"))
 
+    query_string = b""
+    if query_params:
+        encoded: list[tuple[str, str]] = []
+        for key, value in query_params.items():
+            if isinstance(value, (list, tuple)):
+                encoded.extend((key, str(item)) for item in value)
+            else:
+                encoded.append((key, str(value)))
+        query_string = urlencode(encoded, doseq=True).encode("latin-1")
+
     scope = {
         "type": "http",
         "asgi": {"version": "3.0"},
@@ -43,7 +55,7 @@ def _perform_request(
         "raw_path": path.encode("latin-1"),
         "scheme": "http",
         "headers": header_list,
-        "query_string": b"",
+        "query_string": query_string,
         "server": ("testserver", 80),
         "client": ("testclient", 12345),
     }
@@ -81,8 +93,11 @@ def _perform_json_request(
     method: str,
     path: str,
     json_body: dict[str, object] | None = None,
+    query_params: dict[str, object] | None = None,
 ) -> tuple[int, dict[str, str], object | None]:
-    status, headers, body = _perform_request(app, method, path, json_body=json_body)
+    status, headers, body = _perform_request(
+        app, method, path, json_body=json_body, query_params=query_params
+    )
     if body:
         return status, headers, json.loads(body.decode("utf-8"))
     return status, headers, None
@@ -206,8 +221,8 @@ def test_create_session_stamps_audit_fields_without_exposing(
     assert body["title"] == "Sprint 1"
     assert "created_by" not in body
     assert "updated_by" not in body
-    assert "created_by_username" not in body
-    assert "updated_by_username" not in body
+    assert body["created_by_username"] == user.username
+    assert body["updated_by_username"] == user.username
 
     session_id = uuid.UUID(body["id"])
     with app_env.SessionLocal() as session:
@@ -264,3 +279,43 @@ def test_session_responses_include_audit_fields_when_enabled(
         assert stored is not None
         assert stored.created_by == user.id
         assert stored.updated_by == user.id
+
+
+def test_list_sessions_supports_search(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    user = auth_user
+
+    first_payload = {"title": "Alpha Plan", "description": "North region"}
+    second_payload = {"title": "Roadmap", "description": "Q2 planning"}
+
+    status, _, _ = _perform_json_request(app_env.app, "POST", "/sessions", first_payload)
+    assert status == 201
+    status, _, _ = _perform_json_request(app_env.app, "POST", "/sessions", second_payload)
+    assert status == 201
+
+    other_user = _create_user(app_env, username="planner")
+
+    app_env.app.dependency_overrides[app_env.get_current_user] = lambda: other_user
+    third_payload = {"title": "Gamma", "description": "Central"}
+    status, _, _ = _perform_json_request(app_env.app, "POST", "/sessions", third_payload)
+    assert status == 201
+    app_env.app.dependency_overrides[app_env.get_current_user] = lambda: user
+
+    status, _, by_title = _perform_json_request(
+        app_env.app, "GET", "/sessions", query_params={"search": "road"}
+    )
+    assert status == 200
+    assert [item["title"] for item in by_title] == ["Roadmap"]
+
+    status, _, by_description = _perform_json_request(
+        app_env.app, "GET", "/sessions", query_params={"search": "north"}
+    )
+    assert status == 200
+    assert [item["title"] for item in by_description] == ["Alpha Plan"]
+
+    status, _, by_username = _perform_json_request(
+        app_env.app, "GET", "/sessions", query_params={"search": "planner"}
+    )
+    assert status == 200
+    assert [item["title"] for item in by_username] == ["Gamma"]

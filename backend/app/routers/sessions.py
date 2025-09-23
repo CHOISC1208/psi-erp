@@ -6,8 +6,13 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session as DBSession, selectinload
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.orm import (
+    Session as DBSession,
+    aliased,
+    contains_eager,
+    selectinload,
+)
 
 from .. import models, schemas
 from ..config import settings
@@ -27,14 +32,29 @@ router = APIRouter()
     response_model_exclude_none=True,
 )
 def list_sessions(
+    search: str | None = None,
     db: DBSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> list[schemas.SessionRead]:
     """セッション一覧を返す。"""
     _ = current_user
     stmt = select(models.Session).order_by(models.Session.created_at.desc())
-    stmt = _with_audit_options(stmt)
-    sessions = db.scalars(stmt).all()
+    join_users = bool(search)
+    stmt, creator_alias, updater_alias = _with_audit_options(stmt, join_users=join_users)
+
+    if search:
+        lowered = f"%{search.lower()}%"
+        conditions = [
+            func.lower(models.Session.title).like(lowered),
+            func.lower(models.Session.description).like(lowered),
+        ]
+        if creator_alias is not None:
+            conditions.append(func.lower(creator_alias.username).like(lowered))
+        if updater_alias is not None:
+            conditions.append(func.lower(updater_alias.username).like(lowered))
+        stmt = stmt.where(or_(*conditions))
+
+    sessions = db.scalars(stmt).unique().all()
     return [_serialize_session(session) for session in sessions]
 
 
@@ -86,7 +106,7 @@ def get_leader_session(
         .order_by(models.Session.updated_at.desc())
         .limit(1)
     )
-    stmt = _with_audit_options(stmt)
+    stmt, _, _ = _with_audit_options(stmt, join_users=False)
     session = db.scalars(stmt).first()
     if session is None:
         return None
@@ -96,7 +116,7 @@ def get_leader_session(
 # ---- item ----
 def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
     stmt = select(models.Session).where(models.Session.id == session_id).limit(1)
-    stmt = _with_audit_options(stmt)
+    stmt, _, _ = _with_audit_options(stmt, join_users=False)
     session = db.scalars(stmt).first()
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -186,33 +206,41 @@ def set_leader(
     return _serialize_session(session)
 
 
-def _with_audit_options(stmt):
-    if settings.audit_metadata_enabled:
-        return stmt.options(
-            selectinload(models.Session.created_by_user),
-            selectinload(models.Session.updated_by_user),
+def _with_audit_options(stmt, *, join_users: bool):
+    creator_alias = None
+    updater_alias = None
+
+    if join_users:
+        creator_alias = aliased(models.User)
+        updater_alias = aliased(models.User)
+        stmt = stmt.outerjoin(creator_alias, models.Session.created_by == creator_alias.id)
+        stmt = stmt.outerjoin(updater_alias, models.Session.updated_by == updater_alias.id)
+        stmt = stmt.options(
+            contains_eager(models.Session.created_by_user, alias=creator_alias),
+            contains_eager(models.Session.updated_by_user, alias=updater_alias),
         )
-    return stmt
+        return stmt, creator_alias, updater_alias
+
+    stmt = stmt.options(
+        selectinload(models.Session.created_by_user),
+        selectinload(models.Session.updated_by_user),
+    )
+    return stmt, creator_alias, updater_alias
 
 
 def _refresh_audit_relationships(db: DBSession, session: models.Session) -> None:
-    if settings.audit_metadata_enabled:
-        db.refresh(session, attribute_names=["created_by_user", "updated_by_user"])
+    db.refresh(session, attribute_names=["created_by_user", "updated_by_user"])
 
 
 def _serialize_session(session: models.Session) -> schemas.SessionRead:
     data = schemas.SessionRead.model_validate(session, from_attributes=True)
-    if settings.audit_metadata_enabled:
-        data.created_by_username = (
-            session.created_by_user.username if session.created_by_user else None
-        )
-        data.updated_by_username = (
-            session.updated_by_user.username if session.updated_by_user else None
-        )
-        return data
-
-    data.created_by = None
-    data.updated_by = None
-    data.created_by_username = None
-    data.updated_by_username = None
+    data.created_by_username = (
+        session.created_by_user.username if session.created_by_user else None
+    )
+    data.updated_by_username = (
+        session.updated_by_user.username if session.updated_by_user else None
+    )
+    if not settings.audit_metadata_enabled:
+        data.created_by = None
+        data.updated_by = None
     return data

@@ -17,8 +17,9 @@ interface UploadVariables {
   sessionTitle: string;
 }
 
-const fetchSessions = async (): Promise<Session[]> => {
-  const { data } = await api.get<Session[]>("/sessions/");
+const fetchSessions = async (search: string): Promise<Session[]> => {
+  const params = search.trim() ? { search: search.trim() } : undefined;
+  const { data } = await api.get<Session[]>("/sessions/", { params });
   return data;
 };
 
@@ -45,10 +46,12 @@ export default function SessionsPage() {
   const [status, setStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [uploadStatus, setUploadStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [uploadingSessionId, setUploadingSessionId] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState<string>("");
+  const [appliedSearch, setAppliedSearch] = useState<string>("");
 
   const sessionsQuery = useQuery({
-    queryKey: ["sessions"],
-    queryFn: fetchSessions,
+    queryKey: ["sessions", appliedSearch],
+    queryFn: () => fetchSessions(appliedSearch),
   });
 
   const createSession = useMutation<Session, unknown, SessionFormState>({
@@ -177,6 +180,16 @@ export default function SessionsPage() {
     navigate({ pathname: "/psi", search: params.toString() });
   };
 
+  const handleApplySearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAppliedSearch(searchDraft.trim());
+  };
+
+  const handleResetSearch = () => {
+    setSearchDraft("");
+    setAppliedSearch("");
+  };
+
   return (
     <div className="page">
       <header>
@@ -213,6 +226,28 @@ export default function SessionsPage() {
 
       <section>
         <h2>Existing Sessions</h2>
+        <form className="search-form" onSubmit={handleApplySearch}>
+          <label>
+            Search
+            <input
+              type="search"
+              value={searchDraft}
+              onChange={(event) => setSearchDraft(event.target.value)}
+              placeholder="Title, description, or username"
+            />
+          </label>
+          <div className="search-actions">
+            <button type="submit">Search</button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleResetSearch}
+              disabled={!searchDraft && !appliedSearch}
+            >
+              Reset
+            </button>
+          </div>
+        </form>
         {sessionsQuery.isLoading && <p>Loading sessions...</p>}
         {sessionsQuery.isError && (
           <p role="alert" className="error">
@@ -230,6 +265,8 @@ export default function SessionsPage() {
               <tr>
                 <th>Title</th>
                 <th>Description</th>
+                <th>Created By</th>
+                <th>Updated By</th>
                 <th>Leader</th>
                 <th>Actions</th>
               </tr>
@@ -254,10 +291,16 @@ export default function SessionsPage() {
                           ✏️
                         </button>
                       </div>
-                      <br />
-                      <small>{new Date(session.created_at).toLocaleString()}</small>
                     </td>
                     <td>{session.description || "—"}</td>
+                    <td>
+                      <div>{session.created_by_username ?? "—"}</div>
+                      <small>{new Date(session.created_at).toLocaleString()}</small>
+                    </td>
+                    <td>
+                      <div>{session.updated_by_username ?? "—"}</div>
+                      <small>{new Date(session.updated_at).toLocaleString()}</small>
+                    </td>
                     <td>{session.is_leader ? "⭐" : ""}</td>
                     <td className="actions">
                       <button

@@ -24,11 +24,13 @@ DEFAULT_SCHEMA = "psi"
 def _resolve_schema(value: str | None) -> str:
     """Return the configured schema or the hard-coded default."""
 
-    if value:
-        candidate = value.strip()
-        if candidate:
-            return candidate
-    return DEFAULT_SCHEMA
+    if value is None:
+        return DEFAULT_SCHEMA
+
+    candidate = value.strip()
+    if candidate:
+        return candidate
+    return ""
 
 
 config = context.config
@@ -50,6 +52,7 @@ def _normalize_db_url(url: str | None) -> str | None:
 
 DB_URL = _normalize_db_url(settings.database_url)
 SCHEMA = _resolve_schema(getattr(settings, "db_schema", DEFAULT_SCHEMA))
+VERSION_TABLE_SCHEMA = SCHEMA or None
 
 config.set_main_option("sqlalchemy.url", DB_URL or "")
 
@@ -64,7 +67,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         compare_type=True,
         include_schemas=True,
-        version_table_schema=SCHEMA,
+        version_table_schema=VERSION_TABLE_SCHEMA,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -77,16 +80,17 @@ def run_migrations_online() -> None:
     connectable = engine_from_config(configuration, prefix="sqlalchemy.", poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
-        quoted_schema = f'"{SCHEMA.replace("\"", "\"\"")}"'
-        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
-        connection.execute(text(f"SET search_path TO {quoted_schema}, public"))
+        if SCHEMA:
+            quoted_schema = f'"{SCHEMA.replace("\"", "\"\"")}"'
+            connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
+            connection.execute(text(f"SET search_path TO {quoted_schema}, public"))
 
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
             include_schemas=True,
-            version_table_schema=SCHEMA,
+            version_table_schema=VERSION_TABLE_SCHEMA,
         )
         with context.begin_transaction():
             context.run_migrations()
