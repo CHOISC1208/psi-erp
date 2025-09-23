@@ -21,7 +21,6 @@ interface PSITableSplitProps {
   onMetricVisibilityChange: (metricKey: MetricKey) => void;
   metricSelectorRef: MutableRefObject<HTMLDivElement | null>;
   allDates: string[];
-  todayIso: string;
   formatDisplayDate: (iso: string) => string;
   onEditableChange: (channelKey: string, date: string, field: EditableField, rawValue: string) => void;
   onPasteValues: (
@@ -68,7 +67,6 @@ const PSITableSplit = ({
   onMetricVisibilityChange,
   metricSelectorRef,
   allDates,
-  todayIso,
   formatDisplayDate,
   onEditableChange,
   onPasteValues,
@@ -313,11 +311,7 @@ const PSITableSplit = ({
                 <thead>
                   <tr>
                     {allDates.map((date) => (
-                      <th
-                        key={date}
-                        className={`date-header${date === todayIso ? " today-column" : ""}`}
-                        data-date={date}
-                      >
+                      <th key={date} className="date-header" data-date={date}>
                         {formatDisplayDate(date)}
                       </th>
                     ))}
@@ -411,11 +405,9 @@ const PSITableSplit = ({
                     {allDates.map((date) => {
                       const entry = dateMap.get(date);
                       const cellKey = `${channelKey}-${metric.key}-${date}`;
-                      const todayClass = date === todayIso ? " today-column" : "";
-
                       if (!entry) {
                         return (
-                          <td key={cellKey} className={`numeric${todayClass}`}>
+                          <td key={cellKey} className="numeric">
                             —
                           </td>
                         );
@@ -430,7 +422,7 @@ const PSITableSplit = ({
                         const isEdited = !valuesEqual(currentValue, baselineValue);
 
                         return (
-                          <td key={cellKey} className={`numeric${todayClass}`}>
+                          <td key={cellKey} className="numeric">
                             <input
                               type="text"
                               className={`psi-edit-input${isEdited ? " edited" : ""}`}
@@ -454,7 +446,7 @@ const PSITableSplit = ({
                       }
 
                       return (
-                        <td key={cellKey} className={`numeric${todayClass}`}>
+                        <td key={cellKey} className="numeric">
                           {formatNumber(value)}
                         </td>
                       );
