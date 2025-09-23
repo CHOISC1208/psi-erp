@@ -880,7 +880,6 @@ export default function PSITablePage() {
           selectedSku={selectedSku}
           visibleMetrics={visibleMetrics}
           allDates={allDates}
-          todayIso={todayIso}
           formatDisplayDate={formatDisplayDate}
           onDownload={handleDownload}
           canDownload={Boolean(displayedTableData.length && visibleMetrics.length)}

@@ -150,7 +150,7 @@ export default function EditsPage() {
         responseType: "blob",
       });
 
-      const blob = new Blob([response.data], {
+      const blob = new Blob(["\ufeff", response.data], {
         type: response.headers["content-type"] ?? "text/csv;charset=utf-8",
       });
       const url = window.URL.createObjectURL(blob);

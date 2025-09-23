@@ -25,7 +25,6 @@ interface PSITableContentProps {
   selectedSku: string | null;
   visibleMetrics: MetricDefinition[];
   allDates: string[];
-  todayIso: string;
   formatDisplayDate: (iso: string) => string;
   onDownload: () => void;
   canDownload: boolean;
@@ -129,7 +128,6 @@ const PSITableContent = ({
   selectedSku,
   visibleMetrics,
   allDates,
-  todayIso,
   formatDisplayDate,
   onDownload,
   canDownload,
@@ -392,17 +390,13 @@ const PSITableContent = ({
   const dateColumns = useMemo<Column<PSIGridRow>[]>(
     () =>
       allDates.map((date) => {
-        const isToday = date === todayIso;
         return {
           key: date,
           name: formatDisplayDate(date),
           width: 132,
           className: (row: PSIGridRow) => {
             if (row.rowType !== "metric") {
-              return classNames(
-                "psi-grid-group-cell",
-                isToday && "psi-grid-cell-today"
-              );
+              return "psi-grid-group-cell";
             }
 
             const cellValue = row[date] as number | null | undefined;
@@ -414,13 +408,12 @@ const PSITableContent = ({
             return classNames(
               "psi-grid-value-cell",
               row.metricEditable && "psi-grid-cell-editable",
-              isToday && "psi-grid-cell-today",
               isNegativeValue && "psi-grid-value-negative",
               showStockWarning && "psi-grid-stock-warning",
               showMovableSurplus && "psi-grid-value-surplus"
             );
           },
-          headerCellClass: classNames("psi-grid-date-header", isToday && "psi-grid-header-today"),
+          headerCellClass: "psi-grid-date-header",
           renderCell: ({ row }) =>
             row.rowType === "metric" ? formatNumber(row[date] as number | null | undefined) : null,
           renderEditCell: (props) => <NumberEditor {...props} />,
@@ -430,7 +423,7 @@ const PSITableContent = ({
           setHeaderRef: (element: HTMLDivElement | null) => handleHeaderRef(date, element),
         } satisfies Column<PSIGridRow>;
       }),
-    [allDates, formatDisplayDate, formatNumber, handleHeaderRef, todayIso]
+    [allDates, formatDisplayDate, formatNumber, handleHeaderRef]
   );
 
   const columns = useMemo(() => {
