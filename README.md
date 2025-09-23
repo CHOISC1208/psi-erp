@@ -52,11 +52,8 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
 3. **Run database migrations**
 
    ```bash
-   make migrate
+   alembic upgrade head
    ```
-
-   The helper invokes `alembic -c backend/alembic.ini upgrade head` so that the
-   migrations always target the `psi` schema.
 
 4. **Create an initial user (no UI)**
 
@@ -144,26 +141,7 @@ The suite provisions a throwaway SQLite database and covers happy-path login + `
   | `SESSION_COOKIE_SECURE` | `true` (default) |
 
 - Deploy the frontend build artefacts (`frontend/dist`) to `backend/static` (or configure a CDN) so the SPA is served alongside the API.
-- Apply database migrations on release: the `Procfile` defines a `release`
-  process which executes `alembic -c backend/alembic.ini upgrade head` so the
-  latest migrations are applied automatically during deploys.
-- Manual execution (if needed):
-
-  ```bash
-  heroku run --app <APP> 'alembic -c backend/alembic.ini upgrade head'
-  ```
-
-- Grab a backup before running structural changes:
-
-  ```bash
-  heroku pg:backups:capture --app <APP>
-  ```
-
-- Roll back to a captured backup if necessary:
-
-  ```bash
-  heroku pg:backups:restore <BACKUP_ID> DATABASE_URL --app <APP>
-  ```
+- Apply database migrations on release: `heroku run alembic upgrade head` (already wired via the `release` process type).
 
 ## CSV format reminder
 

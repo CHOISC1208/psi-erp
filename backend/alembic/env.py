@@ -21,14 +21,16 @@ from app.models import Base
 DEFAULT_SCHEMA = "psi"
 
 
-def _normalized_schema(schema_name: str | None) -> str:
-    """Return the schema name Alembic should target."""
+def _resolve_schema(value: str | None) -> str:
+    """Return the configured schema or the hard-coded default."""
 
-    if not schema_name:
+    if value is None:
         return DEFAULT_SCHEMA
 
-    coerced = schema_name.strip()
-    return coerced or DEFAULT_SCHEMA
+    candidate = value.strip()
+    if candidate:
+        return candidate
+    return ""
 
 
 config = context.config
@@ -37,11 +39,10 @@ if config.config_file_name is not None:
 
 
 def _normalize_db_url(url: str | None) -> str | None:
-    """Normalize PostgreSQL URLs for SQLAlchemy/psycopg2 usage."""
+    """Normalise PostgreSQL URLs for SQLAlchemy/psycopg2."""
 
     if not url:
         return url
-    # Herokuは postgres:// を渡す → SQLAlchemyは postgresql(+driver) を要求
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+psycopg2://", 1)
     if url.startswith("postgresql://"):
@@ -50,9 +51,9 @@ def _normalize_db_url(url: str | None) -> str | None:
 
 
 DB_URL = _normalize_db_url(settings.database_url)
-TARGET_SCHEMA = _normalized_schema(getattr(settings, "db_schema", DEFAULT_SCHEMA))
+SCHEMA = _resolve_schema(getattr(settings, "db_schema", DEFAULT_SCHEMA))
+VERSION_TABLE_SCHEMA = SCHEMA or None
 
-# alembic.ini の設定を上書き
 config.set_main_option("sqlalchemy.url", DB_URL or "")
 
 target_metadata = Base.metadata
@@ -66,7 +67,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         compare_type=True,
         include_schemas=True,
-        version_table_schema=TARGET_SCHEMA,
+        version_table_schema=VERSION_TABLE_SCHEMA,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -79,17 +80,17 @@ def run_migrations_online() -> None:
     connectable = engine_from_config(configuration, prefix="sqlalchemy.", poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
-        # スキーマが指定されている場合のみ作成＆search_path設定
-        if TARGET_SCHEMA:
-            connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{TARGET_SCHEMA}"'))
-            connection.execute(text(f'SET search_path TO "{TARGET_SCHEMA}", public'))
+        if SCHEMA:
+            quoted_schema = f'"{SCHEMA.replace("\"", "\"\"")}"'
+            connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
+            connection.execute(text(f"SET search_path TO {quoted_schema}, public"))
 
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
             include_schemas=True,
-            version_table_schema=TARGET_SCHEMA,
+            version_table_schema=VERSION_TABLE_SCHEMA,
         )
         with context.begin_transaction():
             context.run_migrations()

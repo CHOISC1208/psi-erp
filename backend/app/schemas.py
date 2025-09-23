@@ -39,6 +39,10 @@ class SessionRead(SessionBase):
     updated_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
+    created_by_username: str | None = None
+    updated_by_username: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -98,6 +102,31 @@ class PSIEditApplyResult(BaseModel):
 
     applied: int
     log_entries: int
+    last_edited_by: UUID | None = None
+    last_edited_by_username: str | None = None
+    last_edited_at: datetime | None = None
+
+
+class PSIEditRead(BaseModel):
+    """PSI edit entry returned by the API."""
+
+    id: int
+    session_id: UUID
+    sku_code: str
+    warehouse_name: str
+    channel: str
+    date: date
+    inbound_qty: float | None = None
+    outbound_qty: float | None = None
+    safety_stock: float | None = None
+    created_at: datetime
+    updated_at: datetime
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
+    created_by_username: str | None = None
+    updated_by_username: str | None = None
+
+    model_config = {"from_attributes": True}
 
 
 class PSISessionSummary(BaseModel):
@@ -201,6 +230,10 @@ class ChannelTransferRead(ChannelTransferBase):
     session_id: UUID
     created_at: datetime
     updated_at: datetime
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
+    created_by_username: str | None = None
+    updated_by_username: str | None = None
 
     model_config = {"from_attributes": True}
 

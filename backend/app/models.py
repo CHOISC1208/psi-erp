@@ -29,6 +29,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from .config import settings
 
 
+AUTO_INCREMENT_PK = Integer().with_variant(BigInteger, "postgresql")
+
+
 def _qualified(table: str, column: str = "id") -> str:
     """Return a fully qualified table reference respecting the schema."""
 
@@ -64,7 +67,18 @@ class TimestampMixin:
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class UserTrackingMixin:
+    """Mixin providing audit user relationships."""
+
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
     )
 
 
@@ -94,7 +108,7 @@ class User(Base, SchemaMixin):
     )
 
 
-class Session(Base, SchemaMixin, TimestampMixin):
+class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Represents a collaborative PSI planning session.
 
     Attributes:
@@ -134,6 +148,16 @@ class Session(Base, SchemaMixin, TimestampMixin):
     channel_transfers: Mapped[list["ChannelTransfer"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
+    created_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="Session.created_by",
+        lazy="selectin",
+    )
+    updated_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="Session.updated_by",
+        lazy="selectin",
+    )
 
 
 class MasterRecord(Base, SchemaMixin, TimestampMixin):
@@ -168,7 +192,7 @@ class PSIBase(Base, SchemaMixin):
 
     __tablename__ = "psi_base"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(AUTO_INCREMENT_PK, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
@@ -193,15 +217,16 @@ class PSIBase(Base, SchemaMixin):
     session: Mapped[Session] = relationship(back_populates="psi_base_records")
 
 
-class PSIEdit(Base, SchemaMixin, TimestampMixin):
+class PSIEdit(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Editable PSI overrides entered via the UI.
 
     When an edited value is ``NULL`` the corresponding base value should be used.
     """
 
     __tablename__ = "psi_edits"
+    __table_args__ = SchemaMixin.__table_args__ | {"sqlite_autoincrement": True}
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(AUTO_INCREMENT_PK, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
@@ -216,14 +241,25 @@ class PSIEdit(Base, SchemaMixin, TimestampMixin):
     safety_stock: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
 
     session: Mapped[Session] = relationship(back_populates="psi_edits")
+    created_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="PSIEdit.created_by",
+        lazy="selectin",
+    )
+    updated_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="PSIEdit.updated_by",
+        lazy="selectin",
+    )
 
 
-class PSIEditLog(Base, SchemaMixin):
+class PSIEditLog(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Audit log entry capturing each manual PSI edit."""
 
     __tablename__ = "psi_edit_log"
+    __table_args__ = SchemaMixin.__table_args__ | {"sqlite_autoincrement": True}
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(AUTO_INCREMENT_PK, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
@@ -239,10 +275,12 @@ class PSIEditLog(Base, SchemaMixin):
     edited_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    edited_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
+    )
 
 
-class ChannelTransfer(Base, SchemaMixin, TimestampMixin):
+class ChannelTransfer(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Represents stock movement between sales channels within a warehouse."""
 
     __tablename__ = "channel_transfers"
@@ -274,6 +312,16 @@ class ChannelTransfer(Base, SchemaMixin, TimestampMixin):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     session: Mapped[Session] = relationship(back_populates="channel_transfers")
+    created_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="ChannelTransfer.created_by",
+        lazy="selectin",
+    )
+    updated_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="ChannelTransfer.updated_by",
+        lazy="selectin",
+    )
 
 
 def ensure_channel_transfers_table(bind: Engine | Connection) -> None:

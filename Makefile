@@ -1,14 +1,13 @@
-.PHONY: migrate stamp
+ALEMBIC = alembic -c backend/alembic.ini
+REV ?= head
+
+.PHONY: migrate stamp downgrade
 
 migrate:
-	alembic -c backend/alembic.ini upgrade head
-
-ifndef REV
-REV_ERROR := REV is required, e.g. make stamp REV=0008
-endif
+	$(ALEMBIC) upgrade head
 
 stamp:
-ifdef REV_ERROR
-	$(error $(REV_ERROR))
-endif
-	alembic -c backend/alembic.ini stamp $(REV)
+	$(ALEMBIC) stamp $(REV)
+
+downgrade:
+	$(ALEMBIC) downgrade $(REV)

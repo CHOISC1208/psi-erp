@@ -15,7 +15,8 @@ from sqlalchemy import and_, delete, func, or_, select, union_all
 from sqlalchemy.orm import Session as DBSession
 
 from .. import models, schemas
-from ..deps import get_db
+from ..config import settings
+from ..deps import get_current_user, get_db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -596,7 +597,11 @@ def session_summary(session_id: UUID, db: DBSession = Depends(get_db)) -> schema
 
 @router.post("/{session_id}/edits/apply", response_model=schemas.PSIEditApplyResult)
 def apply_edits(
-    *, session_id: UUID, payload: schemas.PSIEditApplyRequest, db: DBSession = Depends(get_db)
+    *,
+    session_id: UUID,
+    payload: schemas.PSIEditApplyRequest,
+    db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> schemas.PSIEditApplyResult:
     """Persist manual PSI overrides and record the audit log."""
 
@@ -604,6 +609,8 @@ def apply_edits(
 
     if not payload.edits:
         return schemas.PSIEditApplyResult(applied=0, log_entries=0)
+
+    user_id = current_user.id
 
     conditions = [
         and_(
@@ -654,6 +661,8 @@ def apply_edits(
                 channel=edit.channel,
                 date=edit.date,
                 **new_values,
+                created_by=user_id,
+                updated_by=user_id,
             )
             db.add(current)
             existing_map[key] = current
@@ -672,7 +681,7 @@ def apply_edits(
                         field=field,
                         old_value=None,
                         new_value=new_value,
-                        edited_by=None,
+                        edited_by=user_id,
                     )
                 )
             continue
@@ -694,11 +703,12 @@ def apply_edits(
                         field=field,
                         old_value=old_value,
                         new_value=None,
-                        edited_by=None,
+                        edited_by=user_id,
                     )
                 )
             if had_values:
                 applied_count += 1
+                current.updated_by = user_id
             db.delete(current)
             existing_map[key] = None
             continue
@@ -719,13 +729,14 @@ def apply_edits(
                     field=field,
                     old_value=old_value,
                     new_value=new_value,
-                    edited_by=None,
+                    edited_by=user_id,
                 )
             )
             changed = True
 
         if changed:
             applied_count += 1
+            current.updated_by = user_id
             if all(getattr(current, field) is None for field in new_values):
                 db.delete(current)
                 existing_map[key] = None
@@ -734,4 +745,31 @@ def apply_edits(
         db.add_all(logs)
     db.commit()
 
-    return schemas.PSIEditApplyResult(applied=applied_count, log_entries=len(logs))
+    expose_audit = settings.audit_metadata_enabled
+    last_edited_by: UUID | None = None
+    last_edited_by_username: str | None = None
+    last_edited_at: datetime | None = None
+
+    if expose_audit:
+        result = db.execute(
+            select(
+                models.PSIEditLog.edited_at,
+                models.PSIEditLog.edited_by,
+                models.User.username,
+            )
+            .select_from(models.PSIEditLog)
+            .join(models.User, models.User.id == models.PSIEditLog.edited_by, isouter=True)
+            .where(models.PSIEditLog.session_id == session_id)
+            .order_by(models.PSIEditLog.edited_at.desc())
+            .limit(1)
+        ).first()
+        if result is not None:
+            last_edited_at, last_edited_by, last_edited_by_username = result
+
+    return schemas.PSIEditApplyResult(
+        applied=applied_count,
+        log_entries=len(logs),
+        last_edited_by=last_edited_by if expose_audit else None,
+        last_edited_by_username=last_edited_by_username if expose_audit else None,
+        last_edited_at=last_edited_at if expose_audit else None,
+    )

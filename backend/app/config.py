@@ -124,6 +124,9 @@ class Settings(BaseModel):
     login_block_seconds: int = Field(
         default_factory=lambda: int(os.getenv("LOGIN_BLOCK_SECONDS", "300"))
     )
+    expose_audit_fields: bool = Field(
+        default_factory=lambda: _env_flag("EXPOSE_AUDIT_FIELDS", default=False)
+    )
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -143,6 +146,12 @@ class Settings(BaseModel):
         """Backwards compatible accessor for ``db_schema``."""
 
         return self.db_schema
+
+    @property
+    def audit_metadata_enabled(self) -> bool:
+        """Return whether audit metadata should be exposed in API responses."""
+
+        return self.expose_audit_fields
 
     @property
     def allowed_origins(self) -> list[str]:

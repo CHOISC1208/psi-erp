@@ -24,7 +24,8 @@ def upgrade() -> None:
     if inspector.has_table("users", schema=SCHEMA):
         return
 
-    op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto";')
+    if bind.dialect.name.lower().startswith("postgres"):
+        op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto";')
 
     op.create_table(
         "users",
