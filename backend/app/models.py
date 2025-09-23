@@ -133,10 +133,10 @@ class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_leader: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), nullable=True
+        PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
     )
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), nullable=True
+        PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
     )
 
     psi_base_records: Mapped[list["PSIBase"]] = relationship(
