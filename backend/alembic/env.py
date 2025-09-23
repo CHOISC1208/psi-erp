@@ -12,29 +12,45 @@ from sqlalchemy import engine_from_config, pool, text
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from app.config import settings
 from app.models import Base
 
+DEFAULT_SCHEMA = "psi"
+
+
+def _resolve_schema(value: str | None) -> str:
+    """Return the configured schema or the hard-coded default."""
+
+    if value:
+        candidate = value.strip()
+        if candidate:
+            return candidate
+    return DEFAULT_SCHEMA
+
+
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# --- 追加: URL正規化ヘルパ ---
+
 def _normalize_db_url(url: str | None) -> str | None:
+    """Normalise PostgreSQL URLs for SQLAlchemy/psycopg2."""
+
     if not url:
         return url
-    # Herokuは postgres:// を渡す → SQLAlchemyは postgresql(+driver) を要求
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+psycopg2://", 1)
     if url.startswith("postgresql://"):
         return url.replace("postgresql://", "postgresql+psycopg2://", 1)
     return url
 
-DB_URL = _normalize_db_url(settings.database_url)
 
-# alembic.ini の設定を上書き
+DB_URL = _normalize_db_url(settings.database_url)
+SCHEMA = _resolve_schema(getattr(settings, "db_schema", DEFAULT_SCHEMA))
+
 config.set_main_option("sqlalchemy.url", DB_URL or "")
 
 target_metadata = Base.metadata
@@ -48,7 +64,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         compare_type=True,
         include_schemas=True,
-        version_table_schema=settings.db_schema,
+        version_table_schema=SCHEMA,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -61,18 +77,16 @@ def run_migrations_online() -> None:
     connectable = engine_from_config(configuration, prefix="sqlalchemy.", poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
-        # スキーマが指定されている場合のみ作成＆search_path設定
-        if settings.db_schema:
-            schema = settings.db_schema
-            connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-            connection.execute(text(f'SET search_path TO "{schema}", public'))
+        quoted_schema = f'"{SCHEMA.replace("\"", "\"\"")}"'
+        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
+        connection.execute(text(f"SET search_path TO {quoted_schema}, public"))
 
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
             include_schemas=True,
-            version_table_schema=settings.db_schema,
+            version_table_schema=SCHEMA,
         )
         with context.begin_transaction():
             context.run_migrations()
