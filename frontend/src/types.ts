@@ -5,6 +5,10 @@ export interface Session {
   is_leader: boolean;
   created_at: string;
   updated_at: string;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_by_username?: string | null;
+  updated_by_username?: string | null;
 }
 
 export interface PSIDailyEntry {
@@ -58,6 +62,10 @@ export interface ChannelTransferCreate extends ChannelTransferIdentifier {
 export interface ChannelTransfer extends ChannelTransferCreate {
   created_at: string;
   updated_at: string;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_by_username?: string | null;
+  updated_by_username?: string | null;
 }
 
 export interface PSIMetricDefinition {

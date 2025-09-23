@@ -46,16 +46,15 @@ def _with_audit_options(
         query = query.outerjoin(
             updater_alias, models.ChannelTransfer.updated_by == updater_alias.id
         )
-        if settings.audit_metadata_enabled:
-            query = query.options(
-                contains_eager(
-                    models.ChannelTransfer.created_by_user, alias=creator_alias
-                ),
-                contains_eager(
-                    models.ChannelTransfer.updated_by_user, alias=updater_alias
-                ),
-            )
-    elif settings.audit_metadata_enabled:
+        query = query.options(
+            contains_eager(
+                models.ChannelTransfer.created_by_user, alias=creator_alias
+            ),
+            contains_eager(
+                models.ChannelTransfer.updated_by_user, alias=updater_alias
+            ),
+        )
+    else:
         query = query.options(
             selectinload(models.ChannelTransfer.created_by_user),
             selectinload(models.ChannelTransfer.updated_by_user),
@@ -69,27 +68,22 @@ def _refresh_audit_relationships(
 ) -> None:
     """Refresh audit relationships when audit exposure is enabled."""
 
-    if settings.audit_metadata_enabled:
-        db.refresh(transfer, attribute_names=["created_by_user", "updated_by_user"])
+    db.refresh(transfer, attribute_names=["created_by_user", "updated_by_user"])
 
 
 def _serialize_transfer(transfer: models.ChannelTransfer) -> schemas.ChannelTransferRead:
     """Convert a transfer model into the API schema respecting feature flags."""
 
     data = schemas.ChannelTransferRead.model_validate(transfer, from_attributes=True)
-    if settings.audit_metadata_enabled:
-        data.created_by_username = (
-            transfer.created_by_user.username if transfer.created_by_user else None
-        )
-        data.updated_by_username = (
-            transfer.updated_by_user.username if transfer.updated_by_user else None
-        )
-        return data
-
-    data.created_by = None
-    data.updated_by = None
-    data.created_by_username = None
-    data.updated_by_username = None
+    data.created_by_username = (
+        transfer.created_by_user.username if transfer.created_by_user else None
+    )
+    data.updated_by_username = (
+        transfer.updated_by_user.username if transfer.updated_by_user else None
+    )
+    if not settings.audit_metadata_enabled:
+        data.created_by = None
+        data.updated_by = None
     return data
 
 
@@ -167,6 +161,30 @@ def _apply_actor_filter(
             models.ChannelTransfer.updated_by == actor_uuid,
         )
     )
+
+
+def _apply_username_search(
+    query: Select,
+    *,
+    username: str | None,
+    creator_alias: Any,
+    updater_alias: Any,
+) -> Select:
+    """Filter transfers by matching creator or updater usernames."""
+
+    if not username:
+        return query
+
+    if creator_alias is None or updater_alias is None:
+        raise RuntimeError("username filtering requires joined user aliases")
+
+    lowered = f"%{username.lower()}%"
+    return query.where(
+        or_(
+            func.lower(creator_alias.username).like(lowered),
+            func.lower(updater_alias.username).like(lowered),
+        )
+    )
 def _get_transfer_or_404(
     db: DBSession,
     *,
@@ -207,6 +225,7 @@ def list_channel_transfers(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     actor: str | None = None,
+    username: str | None = None,
     db: DBSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> list[schemas.ChannelTransferRead]:
@@ -216,7 +235,7 @@ def list_channel_transfers(
     _ensure_channel_transfer_table(db)
 
     query = select(models.ChannelTransfer)
-    join_users = settings.audit_metadata_enabled or actor is not None
+    join_users = settings.audit_metadata_enabled or actor is not None or bool(username)
     query, creator_alias, updater_alias = _with_audit_options(
         query, join_users=join_users
     )
@@ -236,6 +255,12 @@ def list_channel_transfers(
     query = _apply_actor_filter(
         query,
         actor=actor,
+        creator_alias=creator_alias,
+        updater_alias=updater_alias,
+    )
+    query = _apply_username_search(
+        query,
+        username=username,
         creator_alias=creator_alias,
         updater_alias=updater_alias,
     )
@@ -263,6 +288,7 @@ def export_channel_transfers(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     actor: str | None = None,
+    username: str | None = None,
     include_audit: bool = Query(False),
     db: DBSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -279,7 +305,9 @@ def export_channel_transfers(
     query = select(models.ChannelTransfer).where(
         models.ChannelTransfer.session_id == session_id
     )
-    join_users = settings.audit_metadata_enabled or include_audit or actor is not None
+    join_users = (
+        settings.audit_metadata_enabled or include_audit or actor is not None or bool(username)
+    )
     query, creator_alias, updater_alias = _with_audit_options(
         query, join_users=join_users
     )
@@ -296,6 +324,12 @@ def export_channel_transfers(
     query = _apply_actor_filter(
         query,
         actor=actor,
+        creator_alias=creator_alias,
+        updater_alias=updater_alias,
+    )
+    query = _apply_username_search(
+        query,
+        username=username,
         creator_alias=creator_alias,
         updater_alias=updater_alias,
     )

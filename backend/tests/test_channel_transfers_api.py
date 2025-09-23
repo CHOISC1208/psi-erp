@@ -161,6 +161,7 @@ def _export_csv(
             start_date=None,
             end_date=None,
             actor=None,
+            username=None,
             include_audit=include_audit,
             db=session,
             current_user=user,
@@ -326,6 +327,8 @@ def test_create_and_update_stamp_audit_fields(
     assert isinstance(created, dict)
     assert "created_by" not in created
     assert "updated_by" not in created
+    assert created["created_by_username"] == user.username
+    assert created["updated_by_username"] == user.username
 
     key = (
         session_record.id,
@@ -353,6 +356,7 @@ def test_create_and_update_stamp_audit_fields(
     assert status == 200
     assert isinstance(updated, dict)
     assert "updated_by" not in updated
+    assert updated["updated_by_username"] == user.username
 
     with app_env.SessionLocal() as session:
         stored = session.get(app_env.models.ChannelTransfer, key)
@@ -415,6 +419,62 @@ def test_actor_filtering_supports_uuid_and_username(
     assert status == 200
     assert isinstance(body, list)
     assert [item["sku_code"] for item in body] == ["SKU-B"]
+
+
+def test_username_filter_allows_partial_matches(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    user = auth_user
+    other = _create_user(app_env, username="manager")
+    session_record = _create_session(app_env, title="Username Filter")
+
+    with app_env.SessionLocal() as session:
+        transfer_a = app_env.models.ChannelTransfer(
+            session_id=session_record.id,
+            sku_code="SKU-A",
+            warehouse_name="Central",
+            transfer_date=date(2023, 7, 1),
+            from_channel="Outlet",
+            to_channel="Online",
+            qty=Decimal("3"),
+            note=None,
+            created_by=user.id,
+            updated_by=user.id,
+        )
+        transfer_b = app_env.models.ChannelTransfer(
+            session_id=session_record.id,
+            sku_code="SKU-B",
+            warehouse_name="Central",
+            transfer_date=date(2023, 7, 2),
+            from_channel="Online",
+            to_channel="Outlet",
+            qty=Decimal("4"),
+            note=None,
+            created_by=other.id,
+            updated_by=other.id,
+        )
+        session.add_all([transfer_a, transfer_b])
+        session.commit()
+
+    status, _, body = _perform_json_request(
+        app_env.app,
+        "GET",
+        "/channel-transfers",
+        query_params={"username": "man"},
+    )
+    assert status == 200
+    assert isinstance(body, list)
+    assert [item["sku_code"] for item in body] == ["SKU-B"]
+
+    status, _, body = _perform_json_request(
+        app_env.app,
+        "GET",
+        "/channel-transfers",
+        query_params={"username": "AUD"},
+    )
+    assert status == 200
+    assert isinstance(body, list)
+    assert [item["sku_code"] for item in body] == ["SKU-A"]
 
 
 def test_export_audit_columns_toggle(

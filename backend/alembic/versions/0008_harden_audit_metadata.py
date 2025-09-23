@@ -3,8 +3,12 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
+from typing import Sequence, Union
+
 import sqlalchemy as sa
 from alembic import op
+
+from app.config import settings
 
 # revision identifiers, used by Alembic.
 revision: str = "0008"
@@ -12,7 +16,7 @@ down_revision: Union[str, Sequence[str], None] = "0007"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-SCHEMA = "psi"
+SCHEMA = (settings.db_schema or "").strip()
 USER_TABLE = "users"
 AUDIT_COLUMNS = ("created_by", "updated_by")
 AUDIT_TABLES = ("sessions", "psi_edits", "psi_edit_log", "channel_transfers")
@@ -20,15 +24,21 @@ FUNCTION_NAME = "update_updated_at_column"
 
 
 def _qualify(identifier: str) -> str:
-    return f'"{SCHEMA}"."{identifier}"'
+    if SCHEMA:
+        return f'"{SCHEMA}"."{identifier}"'
+    return f'"{identifier}"'
 
 
 def _qualify_index(index_name: str) -> str:
-    return f'"{SCHEMA}"."{index_name}"'
+    if SCHEMA:
+        return f'"{SCHEMA}"."{index_name}"'
+    return f'"{index_name}"'
 
 
 def _qualified_function() -> str:
-    return f'"{SCHEMA}"."{FUNCTION_NAME}"'
+    if SCHEMA:
+        return f'"{SCHEMA}"."{FUNCTION_NAME}"'
+    return f'"{FUNCTION_NAME}"'
 
 
 def _execute(sql: str) -> None:
@@ -86,6 +96,11 @@ END$$;
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    dialect = bind.dialect.name.lower() if bind else ""
+    if not dialect.startswith("postgres"):
+        return
+
     for table in AUDIT_TABLES:
         for column in AUDIT_COLUMNS:
             _execute(
@@ -136,6 +151,11 @@ EXECUTE FUNCTION {_qualified_function()}();
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    dialect = bind.dialect.name.lower() if bind else ""
+    if not dialect.startswith("postgres"):
+        return
+
     for table in AUDIT_TABLES:
         for column in AUDIT_COLUMNS:
             index_name = f"ix_{table}_{column}"
