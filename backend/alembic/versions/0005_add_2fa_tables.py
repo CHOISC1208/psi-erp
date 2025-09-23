@@ -18,9 +18,10 @@ SCHEMA = settings.db_schema or None
 
 
 def upgrade() -> None:
-    op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto";')
-
     bind = op.get_bind()
+    if bind.dialect.name.lower().startswith("postgres"):
+        op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto";')
+
     inspector = sa.inspect(bind)
 
     if not inspector.has_table("user_totp", schema=SCHEMA):

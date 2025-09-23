@@ -64,7 +64,18 @@ class TimestampMixin:
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class UserTrackingMixin:
+    """Mixin providing audit user relationships."""
+
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
     )
 
 
@@ -94,7 +105,7 @@ class User(Base, SchemaMixin):
     )
 
 
-class Session(Base, SchemaMixin, TimestampMixin):
+class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Represents a collaborative PSI planning session.
 
     Attributes:
@@ -181,7 +192,7 @@ class PSIBase(Base, SchemaMixin):
     session: Mapped[Session] = relationship(back_populates="psi_base_records")
 
 
-class PSIEdit(Base, SchemaMixin, TimestampMixin):
+class PSIEdit(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Editable PSI overrides entered via the UI.
 
     When an edited value is ``NULL`` the corresponding base value should be used.
@@ -206,7 +217,7 @@ class PSIEdit(Base, SchemaMixin, TimestampMixin):
     session: Mapped[Session] = relationship(back_populates="psi_edits")
 
 
-class PSIEditLog(Base, SchemaMixin):
+class PSIEditLog(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Audit log entry capturing each manual PSI edit."""
 
     __tablename__ = "psi_edit_log"
@@ -227,10 +238,12 @@ class PSIEditLog(Base, SchemaMixin):
     edited_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    edited_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
+    )
 
 
-class ChannelTransfer(Base, SchemaMixin, TimestampMixin):
+class ChannelTransfer(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Represents stock movement between sales channels within a warehouse."""
 
     __tablename__ = "channel_transfers"
