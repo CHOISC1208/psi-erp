@@ -36,6 +36,9 @@ export interface PSISessionSummary {
 export interface PSIEditApplyResult {
   applied: number;
   log_entries: number;
+  last_edited_by?: string | null;
+  last_edited_by_username?: string | null;
+  last_edited_at?: string | null;
 }
 
 export interface ChannelTransferIdentifier {

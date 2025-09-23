@@ -100,6 +100,9 @@ class PSIEditApplyResult(BaseModel):
 
     applied: int
     log_entries: int
+    last_edited_by: UUID | None = None
+    last_edited_by_username: str | None = None
+    last_edited_at: datetime | None = None
 
 
 class PSISessionSummary(BaseModel):
