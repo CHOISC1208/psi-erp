@@ -35,6 +35,8 @@ class SessionRead(SessionBase):
     #id: str
     id: UUID
     is_leader: bool
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
