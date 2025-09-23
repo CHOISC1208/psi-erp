@@ -148,6 +148,12 @@ class Settings(BaseModel):
         return self.db_schema
 
     @property
+    def audit_metadata_enabled(self) -> bool:
+        """Return whether audit metadata should be exposed in API responses."""
+
+        return self.expose_audit_fields
+
+    @property
     def allowed_origins(self) -> list[str]:
         """Return a sanitized list of allowed CORS origins."""
 

@@ -187,7 +187,7 @@ def set_leader(
 
 
 def _with_audit_options(stmt):
-    if settings.expose_audit_fields:
+    if settings.audit_metadata_enabled:
         return stmt.options(
             selectinload(models.Session.created_by_user),
             selectinload(models.Session.updated_by_user),
@@ -196,13 +196,13 @@ def _with_audit_options(stmt):
 
 
 def _refresh_audit_relationships(db: DBSession, session: models.Session) -> None:
-    if settings.expose_audit_fields:
+    if settings.audit_metadata_enabled:
         db.refresh(session, attribute_names=["created_by_user", "updated_by_user"])
 
 
 def _serialize_session(session: models.Session) -> schemas.SessionRead:
     data = schemas.SessionRead.model_validate(session, from_attributes=True)
-    if settings.expose_audit_fields:
+    if settings.audit_metadata_enabled:
         data.created_by_username = (
             session.created_by_user.username if session.created_by_user else None
         )
