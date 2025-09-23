@@ -55,6 +55,8 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
    alembic upgrade head
    ```
 
+   Alternatively, use the helper target: `make migrate` (defaults to the same command and reads `backend/alembic.ini`).
+
 4. **Create an initial user (no UI)**
 
    ```sql
@@ -129,7 +131,9 @@ The suite provisions a throwaway SQLite database and covers happy-path login + `
 
 ## Heroku deployment notes
 
-- Use the provided `Procfile` which starts Uvicorn with `--proxy-headers` so secure cookies respect `X-Forwarded-Proto`.
+- Use the provided `Procfile` which starts Uvicorn with `--proxy-headers` so secure cookies respect `X-Forwarded-Proto`. The
+  release phase automatically runs `alembic -c backend/alembic.ini upgrade head`, guaranteeing that migrations are applied before
+  each deploy finishes.
 - Set the following config vars:
 
   | Config Var | Example |
@@ -141,7 +145,26 @@ The suite provisions a throwaway SQLite database and covers happy-path login + `
   | `SESSION_COOKIE_SECURE` | `true` (default) |
 
 - Deploy the frontend build artefacts (`frontend/dist`) to `backend/static` (or configure a CDN) so the SPA is served alongside the API.
-- Apply database migrations on release: `heroku run alembic upgrade head` (already wired via the `release` process type).
+
+### Operating Alembic on Heroku
+
+- Manual upgrade (e.g. hotfix):
+
+  ```bash
+  heroku run --app <APP_NAME> 'alembic -c backend/alembic.ini upgrade head'
+  ```
+
+- Take a backup before large migrations:
+
+  ```bash
+  heroku pg:backups:capture --app <APP_NAME>
+  ```
+
+- Restore the latest backup if required:
+
+  ```bash
+  heroku pg:backups:restore <BACKUP_ID> DATABASE_URL --app <APP_NAME>
+  ```
 
 ## CSV format reminder
 
