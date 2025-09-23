@@ -548,6 +548,13 @@ const PSITableContent = ({
   const showSelectionPlaceholder = !selectedSku && hasAnyData;
   const showNoDataMessage = !hasAnyData && sessionId && !isLoading;
   const showNoMetricsMessage = Boolean(selectedSku && visibleMetrics.length === 0);
+  const showNoMetricFilterResults = Boolean(
+    normalizedMetricFilter &&
+    rows.length === 0 &&
+    hasAnyData &&
+    visibleMetrics.length > 0 &&
+    allDates.length > 0
+  );
   const showNoDatesMessage = Boolean(selectedSku && visibleMetrics.length > 0 && allDates.length === 0);
 
   return (
@@ -611,6 +618,8 @@ const PSITableContent = ({
         <p className="psi-table-status">上段の集計からSKUを選択してください。</p>
       ) : showNoDataMessage ? (
         <p className="psi-table-status">No PSI data for the current filters.</p>
+      ) : showNoMetricFilterResults ? (
+        <p className="psi-table-status">Metricフィルタに一致する行がありません。</p>
       ) : showNoMetricsMessage ? (
         <p className="psi-table-status">表示するメトリクスが選択されていません。</p>
       ) : (
