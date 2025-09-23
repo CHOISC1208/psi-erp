@@ -486,10 +486,10 @@ export default function TransferPage() {
           </label>
           <div className="filter-actions">
             <button type="submit" disabled={!selectedSessionId}>
-              Apply Filters
+              apply
             </button>
             <button type="button" className="secondary" onClick={handleResetFilters}>
-              Reset
+              reset
             </button>
             <button
               type="button"
@@ -497,7 +497,7 @@ export default function TransferPage() {
               onClick={handleDownload}
               disabled={!selectedSessionId}
             >
-              Download CSV
+              DL
             </button>
           </div>
         </form>

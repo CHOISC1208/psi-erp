@@ -18,6 +18,7 @@ from .routers import (
     channel_transfers,
     masters,
     psi,
+    psi_edits,
     psi_metrics,
     sessions,
     users,
@@ -47,6 +48,7 @@ app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(masters.router, prefix="/masters", tags=["masters"])
 app.include_router(psi_metrics.router, prefix="/psi-metrics", tags=["psi-metrics"])
 app.include_router(psi.router, prefix="/psi", tags=["psi"])
+app.include_router(psi_edits.router, prefix="/psi-edits", tags=["psi-edits"])
 app.include_router(
     channel_transfers.router,
     prefix="/channel-transfers",
@@ -62,6 +64,7 @@ app.include_router(
     psi_metrics.router, prefix="/api/psi-metrics", tags=["psi-metrics"]
 )
 app.include_router(psi.router, prefix="/api/psi", tags=["psi"])
+app.include_router(psi_edits.router, prefix="/api/psi-edits", tags=["psi-edits"])
 app.include_router(
     channel_transfers.router,
     prefix="/api/channel-transfers",
@@ -103,6 +106,7 @@ API_PREFIXES = (
     "masters",
     "psi-metrics",
     "psi",
+    "psi-edits",
     "channel-transfers",
     "auth",
     "health",

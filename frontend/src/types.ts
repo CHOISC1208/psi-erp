@@ -45,6 +45,24 @@ export interface PSIEditApplyResult {
   last_edited_at?: string | null;
 }
 
+export interface PSIEditRecord {
+  id: number;
+  session_id: string;
+  sku_code: string;
+  warehouse_name: string;
+  channel: string;
+  date: string;
+  inbound_qty?: number | null;
+  outbound_qty?: number | null;
+  safety_stock?: number | null;
+  created_at: string;
+  updated_at: string;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_by_username?: string | null;
+  updated_by_username?: string | null;
+}
+
 export interface ChannelTransferIdentifier {
   session_id: string;
   sku_code: string;

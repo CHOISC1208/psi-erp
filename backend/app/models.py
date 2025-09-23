@@ -229,6 +229,16 @@ class PSIEdit(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     safety_stock: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
 
     session: Mapped[Session] = relationship(back_populates="psi_edits")
+    created_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="PSIEdit.created_by",
+        lazy="selectin",
+    )
+    updated_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="PSIEdit.updated_by",
+        lazy="selectin",
+    )
 
 
 class PSIEditLog(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
