@@ -33,10 +33,17 @@ function ProtectedLayout() {
     }
   }, [location.pathname]);
 
-  const masters = useMemo(
-    () => [{ path: "/masters/psi-metrics", label: "PSI Metrics Master", icon: "🧮" }],
-    [],
-  );
+  const masters = useMemo(() => {
+    const items = [
+      { path: "/masters/psi-metrics", label: "PSI Metrics Master", icon: "🧮" },
+    ];
+
+    if (user?.is_admin) {
+      items.push({ path: "/masters/users", label: "User Accounts", icon: "👤" });
+    }
+
+    return items;
+  }, [user?.is_admin]);
 
   const handleLogout = async () => {
     await logout();

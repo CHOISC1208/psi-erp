@@ -3,8 +3,9 @@ import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 
+import { useAuth } from "../hooks/useAuth";
 import api from "../lib/api";
-import type { PSIMetricDefinition } from "../types";
+import type { PSIMetricDefinition, UserAccount } from "../types";
 
 type StatusMessage = { type: "success" | "error"; text: string };
 
@@ -12,6 +13,17 @@ interface MetricFormState {
   name: string;
   is_editable: boolean;
   display_order: string;
+}
+
+interface UserFormState {
+  username: string;
+  password: string;
+  confirmPassword: string;
+}
+
+interface UserCreatePayload {
+  username: string;
+  password: string;
 }
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -52,10 +64,12 @@ const deleteMetric = async (metricName: string): Promise<void> => {
   await api.delete(`/psi-metrics/${encodeURIComponent(metricName)}`);
 };
 
-export default function MasterPage() {
-  const { masterId } = useParams();
-  const isMetricsRoute = !masterId || masterId === "psi-metrics";
+const createUserAccount = async (payload: UserCreatePayload): Promise<UserAccount> => {
+  const { data } = await api.post<UserAccount>("/users", payload);
+  return data;
+};
 
+function PSIMetricsMaster() {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [formState, setFormState] = useState<MetricFormState>({
@@ -147,17 +161,6 @@ export default function MasterPage() {
       });
     },
   });
-
-  if (!isMetricsRoute) {
-    return (
-      <div className="page">
-        <header>
-          <h1>Masters</h1>
-          <p>This master does not have a dedicated management screen yet.</p>
-        </header>
-      </div>
-    );
-  }
 
   const handleCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -417,6 +420,143 @@ export default function MasterPage() {
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+function UserRegistrationMaster({ isAdmin }: { isAdmin: boolean }) {
+  const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [formState, setFormState] = useState<UserFormState>({
+    username: "",
+    password: "",
+    confirmPassword: "",
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: (payload: UserCreatePayload) => createUserAccount(payload),
+    onMutate: () => {
+      setStatus(null);
+    },
+    onSuccess: (user) => {
+      setStatus({
+        type: "success",
+        text: `User "${user.username}" was created successfully.`,
+      });
+      setFormState({ username: "", password: "", confirmPassword: "" });
+    },
+    onError: (error) => {
+      setStatus({
+        type: "error",
+        text: getErrorMessage(error, "Unable to create user. Try again."),
+      });
+    },
+  });
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const username = formState.username.trim();
+
+    if (!username) {
+      setStatus({ type: "error", text: "Username is required." });
+      return;
+    }
+
+    if (!formState.password) {
+      setStatus({ type: "error", text: "Password is required." });
+      return;
+    }
+
+    if (formState.password !== formState.confirmPassword) {
+      setStatus({ type: "error", text: "Passwords do not match." });
+      return;
+    }
+
+    createUserMutation.mutate({ username, password: formState.password });
+  };
+
+  return (
+    <div className="page master-page">
+      <header>
+        <h1>User Accounts</h1>
+        <p>Register new dashboard users. Only administrators can access this screen.</p>
+      </header>
+
+      {status ? <div className={`status-message ${status.type}`}>{status.text}</div> : null}
+
+      {isAdmin ? (
+        <section>
+          <h2>Create User</h2>
+          <form onSubmit={handleSubmit} className="form-grid">
+            <label>
+              Username
+              <input
+                type="text"
+                value={formState.username}
+                onChange={(event) =>
+                  setFormState((previous) => ({ ...previous, username: event.target.value }))
+                }
+                required
+              />
+              <small>Each username must be unique.</small>
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={formState.password}
+                onChange={(event) =>
+                  setFormState((previous) => ({ ...previous, password: event.target.value }))
+                }
+                required
+              />
+              <small>Share the credentials securely with the new user.</small>
+            </label>
+            <label>
+              Confirm Password
+              <input
+                type="password"
+                value={formState.confirmPassword}
+                onChange={(event) =>
+                  setFormState((previous) => ({
+                    ...previous,
+                    confirmPassword: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+            <button type="submit" disabled={createUserMutation.isPending}>
+              {createUserMutation.isPending ? "Saving..." : "Create"}
+            </button>
+          </form>
+        </section>
+      ) : (
+        <section>
+          <p className="error-text">You must be an administrator to manage user accounts.</p>
+        </section>
+      )}
+    </div>
+  );
+}
+
+export default function MasterPage() {
+  const { masterId } = useParams();
+  const { user } = useAuth();
+
+  if (!masterId || masterId === "psi-metrics") {
+    return <PSIMetricsMaster />;
+  }
+
+  if (masterId === "users") {
+    return <UserRegistrationMaster isAdmin={Boolean(user?.is_admin)} />;
+  }
+
+  return (
+    <div className="page">
+      <header>
+        <h1>Masters</h1>
+        <p>This master does not have a dedicated management screen yet.</p>
+      </header>
     </div>
   );
 }
