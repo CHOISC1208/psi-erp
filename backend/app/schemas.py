@@ -206,6 +206,10 @@ class ChannelTransferRead(ChannelTransferBase):
     session_id: UUID
     created_at: datetime
     updated_at: datetime
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
+    created_by_username: str | None = None
+    updated_by_username: str | None = None
 
     model_config = {"from_attributes": True}
 

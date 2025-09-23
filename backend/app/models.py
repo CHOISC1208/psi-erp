@@ -290,6 +290,16 @@ class ChannelTransfer(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     session: Mapped[Session] = relationship(back_populates="channel_transfers")
+    created_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="ChannelTransfer.created_by",
+        lazy="selectin",
+    )
+    updated_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys="ChannelTransfer.updated_by",
+        lazy="selectin",
+    )
 
 
 def ensure_channel_transfers_table(bind: Engine | Connection) -> None:
