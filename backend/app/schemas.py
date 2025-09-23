@@ -35,6 +35,8 @@ class SessionRead(SessionBase):
     #id: str
     id: UUID
     is_leader: bool
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
     created_by: UUID | None = None
@@ -265,6 +267,7 @@ class UserCreateRequest(BaseModel):
     """Payload for creating a new user."""
 
     username: Annotated[str, Field(min_length=1, max_length=150)]
+    password: Annotated[str, Field(min_length=8, max_length=256)]
 
 
 class UserCreateResult(BaseModel):
@@ -275,4 +278,3 @@ class UserCreateResult(BaseModel):
     is_active: bool
     is_admin: bool
     created_at: datetime
-    password: Annotated[str, Field(min_length=8)]

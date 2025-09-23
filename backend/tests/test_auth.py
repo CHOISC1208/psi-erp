@@ -225,7 +225,7 @@ def test_verify_password_accepts_readme_pbkdf2_hash():
     assert verify_password("changeme!", hash_from_readme) is True
 
 
-def test_admin_can_create_user(monkeypatch):
+def test_admin_can_create_user():
     create_user("admin", "topsecret", is_admin=True)
 
     with SessionLocal() as session:
@@ -234,14 +234,8 @@ def test_admin_can_create_user(monkeypatch):
         ).first()
         assert admin is not None
 
-        monkeypatch.setattr(
-            users,
-            "generate_temporary_password",
-            lambda *, length=12: "passphrase123",
-        )
-
         result = users.create_user(
-            payload=UserCreateRequest(username="new_member"),
+            payload=UserCreateRequest(username="new_member", password="passphrase123"),
             _=admin,
             db=session,
         )
@@ -249,7 +243,6 @@ def test_admin_can_create_user(monkeypatch):
     assert result.username == "new_member"
     assert result.is_admin is False
     assert result.is_active is True
-    assert result.password == "passphrase123"
 
     with SessionLocal() as session:
         stmt = sa.select(models.User).where(models.User.username == "new_member")

@@ -3,6 +3,8 @@ export interface Session {
   title: string;
   description?: string | null;
   is_leader: boolean;
+  created_by: string | null;
+  updated_by: string | null;
   created_at: string;
   updated_at: string;
   created_by?: string | null;
@@ -106,5 +108,4 @@ export interface UserAccount {
   is_active: boolean;
   is_admin: boolean;
   created_at: string;
-  password: string;
 }

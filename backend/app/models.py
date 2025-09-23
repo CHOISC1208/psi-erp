@@ -120,12 +120,24 @@ class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
 
     __tablename__ = "sessions"
 
+    __table_args__ = (
+        Index("idx_sessions_created_by", "created_by"),
+        Index("idx_sessions_updated_by", "updated_by"),
+        SchemaMixin.__table_args__ if SchemaMixin.__table_args__ else {},
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_leader: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
 
     psi_base_records: Mapped[list["PSIBase"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
