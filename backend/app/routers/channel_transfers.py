@@ -46,7 +46,7 @@ def _with_audit_options(
         query = query.outerjoin(
             updater_alias, models.ChannelTransfer.updated_by == updater_alias.id
         )
-        if settings.expose_audit_fields:
+        if settings.audit_metadata_enabled:
             query = query.options(
                 contains_eager(
                     models.ChannelTransfer.created_by_user, alias=creator_alias
@@ -55,7 +55,7 @@ def _with_audit_options(
                     models.ChannelTransfer.updated_by_user, alias=updater_alias
                 ),
             )
-    elif settings.expose_audit_fields:
+    elif settings.audit_metadata_enabled:
         query = query.options(
             selectinload(models.ChannelTransfer.created_by_user),
             selectinload(models.ChannelTransfer.updated_by_user),
@@ -69,7 +69,7 @@ def _refresh_audit_relationships(
 ) -> None:
     """Refresh audit relationships when audit exposure is enabled."""
 
-    if settings.expose_audit_fields:
+    if settings.audit_metadata_enabled:
         db.refresh(transfer, attribute_names=["created_by_user", "updated_by_user"])
 
 
@@ -77,7 +77,7 @@ def _serialize_transfer(transfer: models.ChannelTransfer) -> schemas.ChannelTran
     """Convert a transfer model into the API schema respecting feature flags."""
 
     data = schemas.ChannelTransferRead.model_validate(transfer, from_attributes=True)
-    if settings.expose_audit_fields:
+    if settings.audit_metadata_enabled:
         data.created_by_username = (
             transfer.created_by_user.username if transfer.created_by_user else None
         )
@@ -216,7 +216,7 @@ def list_channel_transfers(
     _ensure_channel_transfer_table(db)
 
     query = select(models.ChannelTransfer)
-    join_users = settings.expose_audit_fields or actor is not None
+    join_users = settings.audit_metadata_enabled or actor is not None
     query, creator_alias, updater_alias = _with_audit_options(
         query, join_users=join_users
     )
@@ -279,7 +279,7 @@ def export_channel_transfers(
     query = select(models.ChannelTransfer).where(
         models.ChannelTransfer.session_id == session_id
     )
-    join_users = settings.expose_audit_fields or include_audit or actor is not None
+    join_users = settings.audit_metadata_enabled or include_audit or actor is not None
     query, creator_alias, updater_alias = _with_audit_options(
         query, join_users=join_users
     )
@@ -309,7 +309,7 @@ def export_channel_transfers(
     )
 
     transfers = db.scalars(query).unique().all()
-    include_audit_columns = include_audit and settings.expose_audit_fields
+    include_audit_columns = include_audit and settings.audit_metadata_enabled
 
     def iter_rows():
         buffer = StringIO()

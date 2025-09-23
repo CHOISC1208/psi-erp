@@ -745,7 +745,7 @@ def apply_edits(
         db.add_all(logs)
     db.commit()
 
-    expose_audit = settings.expose_audit_fields
+    expose_audit = settings.audit_metadata_enabled
     last_edited_by: UUID | None = None
     last_edited_by_username: str | None = None
     last_edited_at: datetime | None = None
