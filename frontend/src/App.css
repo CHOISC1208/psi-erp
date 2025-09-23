@@ -270,21 +270,6 @@ body {
   color: #b91c1c;
 }
 
-.credentials-card {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  background: var(--surface-panel, #f9fafb);
-  border: 1px solid var(--border-subtle, #d1d5db);
-  display: grid;
-  gap: 0.25rem;
-}
-
-.credentials-card button {
-  justify-self: start;
-  margin-top: 0.5rem;
-}
-
 .table-container {
   border: 1px solid var(--border-subtle, #d1d5db);
   border-radius: 0.75rem;

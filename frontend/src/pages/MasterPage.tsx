@@ -17,10 +17,13 @@ interface MetricFormState {
 
 interface UserFormState {
   username: string;
+  password: string;
+  confirmPassword: string;
 }
 
 interface UserCreatePayload {
   username: string;
+  password: string;
 }
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -425,25 +428,21 @@ function UserRegistrationMaster({ isAdmin }: { isAdmin: boolean }) {
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [formState, setFormState] = useState<UserFormState>({
     username: "",
+    password: "",
+    confirmPassword: "",
   });
-  const [generatedCredentials, setGeneratedCredentials] = useState<{
-    username: string;
-    password: string;
-  } | null>(null);
 
   const createUserMutation = useMutation({
     mutationFn: (payload: UserCreatePayload) => createUserAccount(payload),
     onMutate: () => {
       setStatus(null);
-      setGeneratedCredentials(null);
     },
     onSuccess: (user) => {
       setStatus({
         type: "success",
-        text: `User "${user.username}" was created successfully. Copy and share the credentials securely.`,
+        text: `User "${user.username}" was created successfully.`,
       });
-      setFormState({ username: "" });
-      setGeneratedCredentials({ username: user.username, password: user.password });
+      setFormState({ username: "", password: "", confirmPassword: "" });
     },
     onError: (error) => {
       setStatus({
@@ -462,26 +461,17 @@ function UserRegistrationMaster({ isAdmin }: { isAdmin: boolean }) {
       return;
     }
 
-    createUserMutation.mutate({ username });
-  };
-
-  const handleCopyCredentials = async () => {
-    if (!generatedCredentials) {
+    if (!formState.password) {
+      setStatus({ type: "error", text: "Password is required." });
       return;
     }
 
-    const credentialText = `ID　；　${generatedCredentials.username}\nPASS　；　${generatedCredentials.password}`;
-
-    try {
-      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
-        throw new Error("Clipboard API unavailable");
-      }
-      await navigator.clipboard.writeText(credentialText);
-      setStatus({ type: "success", text: "Credentials copied to clipboard." });
-    } catch (error) {
-      console.error("Failed to copy credentials", error);
-      setStatus({ type: "error", text: "Unable to copy credentials. Copy them manually." });
+    if (formState.password !== formState.confirmPassword) {
+      setStatus({ type: "error", text: "Passwords do not match." });
+      return;
     }
+
+    createUserMutation.mutate({ username, password: formState.password });
   };
 
   return (
@@ -509,23 +499,36 @@ function UserRegistrationMaster({ isAdmin }: { isAdmin: boolean }) {
               />
               <small>Each username must be unique.</small>
             </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={formState.password}
+                onChange={(event) =>
+                  setFormState((previous) => ({ ...previous, password: event.target.value }))
+                }
+                required
+              />
+              <small>Share the credentials securely with the new user.</small>
+            </label>
+            <label>
+              Confirm Password
+              <input
+                type="password"
+                value={formState.confirmPassword}
+                onChange={(event) =>
+                  setFormState((previous) => ({
+                    ...previous,
+                    confirmPassword: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
             <button type="submit" disabled={createUserMutation.isPending}>
               {createUserMutation.isPending ? "Saving..." : "Create"}
             </button>
           </form>
-          {generatedCredentials ? (
-            <div className="credentials-card">
-              <p>
-                <strong>Username:</strong> {generatedCredentials.username}
-              </p>
-              <p>
-                <strong>Password:</strong> {generatedCredentials.password}
-              </p>
-              <button type="button" onClick={handleCopyCredentials}>
-                Copy ID/PASS
-              </button>
-            </div>
-          ) : null}
         </section>
       ) : (
         <section>

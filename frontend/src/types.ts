@@ -79,5 +79,4 @@ export interface UserAccount {
   is_active: boolean;
   is_admin: boolean;
   created_at: string;
-  password: string;
 }
