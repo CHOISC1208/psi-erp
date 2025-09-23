@@ -29,6 +29,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from .config import settings
 
 
+AUTO_INCREMENT_PK = Integer().with_variant(BigInteger, "postgresql")
+
+
 def _qualified(table: str, column: str = "id") -> str:
     """Return a fully qualified table reference respecting the schema."""
 
@@ -177,7 +180,7 @@ class PSIBase(Base, SchemaMixin):
 
     __tablename__ = "psi_base"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(AUTO_INCREMENT_PK, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
@@ -209,8 +212,9 @@ class PSIEdit(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """
 
     __tablename__ = "psi_edits"
+    __table_args__ = SchemaMixin.__table_args__ | {"sqlite_autoincrement": True}
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(AUTO_INCREMENT_PK, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
@@ -231,8 +235,9 @@ class PSIEditLog(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Audit log entry capturing each manual PSI edit."""
 
     __tablename__ = "psi_edit_log"
+    __table_args__ = SchemaMixin.__table_args__ | {"sqlite_autoincrement": True}
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(AUTO_INCREMENT_PK, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
