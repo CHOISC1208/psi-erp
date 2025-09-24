@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import DataGrid, { type CellClickArgs, type Column, type RenderEditCellProps, type RowsChangeData } from "react-data-grid";
 import { createPortal } from "react-dom";
 
@@ -156,9 +156,11 @@ const PSITableContent = ({
   const [activeWarehouse, setActiveWarehouse] = useState<string | null>(null);
   const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
   const [isMetricMenuOpen, setIsMetricMenuOpen] = useState(false);
+  const [metricMenuPosition, setMetricMenuPosition] = useState({ x: 16, y: 16 });
   const headerRefs = useRef(new Map<string, HTMLDivElement>());
   const metricMenuRef = useRef<HTMLDivElement | null>(null);
   const metricMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const metricMenuDragState = useRef({ pointerId: -1, offsetX: 0, offsetY: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const metricMenuAvailable = availableMetrics.length > 0;
 
@@ -260,20 +262,6 @@ const PSITableContent = ({
       return;
     }
 
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) {
-        return;
-      }
-      if (metricMenuRef.current?.contains(target)) {
-        return;
-      }
-      if (metricMenuButtonRef.current?.contains(target)) {
-        return;
-      }
-      setIsMetricMenuOpen(false);
-    };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -282,11 +270,9 @@ const PSITableContent = ({
       }
     };
 
-    document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isMetricMenuOpen]);
@@ -296,6 +282,30 @@ const PSITableContent = ({
       setIsMetricMenuOpen(false);
     }
   }, [metricMenuAvailable]);
+
+  useLayoutEffect(() => {
+    if (!isMetricMenuOpen || !metricMenuRef.current) {
+      return;
+    }
+
+    setMetricMenuPosition((previous) => {
+      const element = metricMenuRef.current;
+      if (!element) {
+        return previous;
+      }
+
+      const maxX = window.innerWidth - element.offsetWidth - 8;
+      const maxY = window.innerHeight - element.offsetHeight - 8;
+      const clampedX = Math.min(Math.max(8, previous.x), Math.max(8, maxX));
+      const clampedY = Math.min(Math.max(8, previous.y), Math.max(8, maxY));
+
+      if (clampedX === previous.x && clampedY === previous.y) {
+        return previous;
+      }
+
+      return { x: clampedX, y: clampedY };
+    });
+  }, [isMetricMenuOpen]);
 
   const activeWarehouseData = useMemo(
     () => warehouses.find((item) => item.name === activeWarehouse) ?? null,
@@ -444,18 +454,34 @@ const PSITableContent = ({
     if (!metricMenuAvailable) {
       return;
     }
-    setIsMetricMenuOpen((previous) => !previous);
+    setIsMetricMenuOpen((previous) => {
+      if (!previous) {
+        const buttonRect = metricMenuButtonRef.current?.getBoundingClientRect();
+        if (buttonRect) {
+          setMetricMenuPosition({
+            x: Math.max(8, buttonRect.left),
+            y: Math.max(8, buttonRect.bottom + 8),
+          });
+        }
+      }
+      return !previous;
+    });
   }, [metricMenuAvailable]);
 
   const handleMetricToggle = useCallback(
     (metricKey: MetricKey) => {
       const current = new Set(selectedMetricKeys);
       if (current.has(metricKey)) {
+        if (current.size === 1) {
+          return;
+        }
         current.delete(metricKey);
       } else {
         current.add(metricKey);
       }
-      const ordered = availableMetrics.map((metric) => metric.key).filter((key) => current.has(key));
+      const ordered = availableMetrics
+        .map((metric) => metric.key)
+        .filter((key) => current.has(key));
       onSelectedMetricKeysChange(ordered);
     },
     [availableMetrics, onSelectedMetricKeysChange, selectedMetricKeys]
@@ -465,9 +491,82 @@ const PSITableContent = ({
     onSelectedMetricKeysChange(availableMetrics.map((metric) => metric.key));
   }, [availableMetrics, onSelectedMetricKeysChange]);
 
-  const handleClearMetrics = useCallback(() => {
-    onSelectedMetricKeysChange([]);
-  }, [onSelectedMetricKeysChange]);
+  const handleMetricMenuClose = useCallback(() => {
+    setIsMetricMenuOpen(false);
+    metricMenuButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const handleMetricMenuDragMove = useCallback((event: PointerEvent) => {
+    const state = metricMenuDragState.current;
+    if (state.pointerId !== event.pointerId) {
+      return;
+    }
+
+    setMetricMenuPosition((previous) => {
+      const element = metricMenuRef.current;
+      const width = element?.offsetWidth ?? 0;
+      const height = element?.offsetHeight ?? 0;
+      const nextX = event.clientX - state.offsetX;
+      const nextY = event.clientY - state.offsetY;
+      const minX = 8;
+      const minY = 8;
+      const maxX = window.innerWidth - width - 8;
+      const maxY = window.innerHeight - height - 8;
+      const clampedX = Math.min(Math.max(minX, nextX), Math.max(minX, maxX));
+      const clampedY = Math.min(Math.max(minY, nextY), Math.max(minY, maxY));
+      if (clampedX === previous.x && clampedY === previous.y) {
+        return previous;
+      }
+      return { x: clampedX, y: clampedY };
+    });
+  }, []);
+
+  const handleMetricMenuDragEnd = useCallback(
+    (event: PointerEvent) => {
+      const state = metricMenuDragState.current;
+      if (state.pointerId !== event.pointerId) {
+        return;
+      }
+      metricMenuDragState.current = { pointerId: -1, offsetX: 0, offsetY: 0 };
+      window.removeEventListener("pointermove", handleMetricMenuDragMove);
+      window.removeEventListener("pointerup", handleMetricMenuDragEnd);
+    },
+    [handleMetricMenuDragMove]
+  );
+
+  const handleMetricMenuDragStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-no-drag='true']")) {
+        return;
+      }
+      event.preventDefault();
+      metricMenuDragState.current = {
+        pointerId: event.pointerId,
+        offsetX: event.clientX - metricMenuPosition.x,
+        offsetY: event.clientY - metricMenuPosition.y,
+      };
+      window.addEventListener("pointermove", handleMetricMenuDragMove);
+      window.addEventListener("pointerup", handleMetricMenuDragEnd);
+    },
+    [handleMetricMenuDragEnd, handleMetricMenuDragMove, metricMenuPosition.x, metricMenuPosition.y]
+  );
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener("pointermove", handleMetricMenuDragMove);
+      window.removeEventListener("pointerup", handleMetricMenuDragEnd);
+    };
+  }, [handleMetricMenuDragEnd, handleMetricMenuDragMove]);
+
+  useEffect(() => {
+    if (isMetricMenuOpen) {
+      return;
+    }
+    metricMenuDragState.current = { pointerId: -1, offsetX: 0, offsetY: 0 };
+    window.removeEventListener("pointermove", handleMetricMenuDragMove);
+    window.removeEventListener("pointerup", handleMetricMenuDragEnd);
+  }, [handleMetricMenuDragEnd, handleMetricMenuDragMove, isMetricMenuOpen]);
 
   const handleHeaderRef = useCallback((key: string, element: HTMLDivElement | null) => {
     const map = headerRefs.current;
@@ -563,43 +662,60 @@ const PSITableContent = ({
             </span>
           </button>
         </div>
-        {isMetricMenuOpen && metricMenuAvailable && (
-          <div className="psi-grid-metric-menu" role="menu" ref={metricMenuRef}>
-            <div className="psi-grid-metric-options">
-              {availableMetrics.map((metric) => {
-                const checked = selectedMetricKeySet.has(metric.key);
-                return (
-                  <label key={metric.key} className="psi-grid-metric-option">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => handleMetricToggle(metric.key)}
-                    />
-                    <span>{metric.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-            <div className="psi-grid-metric-menu-actions">
-              <button
-                type="button"
-                onClick={handleSelectAllMetrics}
-                disabled={selectedMetricKeys.length === availableMetrics.length}
-              >
-                全選択
-              </button>
-              <button
-                type="button"
-                onClick={handleClearMetrics}
-                disabled={selectedMetricKeys.length === 0}
-              >
-                全解除
-              </button>
-            </div>
-          </div>
-        )}
       </div>,
       metricHeaderElement
+    );
+
+  const metricMenuPortal =
+    isMetricMenuOpen &&
+    metricMenuAvailable &&
+    createPortal(
+      <div
+        className="psi-grid-metric-popup"
+        ref={metricMenuRef}
+        role="dialog"
+        aria-modal="false"
+        style={{ left: `${metricMenuPosition.x}px`, top: `${metricMenuPosition.y}px` }}
+      >
+        <div className="psi-grid-metric-popup-header" onPointerDown={handleMetricMenuDragStart}>
+          <span className="psi-grid-metric-popup-title">表示項目の選択</span>
+          <button
+            type="button"
+            className="psi-grid-metric-popup-close"
+            onClick={handleMetricMenuClose}
+            data-no-drag="true"
+          >
+            ×
+          </button>
+        </div>
+        <div className="psi-grid-metric-popup-content">
+          <div className="psi-grid-metric-options">
+            {availableMetrics.map((metric) => {
+              const checked = selectedMetricKeySet.has(metric.key);
+              return (
+                <label key={metric.key} className="psi-grid-metric-option">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => handleMetricToggle(metric.key)}
+                  />
+                  <span>{metric.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+        <div className="psi-grid-metric-menu-actions">
+          <button
+            type="button"
+            onClick={handleSelectAllMetrics}
+            disabled={selectedMetricKeys.length === availableMetrics.length}
+          >
+            全選択
+          </button>
+        </div>
+      </div>,
+      document.body
     );
 
   const handleRowsChange = useCallback(
@@ -749,6 +865,7 @@ const PSITableContent = ({
           </div>
           <div className="psi-grid-container">
             {metricHeaderPortal}
+            {metricMenuPortal}
             <DataGrid
               columns={columns}
               rows={rows}
