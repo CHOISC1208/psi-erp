@@ -598,7 +598,8 @@ def generate_psi_report(
 ) -> schemas.PSIReportResponse:
     """Generate a markdown summary highlighting stock risks and transfer suggestions."""
 
-    if not sku_code.strip():
+    sku_code = sku_code.strip()
+    if not sku_code:
         raise HTTPException(status_code=400, detail="sku_code is required")
 
     _get_session_or_404(db, session_id)
