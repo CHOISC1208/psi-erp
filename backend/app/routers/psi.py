@@ -5,7 +5,7 @@ import csv
 import io
 import logging
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -17,6 +17,13 @@ from sqlalchemy.orm import Session as DBSession
 from .. import models, schemas
 from ..config import settings
 from ..deps import get_current_user, get_db
+from ..services.psi_report import (
+    Settings as ReportSettings,
+    build_pivot_rows,
+    detect_stockout_risk,
+    suggest_channel_transfers,
+    build_summary_md,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -575,6 +582,79 @@ def daily_psi(
         )
 
     return result
+
+
+@router.get("/{session_id}/report", response_model=schemas.PSIReportResponse)
+def generate_psi_report(
+    *,
+    session_id: UUID,
+    sku_code: str,
+    lead_time_days: int = 2,
+    safety_buffer_days: float = 0.0,
+    min_move_qty: float = 0.0,
+    target_days_ahead: int = 14,
+    priority_channels: str | None = None,
+    db: DBSession = Depends(get_db),
+) -> schemas.PSIReportResponse:
+    """Generate a markdown summary highlighting stock risks and transfer suggestions."""
+
+    if not sku_code.strip():
+        raise HTTPException(status_code=400, detail="sku_code is required")
+
+    _get_session_or_404(db, session_id)
+
+    priority_list = None
+    if priority_channels:
+        priority_list = [part.strip() for part in priority_channels.split(",") if part.strip()]
+
+    try:
+        cfg = ReportSettings(
+            lead_time_days=lead_time_days,
+            safety_buffer_days=safety_buffer_days,
+            min_move_qty=min_move_qty,
+            target_days_ahead=target_days_ahead,
+            priority_channels=priority_list,
+        )
+    except ValueError as exc:  # pragma: no cover - defensive validation
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    channel_data = daily_psi(
+        session_id=session_id,
+        sku_code=sku_code,
+        warehouse_name=None,
+        channel=None,
+        db=db,
+    )
+    if not channel_data:
+        raise HTTPException(status_code=404, detail="PSI data not found for the specified SKU")
+
+    pivot_result = build_pivot_rows(channel_data, target_days_ahead=cfg.target_days_ahead)
+    generated_at = datetime.now(timezone.utc)
+    risks = detect_stockout_risk(pivot_result.rows, cfg)
+    transfers = suggest_channel_transfers(pivot_result.rows, cfg)
+    report_markdown = build_summary_md(
+        risks=risks,
+        transfers=transfers,
+        rows=pivot_result.rows,
+        cfg=cfg,
+        generated_at=generated_at,
+    )
+
+    sku_name = pivot_result.rows[0].sku_name if pivot_result.rows else channel_data[0].sku_name
+
+    return schemas.PSIReportResponse(
+        sku_code=sku_code,
+        sku_name=sku_name,
+        generated_at=generated_at,
+        report_markdown=report_markdown,
+        settings=schemas.PSIReportSettings(
+            lead_time_days=cfg.lead_time_days,
+            safety_buffer_days=cfg.safety_buffer_days,
+            min_move_qty=cfg.min_move_qty,
+            target_days_ahead=cfg.target_days_ahead,
+            priority_channels=cfg.priority_channels,
+        ),
+    )
 
 
 @router.get("/{session_id}/summary", response_model=schemas.PSISessionSummary)

@@ -137,6 +137,26 @@ class PSISessionSummary(BaseModel):
     end_date: date | None = None
 
 
+class PSIReportSettings(BaseModel):
+    """Configuration snapshot returned with generated reports."""
+
+    lead_time_days: int
+    safety_buffer_days: float
+    min_move_qty: float
+    target_days_ahead: int
+    priority_channels: list[str] | None = None
+
+
+class PSIReportResponse(BaseModel):
+    """Markdown report produced for a SKU within a session."""
+
+    sku_code: str
+    sku_name: str | None = None
+    generated_at: datetime
+    report_markdown: str
+    settings: PSIReportSettings
+
+
 class MasterRecordBase(BaseModel):
     """Shared attributes for master record write models."""
 

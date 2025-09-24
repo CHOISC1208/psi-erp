@@ -31,6 +31,9 @@ interface PSITableContentProps {
   formatDisplayDate: (iso: string) => string;
   onDownload: () => void;
   canDownload: boolean;
+  onGenerateReport: () => void;
+  canGenerateReport: boolean;
+  isGeneratingReport: boolean;
   applyError: string | null;
   applySuccess: string | null;
   formatNumber: (value?: number | null) => string;
@@ -141,6 +144,9 @@ const PSITableContent = ({
   formatDisplayDate,
   onDownload,
   canDownload,
+  onGenerateReport,
+  canGenerateReport,
+  isGeneratingReport,
   applyError,
   applySuccess,
   formatNumber,
@@ -812,6 +818,15 @@ const PSITableContent = ({
                   aria-label="CSVをダウンロード"
                 >
                   <span>CSV</span>
+                </button>
+                <button
+                  type="button"
+                  className="psi-button secondary"
+                  onClick={onGenerateReport}
+                  disabled={!canGenerateReport || isGeneratingReport}
+                  aria-label="PSIレポートを表示"
+                >
+                  <span>{isGeneratingReport ? "生成中…" : "Report"}</span>
                 </button>
               </div>
               <div className="psi-table-toolbar-group psi-table-sku-navigator">

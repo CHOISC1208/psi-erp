@@ -2288,3 +2288,116 @@ button.danger:hover {
   gap: 12px;
   padding: 0 24px 24px;
 }
+
+.psi-report-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(17, 24, 39, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 3rem 1rem;
+  z-index: 1100;
+}
+
+.psi-report-modal {
+  background-color: #ffffff;
+  color: #111827;
+  width: min(960px, 100%);
+  max-height: 100%;
+  border-radius: 16px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.psi-report-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.5rem 1.75rem 1rem;
+  background: linear-gradient(135deg, #1e3a8a, #1d4ed8);
+  color: #f9fafb;
+}
+
+.psi-report-modal__header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.psi-report-modal__subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+  color: rgba(249, 250, 251, 0.85);
+}
+
+.psi-report-modal__header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.psi-report-modal__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 1rem 1.75rem;
+  background-color: #eef2ff;
+  border-bottom: 1px solid #c7d2fe;
+}
+
+.psi-report-modal__meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 12rem;
+}
+
+.psi-report-modal__meta-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4f46e5;
+}
+
+.psi-report-modal__meta-value {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.psi-report-modal__body {
+  padding: 1.25rem 1.75rem 1.75rem;
+  overflow-y: auto;
+  background-color: #f9fafb;
+}
+
+.psi-report-modal__status {
+  margin: 0;
+  padding: 1rem;
+  border-radius: 8px;
+  background-color: #e0f2fe;
+  color: #0c4a6e;
+  font-weight: 600;
+  text-align: center;
+}
+
+.psi-report-modal__status.error {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.psi-report-modal__content {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  background-color: #1f2937;
+  color: #f9fafb;
+  border-radius: 12px;
+  font-family: "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}

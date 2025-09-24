@@ -38,6 +38,22 @@ export interface PSISessionSummary {
   end_date?: string | null;
 }
 
+export interface PSIReportSettings {
+  lead_time_days: number;
+  safety_buffer_days: number;
+  min_move_qty: number;
+  target_days_ahead: number;
+  priority_channels?: string[] | null;
+}
+
+export interface PSIReportResponse {
+  sku_code: string;
+  sku_name?: string | null;
+  generated_at: string;
+  report_markdown: string;
+  settings: PSIReportSettings;
+}
+
 export interface PSIEditApplyResult {
   applied: number;
   log_entries: number;

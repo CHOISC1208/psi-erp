@@ -10,9 +10,11 @@ import {
   PSIChannel,
   PSIDailyEntry,
   PSIEditApplyResult,
+  PSIReportResponse,
   Session,
 } from "../types";
 import ChannelMoveModal from "../components/ChannelMoveModal";
+import PSIReportModal from "../components/PSIReportModal";
 import PSITableContent from "../components/PSITableContent";
 import PSITableControls from "../components/PSITableControls";
 import {
@@ -20,6 +22,7 @@ import {
   useCreateChannelTransferMutation,
   useDailyPsiQuery,
   useDeleteChannelTransferMutation,
+  usePsiReportMutation,
   useSessionSummaryQuery,
   useSessionsQuery,
 } from "../hooks/usePsiQueries";
@@ -263,11 +266,16 @@ export default function PSITablePage() {
     metricDefinitions.map((metric) => metric.key)
   );
   const [skuOrder, setSkuOrder] = useState<string[]>([]);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportData, setReportData] = useState<PSIReportResponse | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSku, setReportSku] = useState<string | null>(null);
 
   const sessionsQuery = useSessionsQuery();
   const channelTransfersQuery = useChannelTransfersQuery(sessionId);
   const createChannelTransferMutation = useCreateChannelTransferMutation();
   const deleteChannelTransferMutation = useDeleteChannelTransferMutation();
+  const psiReportMutation = usePsiReportMutation();
 
   const availableSessions = sessionsQuery.data ?? [];
   const leaderSession = useMemo(
@@ -388,6 +396,25 @@ export default function PSITablePage() {
     }
   }, [selectedSku, tableData]);
 
+  useEffect(() => {
+    if (!selectedSku) {
+      setIsReportModalOpen(false);
+      setReportData(null);
+      setReportError(null);
+      setReportSku(null);
+      psiReportMutation.reset();
+      return;
+    }
+
+    if (reportSku && reportSku !== selectedSku) {
+      setIsReportModalOpen(false);
+      setReportData(null);
+      setReportError(null);
+      setReportSku(null);
+      psiReportMutation.reset();
+    }
+  }, [selectedSku, reportSku, psiReportMutation]);
+
   const displayedTableData = useMemo(
     () => (selectedSku ? tableData.filter((item) => item.sku_code === selectedSku) : []),
     [selectedSku, tableData]
@@ -407,6 +434,52 @@ export default function PSITablePage() {
 
   const handleSkuListChange = useCallback((nextSkuOrder: string[]) => {
     setSkuOrder(nextSkuOrder);
+  }, []);
+
+  const openReportModal = useCallback(
+    async (forceRefresh: boolean) => {
+      if (!sessionId || !selectedSku) {
+        return;
+      }
+
+      setIsReportModalOpen(true);
+      setReportError(null);
+
+      if (!forceRefresh && reportData && reportSku === selectedSku && !psiReportMutation.isPending) {
+        return;
+      }
+
+      setReportData(null);
+      setReportSku(selectedSku);
+      psiReportMutation.reset();
+
+      try {
+        const data = await psiReportMutation.mutateAsync({ sessionId, skuCode: selectedSku });
+        setReportData(data);
+      } catch (error) {
+        setReportError(getErrorMessage(error, "レポートの生成に失敗しました。"));
+      }
+    },
+    [
+      sessionId,
+      selectedSku,
+      reportData,
+      reportSku,
+      psiReportMutation,
+      getErrorMessage,
+    ]
+  );
+
+  const handleGenerateReport = useCallback(() => {
+    void openReportModal(false);
+  }, [openReportModal]);
+
+  const handleRetryReport = useCallback(() => {
+    void openReportModal(true);
+  }, [openReportModal]);
+
+  const handleReportModalClose = useCallback(() => {
+    setIsReportModalOpen(false);
   }, []);
 
   useEffect(() => {
@@ -952,6 +1025,9 @@ export default function PSITablePage() {
           formatDisplayDate={formatDisplayDate}
           onDownload={handleDownload}
           canDownload={Boolean(displayedTableData.length && visibleMetrics.length)}
+          onGenerateReport={handleGenerateReport}
+          canGenerateReport={Boolean(sessionId && selectedSku)}
+          isGeneratingReport={psiReportMutation.isPending}
           applyError={applyError}
           applySuccess={applySuccess}
           formatNumber={formatNumber}
@@ -983,6 +1059,18 @@ export default function PSITablePage() {
           currentNetMove={currentNetMove}
           channelMoveValue={currentChannelMoveValue}
           inventorySnapshot={inventorySnapshot}
+        />
+        <PSIReportModal
+          isOpen={isReportModalOpen}
+          skuCode={selectedSku ?? reportData?.sku_code ?? null}
+          skuName={displayedTableData[0]?.sku_name ?? reportData?.sku_name ?? null}
+          report={reportData?.report_markdown ?? null}
+          generatedAt={reportData?.generated_at ?? null}
+          settings={reportData?.settings ?? null}
+          isLoading={psiReportMutation.isPending}
+          error={reportError}
+          onClose={handleReportModalClose}
+          onRetry={selectedSku ? handleRetryReport : undefined}
         />
       </div>
     </div>
