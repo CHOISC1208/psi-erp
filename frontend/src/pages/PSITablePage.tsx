@@ -23,7 +23,14 @@ import {
   useSessionSummaryQuery,
   useSessionsQuery,
 } from "../hooks/usePsiQueries";
-import { EditableField, PSIEditableChannel, PSIEditableDay, PSIGridMetricRow, metricDefinitions } from "./psiTableTypes";
+import {
+  EditableField,
+  MetricKey,
+  PSIEditableChannel,
+  PSIEditableDay,
+  PSIGridMetricRow,
+  metricDefinitions,
+} from "./psiTableTypes";
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -128,6 +135,8 @@ const recomputeChannel = (channel: PSIEditableChannel): PSIEditableChannel => {
 
     const safety = entry.safety_stock ?? 0;
     const movableStock = stockClosing === null ? null : stockClosing - safety;
+    const inventoryDays =
+      stockClosing === null || outbound <= 0 ? null : stockClosing / outbound;
 
     previousClosing = stockClosing;
 
@@ -137,6 +146,7 @@ const recomputeChannel = (channel: PSIEditableChannel): PSIEditableChannel => {
       net_flow: netFlow,
       stock_closing: stockClosing,
       movable_stock: movableStock,
+      inventory_days: inventoryDays,
     };
   });
 
@@ -249,6 +259,10 @@ export default function PSITablePage() {
   const [channelMoveSelection, setChannelMoveSelection] = useState<ChannelMoveCellSelection | null>(null);
   const [channelMoveError, setChannelMoveError] = useState<string | null>(null);
   const [isChannelMoveSaving, setIsChannelMoveSaving] = useState(false);
+  const [visibleMetricKeys, setVisibleMetricKeys] = useState<MetricKey[]>(() =>
+    metricDefinitions.map((metric) => metric.key)
+  );
+  const [skuOrder, setSkuOrder] = useState<string[]>([]);
 
   const sessionsQuery = useSessionsQuery();
   const channelTransfersQuery = useChannelTransfersQuery(sessionId);
@@ -378,6 +392,59 @@ export default function PSITablePage() {
     () => (selectedSku ? tableData.filter((item) => item.sku_code === selectedSku) : []),
     [selectedSku, tableData]
   );
+
+  const visibleMetrics = useMemo(
+    () => metricDefinitions.filter((metric) => visibleMetricKeys.includes(metric.key)),
+    [visibleMetricKeys]
+  );
+
+  const handleVisibleMetricKeysChange = useCallback((nextKeys: MetricKey[]) => {
+    const orderedKeys = metricDefinitions
+      .map((metric) => metric.key)
+      .filter((key) => nextKeys.includes(key));
+    setVisibleMetricKeys(orderedKeys);
+  }, []);
+
+  const handleSkuListChange = useCallback((nextSkuOrder: string[]) => {
+    setSkuOrder(nextSkuOrder);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSku && skuOrder.length > 0) {
+      setSelectedSku(skuOrder[0]);
+      return;
+    }
+    if (selectedSku && skuOrder.length > 0 && !skuOrder.includes(selectedSku)) {
+      setSelectedSku(skuOrder[0]);
+    }
+    if (selectedSku && skuOrder.length === 0) {
+      setSelectedSku(null);
+    }
+  }, [selectedSku, skuOrder]);
+
+  const selectedSkuIndex = selectedSku ? skuOrder.indexOf(selectedSku) : -1;
+  const canGoToPreviousSku = selectedSkuIndex > 0;
+  const canGoToNextSku = selectedSkuIndex >= 0 && selectedSkuIndex < skuOrder.length - 1;
+
+  const handleGoToPreviousSku = useCallback(() => {
+    if (!selectedSku) {
+      return;
+    }
+    const index = skuOrder.indexOf(selectedSku);
+    if (index > 0) {
+      setSelectedSku(skuOrder[index - 1]);
+    }
+  }, [selectedSku, skuOrder]);
+
+  const handleGoToNextSku = useCallback(() => {
+    if (!selectedSku) {
+      return;
+    }
+    const index = skuOrder.indexOf(selectedSku);
+    if (index >= 0 && index < skuOrder.length - 1) {
+      setSelectedSku(skuOrder[index + 1]);
+    }
+  }, [selectedSku, skuOrder]);
 
   const channelMap = useMemo(() => {
     const map = new Map<string, PSIEditableChannel>();
@@ -509,8 +576,6 @@ export default function PSITablePage() {
     });
     return Array.from(dateSet).sort(compareDateStrings);
   }, [displayedTableData]);
-
-  const visibleMetrics = metricDefinitions;
 
   const todayIso = useMemo(() => {
     const now = new Date();
@@ -868,6 +933,7 @@ export default function PSITablePage() {
           getErrorMessage={getErrorMessage}
           selectedSku={selectedSku}
           onSelectSku={setSelectedSku}
+          onSkuListChange={handleSkuListChange}
         />
 
         <PSITableContent
@@ -879,6 +945,9 @@ export default function PSITablePage() {
           hasAnyData={tableData.length > 0}
           selectedSku={selectedSku}
           visibleMetrics={visibleMetrics}
+          availableMetrics={metricDefinitions}
+          selectedMetricKeys={visibleMetricKeys}
+          onSelectedMetricKeysChange={handleVisibleMetricKeysChange}
           allDates={allDates}
           formatDisplayDate={formatDisplayDate}
           onDownload={handleDownload}
@@ -890,6 +959,10 @@ export default function PSITablePage() {
           onEditableChange={handleEditableChange}
           onRegisterScrollToDate={registerScrollToDate}
           onChannelCellClick={handleChannelCellClick}
+          onGoToPreviousSku={canGoToPreviousSku ? handleGoToPreviousSku : undefined}
+          onGoToNextSku={canGoToNextSku ? handleGoToNextSku : undefined}
+          activeSkuCode={selectedSku}
+          activeSkuName={displayedTableData[0]?.sku_name ?? null}
         />
 
         <ChannelMoveModal

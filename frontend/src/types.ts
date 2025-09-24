@@ -21,6 +21,7 @@ export interface PSIDailyEntry {
   stock_closing?: number | null;
   safety_stock?: number | null;
   movable_stock?: number | null;
+  inventory_days?: number | null;
 }
 
 export interface PSIChannel {
