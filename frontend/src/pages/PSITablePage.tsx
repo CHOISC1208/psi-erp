@@ -34,6 +34,7 @@ import {
   PSIGridMetricRow,
   metricDefinitions,
 } from "./psiTableTypes";
+import { formatWarehouseName, makeWarehouseKey } from "../utils/warehouse";
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -53,7 +54,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 interface PSIEditUpdatePayload {
   sku_code: string;
-  warehouse_name: string;
+  warehouse_name: string | null;
   channel: string;
   date: string;
   inbound_qty?: number | null;
@@ -167,8 +168,8 @@ const prepareEditableData = (data: PSIChannel[]): PSIEditableChannel[] =>
     })
   );
 
-const makeChannelKey = (channel: { sku_code: string; warehouse_name: string; channel: string }) =>
-  `${channel.sku_code}__${channel.warehouse_name}__${channel.channel}`;
+const makeChannelKey = (channel: { sku_code: string; warehouse_name: string | null; channel: string }) =>
+  `${channel.sku_code}__${makeWarehouseKey(channel.warehouse_name)}__${channel.channel}`;
 
 const cloneEditableChannels = (channels: PSIEditableChannel[]): PSIEditableChannel[] =>
   channels.map((channel) => ({
@@ -673,6 +674,10 @@ export default function PSITablePage() {
     const edits: PSIEditUpdatePayload[] = [];
 
     tableData.forEach((item) => {
+      if (!item.warehouse_name) {
+        return;
+      }
+      const warehouseName = item.warehouse_name;
       const channelKey = makeChannelKey(item);
 
       item.daily.forEach((entry) => {
@@ -680,7 +685,7 @@ export default function PSITablePage() {
         let changed = false;
         const diff: PSIEditUpdatePayload = {
           sku_code: item.sku_code,
-          warehouse_name: item.warehouse_name,
+          warehouse_name: warehouseName,
           channel: item.channel,
           date: entry.date,
         };
@@ -788,7 +793,7 @@ export default function PSITablePage() {
         return [
           item.sku_code,
           item.sku_name ?? "",
-          item.warehouse_name,
+          formatWarehouseName(item.warehouse_name),
           item.channel,
           metric.label,
           ...values,
@@ -814,6 +819,11 @@ export default function PSITablePage() {
 
   const handleChannelCellClick = useCallback((selection: ChannelMoveCellSelection) => {
     setChannelMoveError(null);
+    if (!selection.row.warehouse_name) {
+      setChannelMoveSelection(null);
+      setChannelMoveError("倉庫名が未設定のチャネルでは移動編集を利用できません。");
+      return;
+    }
     setChannelMoveSelection(selection);
   }, []);
 

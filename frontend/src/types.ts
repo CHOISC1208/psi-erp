@@ -27,7 +27,7 @@ export interface PSIDailyEntry {
 export interface PSIChannel {
   sku_code: string;
   sku_name?: string | null;
-  warehouse_name: string;
+  warehouse_name: string | null;
   channel: string;
   daily: PSIDailyEntry[];
 }

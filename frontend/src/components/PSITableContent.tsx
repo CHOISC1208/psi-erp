@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
-import DataGrid, { type CellClickArgs, type Column, type RenderEditCellProps, type RowsChangeData } from "react-data-grid";
+import DataGrid, {
+  type CellClickArgs,
+  type Column,
+  type RenderEditCellProps,
+  type RowsChangeData,
+} from "react-data-grid";
 import { createPortal } from "react-dom";
 
 import {
@@ -12,6 +17,7 @@ import {
   PSIGridChannelHeaderRow,
   PSIGridMetricRow,
 } from "../pages/psiTableTypes";
+import { formatWarehouseName, makeWarehouseKey } from "../utils/warehouse";
 
 const MOVABLE_STOCK_THRESHOLD = 10;
 
@@ -37,7 +43,7 @@ interface PSITableContentProps {
   applyError: string | null;
   applySuccess: string | null;
   formatNumber: (value?: number | null) => string;
-  makeChannelKey: (channel: { sku_code: string; warehouse_name: string; channel: string }) => string;
+  makeChannelKey: (channel: { sku_code: string; warehouse_name: string | null; channel: string }) => string;
   onEditableChange: (channelKey: string, date: string, field: EditableField, rawValue: string) => void;
   onRegisterScrollToDate?: (handler: (date: string) => void) => (() => void) | void;
   onChannelCellClick?: (selection: {
@@ -65,7 +71,8 @@ type WarehouseChannelGroup = {
 };
 
 type WarehouseView = {
-  name: string;
+  id: string;
+  name: string | null;
   channelCount: number;
   channels: WarehouseChannelGroup[];
 };
@@ -159,7 +166,7 @@ const PSITableContent = ({
   activeSkuCode,
   activeSkuName,
 }: PSITableContentProps) => {
-  const [activeWarehouse, setActiveWarehouse] = useState<string | null>(null);
+  const [activeWarehouseId, setActiveWarehouseId] = useState<string | null>(null);
   const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
   const [isMetricMenuOpen, setIsMetricMenuOpen] = useState(false);
   const [metricMenuPosition, setMetricMenuPosition] = useState({ x: 16, y: 16 });
@@ -175,18 +182,18 @@ const PSITableContent = ({
       return [];
     }
 
-    const grouping = new Map<string, PSIEditableChannel[]>();
+    const grouping = new Map<string, { name: string | null; channels: PSIEditableChannel[] }>();
     tableData.forEach((channel) => {
-      const key = channel.warehouse_name;
-      const list = grouping.get(key);
-      if (list) {
-        list.push(channel);
+      const key = makeWarehouseKey(channel.warehouse_name);
+      const entry = grouping.get(key);
+      if (entry) {
+        entry.channels.push(channel);
       } else {
-        grouping.set(key, [channel]);
+        grouping.set(key, { name: channel.warehouse_name ?? null, channels: [channel] });
       }
     });
 
-    return Array.from(grouping.entries()).map(([warehouseName, channels]) => {
+    return Array.from(grouping.entries()).map(([warehouseId, { name, channels }]) => {
       const channelGroups: WarehouseChannelGroup[] = channels.map((channel) => {
         const channelKey = makeChannelKey(channel);
         const dateMap = new Map(channel.daily.map((entry) => [entry.date, entry]));
@@ -217,7 +224,7 @@ const PSITableContent = ({
             channel: channel.channel,
             metric: metric.label,
             metricKey,
-            metricEditable: metric.editable === true,
+            metricEditable: metric.editable === true && Boolean(channel.warehouse_name),
             rowType: "metric",
             showChannelLabel: false,
           };
@@ -237,7 +244,8 @@ const PSITableContent = ({
       });
 
       return {
-        name: warehouseName,
+        id: warehouseId,
+        name,
         channelCount: channels.length,
         channels: channelGroups,
       } satisfies WarehouseView;
@@ -246,13 +254,13 @@ const PSITableContent = ({
 
   useEffect(() => {
     if (!warehouses.length) {
-      setActiveWarehouse(null);
+      setActiveWarehouseId(null);
       return;
     }
-    if (!activeWarehouse || !warehouses.some((item) => item.name === activeWarehouse)) {
-      setActiveWarehouse(warehouses[0].name);
+    if (!activeWarehouseId || !warehouses.some((item) => item.id === activeWarehouseId)) {
+      setActiveWarehouseId(warehouses[0].id);
     }
-  }, [activeWarehouse, warehouses]);
+  }, [activeWarehouseId, warehouses]);
 
   useEffect(() => {
     const refMap = headerRefs.current;
@@ -314,8 +322,8 @@ const PSITableContent = ({
   }, [isMetricMenuOpen]);
 
   const activeWarehouseData = useMemo(
-    () => warehouses.find((item) => item.name === activeWarehouse) ?? null,
-    [activeWarehouse, warehouses]
+    () => warehouses.find((item) => item.id === activeWarehouseId) ?? null,
+    [activeWarehouseId, warehouses]
   );
 
   const activeWarehouseChannels = activeWarehouseData?.channels ?? [];
@@ -863,17 +871,17 @@ const PSITableContent = ({
           </div>
           <div className="psi-warehouse-tabs" role="tablist" aria-label="Warehouses">
             {warehouses.map((item) => {
-              const isActive = item.name === activeWarehouse;
+              const isActive = item.id === activeWarehouseId;
               return (
                 <button
-                  key={item.name}
+                  key={item.id}
                   type="button"
                   role="tab"
                   className={classNames("psi-warehouse-tab", isActive && "active")}
                   aria-selected={isActive}
-                  onClick={() => setActiveWarehouse(item.name)}
+                  onClick={() => setActiveWarehouseId(item.id)}
                 >
-                  {item.name} ({item.channelCount})
+                  {formatWarehouseName(item.name)} ({item.channelCount})
                 </button>
               );
             })}

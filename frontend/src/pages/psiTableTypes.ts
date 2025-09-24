@@ -27,7 +27,7 @@ export interface PSIGridRowBase {
   id: string;
   channelKey: string;
   sku_code: string;
-  warehouse_name: string;
+  warehouse_name: string | null;
   channel: string;
   metric: string;
   metricEditable: boolean;

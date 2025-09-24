@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { ChannelTransfer, ChannelTransferCreate } from "../types";
 import api from "../lib/api";
+import { formatWarehouseName } from "../utils/warehouse";
 
 interface ChannelMoveModalProps {
   isOpen: boolean;
@@ -11,7 +12,7 @@ interface ChannelMoveModalProps {
     | {
         sku_code: string;
         sku_name: string | null;
-        warehouse_name: string;
+        warehouse_name: string | null;
         channel: string;
       }
     | null;
@@ -73,13 +74,17 @@ const toNullableString = (value: string) => {
   return trimmed ? trimmed : null;
 };
 
-const sanitizeForFilename = (value: string) =>
-  value
+const sanitizeForFilename = (value: string | null | undefined) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value
     .trim()
     .replace(/\s+/g, "-")
     .replace(/[\\/:*?"<>|]+/g, "")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+};
 
 const ChannelMoveModal = ({
   isOpen,
@@ -239,7 +244,15 @@ const ChannelMoveModal = ({
 
   const hasChanges = removedList.length > 0 || validDrafts.length > 0;
   const disableSave =
-    !isOpen || !channel || !date || !sessionId || isSaving || hasInvalidDraft || !hasChanges || isLoading;
+    !isOpen ||
+    !channel ||
+    !date ||
+    !sessionId ||
+    isSaving ||
+    hasInvalidDraft ||
+    !hasChanges ||
+    isLoading ||
+    !channel.warehouse_name;
 
   useEffect(() => {
     if (!isOpen) {
@@ -296,6 +309,12 @@ const ChannelMoveModal = ({
 
     setDownloadError(null);
     setIsDownloading(true);
+
+    if (!channel.warehouse_name) {
+      setDownloadError("倉庫名が未設定のチャネルはエクスポートできません。");
+      setIsDownloading(false);
+      return;
+    }
 
     try {
       const { data } = await api.get<Blob>(
@@ -386,7 +405,14 @@ const ChannelMoveModal = ({
       return;
     }
 
+    if (!channel.warehouse_name) {
+      setLocalError("倉庫名が未設定のチャネルでは移動を登録できません。");
+      return;
+    }
+
     setLocalError(null);
+
+    const warehouseName = channel.warehouse_name;
 
     const payload: ChannelTransferCreate[] = validDrafts.map((draft) => {
       const trimmedOther = draft.otherChannel.trim();
@@ -397,7 +423,7 @@ const ChannelMoveModal = ({
       return {
         session_id: sessionId,
         sku_code: channel.sku_code,
-        warehouse_name: channel.warehouse_name,
+        warehouse_name: warehouseName,
         transfer_date: date,
         from_channel,
         to_channel,
@@ -440,7 +466,9 @@ const ChannelMoveModal = ({
               </div>
               <div>
                 <span className="channel-move-modal__metadata-label">warehouse_name;</span>
-                <span className="channel-move-modal__metadata-value">{channel.warehouse_name}</span>
+                <span className="channel-move-modal__metadata-value">
+                  {formatWarehouseName(channel.warehouse_name)}
+                </span>
               </div>
               <div>
                 <span className="channel-move-modal__metadata-label">chanel;</span>
@@ -459,7 +487,7 @@ const ChannelMoveModal = ({
               type="button"
               className="psi-button secondary"
               onClick={handleDownloadPlan}
-              disabled={isDownloading}
+              disabled={isDownloading || !channel.warehouse_name}
             >
               {isDownloading ? "ダウンロード中..." : "チャネル移動計画をダウンロード"}
             </button>

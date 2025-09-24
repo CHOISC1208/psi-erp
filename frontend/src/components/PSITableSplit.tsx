@@ -9,6 +9,7 @@ import {
   PSIEditableDay,
   isEditableMetric,
 } from "../pages/psiTableTypes";
+import { formatWarehouseName } from "../utils/warehouse";
 
 interface PSITableSplitProps {
   tableData: PSIEditableChannel[];
@@ -30,7 +31,7 @@ interface PSITableSplitProps {
     clipboardText: string
   ) => void;
   formatNumber: (value?: number | null) => string;
-  makeChannelKey: (channel: { sku_code: string; warehouse_name: string; channel: string }) => string;
+  makeChannelKey: (channel: { sku_code: string; warehouse_name: string | null; channel: string }) => string;
   makeCellKey: (channelKey: string, date: string) => string;
   valuesEqual: (a: number | null | undefined, b: number | null | undefined) => boolean;
   selectedChannelKey: string | null;
@@ -368,7 +369,7 @@ const PSITableSplit = ({
                           <div className="psi-cell-text">{channel.sku_name ?? "—"}</div>
                         </td>
                         <td className={`col-warehouse${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
-                          <div className="psi-cell-text">{channel.warehouse_name}</div>
+                          <div className="psi-cell-text">{formatWarehouseName(channel.warehouse_name)}</div>
                         </td>
                         <td className={`col-channel${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
                           <div className="psi-cell-text">{channel.channel}</div>
