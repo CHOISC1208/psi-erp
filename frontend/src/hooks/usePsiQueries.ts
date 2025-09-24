@@ -7,6 +7,7 @@ import {
   ChannelTransferIdentifier,
   PSIChannel,
   PSISessionSummary,
+  PSIReportResponse,
   Session,
 } from "../types";
 
@@ -32,6 +33,19 @@ const fetchDailyPsi = async (
 
 const fetchSessionSummary = async (sessionId: string): Promise<PSISessionSummary> => {
   const { data } = await api.get<PSISessionSummary>(`/psi/${sessionId}/summary`);
+  return data;
+};
+
+const generatePsiReport = async ({
+  sessionId,
+  skuCode,
+}: {
+  sessionId: string;
+  skuCode: string;
+}): Promise<PSIReportResponse> => {
+  const { data } = await api.get<PSIReportResponse>(`/psi/${sessionId}/report`, {
+    params: { sku_code: skuCode },
+  });
   return data;
 };
 
@@ -108,4 +122,9 @@ export const useCreateChannelTransferMutation = () =>
 export const useDeleteChannelTransferMutation = () =>
   useMutation({
     mutationFn: deleteChannelTransfer,
+  });
+
+export const usePsiReportMutation = () =>
+  useMutation({
+    mutationFn: generatePsiReport,
   });
