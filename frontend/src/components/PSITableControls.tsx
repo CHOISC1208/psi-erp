@@ -56,6 +56,7 @@ interface PSITableControlsProps {
   getErrorMessage: (error: unknown, fallback: string) => string;
   selectedSku: string | null;
   onSelectSku: (sku: string | null) => void;
+  onSkuListChange?: (skuCodes: string[]) => void;
 }
 
 const PSITableControls = forwardRef(function PSITableControls(
@@ -95,6 +96,7 @@ const PSITableControls = forwardRef(function PSITableControls(
     getErrorMessage,
     selectedSku,
     onSelectSku,
+    onSkuListChange,
   }: PSITableControlsProps,
   ref: ForwardedRef<HTMLElement>
 ) {
@@ -106,7 +108,6 @@ const PSITableControls = forwardRef(function PSITableControls(
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
   const firstFilterInputRef = useRef<HTMLInputElement | null>(null);
-  const previousFiltersRef = useRef<string[]>([]);
 
   const start = sessionSummaryQuery.data?.start_date ?? undefined;
   const end = sessionSummaryQuery.data?.end_date ?? undefined;
@@ -208,27 +209,38 @@ const PSITableControls = forwardRef(function PSITableControls(
   }, [sessionId, skuCode, warehouseName, channel, activeFilters]);
 
   useEffect(() => {
-    const previous = previousFiltersRef.current;
-    const filtersChanged =
-      previous.length !== activeFilters.length ||
-      previous.some((value, index) => value !== activeFilters[index]);
+    onSkuListChange?.(sorted.map((row) => row.sku_code));
+  }, [onSkuListChange, sorted]);
 
-    if (filtersChanged && selectedSku) {
-      onSelectSku(null);
+  useEffect(() => {
+    if (sorted.length === 0) {
+      if (selectedSku) {
+        onSelectSku(null);
+      }
+      return;
     }
 
-    previousFiltersRef.current = activeFilters;
-  }, [activeFilters, onSelectSku, selectedSku]);
+    const exists = sorted.some((row) => row.sku_code === selectedSku);
+    if (!selectedSku || !exists) {
+      onSelectSku(sorted[0].sku_code);
+    }
+  }, [sorted, selectedSku, onSelectSku]);
 
   useEffect(() => {
     if (!selectedSku) {
       return;
     }
-    const visible = new Set(pageRows.map((row) => row.sku_code));
-    if (!visible.has(selectedSku)) {
-      onSelectSku(null);
+
+    const index = sorted.findIndex((row) => row.sku_code === selectedSku);
+    if (index === -1) {
+      return;
     }
-  }, [pageRows, selectedSku, onSelectSku, activeFilters]);
+
+    const targetPage = Math.floor(index / pageSize) + 1;
+    if (targetPage !== currentPage) {
+      setCurrentPage(targetPage);
+    }
+  }, [selectedSku, sorted, currentPage, pageSize]);
 
   const goPrev = () => setCurrentPage((previous) => Math.max(1, previous - 1));
   const goNext = () => setCurrentPage((previous) => Math.min(totalPages, previous + 1));

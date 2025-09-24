@@ -24,6 +24,9 @@ interface PSITableContentProps {
   hasAnyData: boolean;
   selectedSku: string | null;
   visibleMetrics: MetricDefinition[];
+  availableMetrics: MetricDefinition[];
+  selectedMetricKeys: MetricKey[];
+  onSelectedMetricKeysChange: (keys: MetricKey[]) => void;
   allDates: string[];
   formatDisplayDate: (iso: string) => string;
   onDownload: () => void;
@@ -39,6 +42,10 @@ interface PSITableContentProps {
     date: string;
     row: PSIGridMetricRow;
   }) => void;
+  onGoToPreviousSku?: () => void;
+  onGoToNextSku?: () => void;
+  activeSkuCode?: string | null;
+  activeSkuName?: string | null;
 }
 
 const editableFields: EditableField[] = ["inbound_qty", "outbound_qty", "safety_stock"];
@@ -127,6 +134,9 @@ const PSITableContent = ({
   hasAnyData,
   selectedSku,
   visibleMetrics,
+  availableMetrics,
+  selectedMetricKeys,
+  onSelectedMetricKeysChange,
   allDates,
   formatDisplayDate,
   onDownload,
@@ -138,12 +148,19 @@ const PSITableContent = ({
   onEditableChange,
   onRegisterScrollToDate,
   onChannelCellClick,
+  onGoToPreviousSku,
+  onGoToNextSku,
+  activeSkuCode,
+  activeSkuName,
 }: PSITableContentProps) => {
   const [activeWarehouse, setActiveWarehouse] = useState<string | null>(null);
-  const [metricFilter, setMetricFilter] = useState("");
   const [metricHeaderElement, setMetricHeaderElement] = useState<HTMLDivElement | null>(null);
+  const [isMetricMenuOpen, setIsMetricMenuOpen] = useState(false);
   const headerRefs = useRef(new Map<string, HTMLDivElement>());
+  const metricMenuRef = useRef<HTMLDivElement | null>(null);
+  const metricMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const metricMenuAvailable = availableMetrics.length > 0;
 
   const warehouses = useMemo<WarehouseView[]>(() => {
     if (!tableData.length || !visibleMetrics.length) {
@@ -238,13 +255,58 @@ const PSITableContent = ({
     });
   }, [allDates]);
 
+  useEffect(() => {
+    if (!isMetricMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (metricMenuRef.current?.contains(target)) {
+        return;
+      }
+      if (metricMenuButtonRef.current?.contains(target)) {
+        return;
+      }
+      setIsMetricMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsMetricMenuOpen(false);
+        metricMenuButtonRef.current?.focus({ preventScroll: true });
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMetricMenuOpen]);
+
+  useEffect(() => {
+    if (!metricMenuAvailable) {
+      setIsMetricMenuOpen(false);
+    }
+  }, [metricMenuAvailable]);
+
   const activeWarehouseData = useMemo(
     () => warehouses.find((item) => item.name === activeWarehouse) ?? null,
     [activeWarehouse, warehouses]
   );
 
   const activeWarehouseChannels = activeWarehouseData?.channels ?? [];
-  const normalizedMetricFilter = metricFilter.trim().toLowerCase();
+  const selectedMetricKeySet = useMemo(
+    () => new Set<MetricKey>(selectedMetricKeys),
+    [selectedMetricKeys]
+  );
 
   const rows = useMemo(() => {
     if (!activeWarehouseChannels.length) {
@@ -252,19 +314,13 @@ const PSITableContent = ({
     }
 
     return activeWarehouseChannels.reduce<PSIGridRow[]>((list, channelGroup) => {
-      const filteredMetrics = normalizedMetricFilter
-        ? channelGroup.metrics.filter((row) =>
-            String(row.metric).toLowerCase().includes(normalizedMetricFilter)
-          )
-        : channelGroup.metrics;
-
-      if (normalizedMetricFilter && filteredMetrics.length === 0) {
+      if (channelGroup.metrics.length === 0) {
         return list;
       }
 
       list.push(channelGroup.header);
       list.push(
-        ...filteredMetrics.map((metricRow) => ({
+        ...channelGroup.metrics.map((metricRow) => ({
           ...metricRow,
           showChannelLabel: false,
         }))
@@ -272,7 +328,7 @@ const PSITableContent = ({
 
       return list;
     }, []);
-  }, [activeWarehouseChannels, normalizedMetricFilter]);
+  }, [activeWarehouseChannels]);
 
   const handleMetricHeaderRef = useCallback((element: HTMLDivElement | null) => {
     setMetricHeaderElement(element);
@@ -378,6 +434,41 @@ const PSITableContent = ({
     return duplicates;
   }, [baseColumns, rows]);
 
+  const selectedMetricCount = selectedMetricKeys.length;
+  const metricButtonLabel =
+    selectedMetricCount === 0
+      ? "メトリクスを選択"
+      : `表示項目 (${selectedMetricCount}/${availableMetrics.length})`;
+
+  const handleMetricMenuToggle = useCallback(() => {
+    if (!metricMenuAvailable) {
+      return;
+    }
+    setIsMetricMenuOpen((previous) => !previous);
+  }, [metricMenuAvailable]);
+
+  const handleMetricToggle = useCallback(
+    (metricKey: MetricKey) => {
+      const current = new Set(selectedMetricKeys);
+      if (current.has(metricKey)) {
+        current.delete(metricKey);
+      } else {
+        current.add(metricKey);
+      }
+      const ordered = availableMetrics.map((metric) => metric.key).filter((key) => current.has(key));
+      onSelectedMetricKeysChange(ordered);
+    },
+    [availableMetrics, onSelectedMetricKeysChange, selectedMetricKeys]
+  );
+
+  const handleSelectAllMetrics = useCallback(() => {
+    onSelectedMetricKeysChange(availableMetrics.map((metric) => metric.key));
+  }, [availableMetrics, onSelectedMetricKeysChange]);
+
+  const handleClearMetrics = useCallback(() => {
+    onSelectedMetricKeysChange([]);
+  }, [onSelectedMetricKeysChange]);
+
   const handleHeaderRef = useCallback((key: string, element: HTMLDivElement | null) => {
     const map = headerRefs.current;
     if (element) {
@@ -401,15 +492,11 @@ const PSITableContent = ({
 
             const cellValue = row[date] as number | null | undefined;
             const numericValue = typeof cellValue === "number" ? cellValue : null;
-            const isNegativeValue = numericValue !== null && numericValue < 0;
-            const showStockWarning = row.metricKey === "stock_closing" && isNegativeValue;
             const showMovableSurplus =
               row.metricKey === "movable_stock" && numericValue !== null && numericValue >= MOVABLE_STOCK_THRESHOLD;
             return classNames(
               "psi-grid-value-cell",
               row.metricEditable && "psi-grid-cell-editable",
-              isNegativeValue && "psi-grid-value-negative",
-              showStockWarning && "psi-grid-stock-warning",
               showMovableSurplus && "psi-grid-value-surplus"
             );
           },
@@ -461,14 +548,56 @@ const PSITableContent = ({
       <div className="psi-grid-header-filter">
         <span>Metric</span>
         <div className="psi-grid-header-filter-controls">
-          <input
-            type="text"
-            value={metricFilter}
-            onChange={(event) => setMetricFilter(event.target.value)}
-            placeholder="フィルタ"
-            aria-label="Metricをフィルタ"
-          />
+          <button
+            type="button"
+            ref={metricMenuButtonRef}
+            className="psi-grid-metric-button"
+            onClick={handleMetricMenuToggle}
+            aria-haspopup="true"
+            aria-expanded={isMetricMenuOpen}
+            disabled={!metricMenuAvailable}
+          >
+            <span className="psi-grid-metric-button-label">{metricButtonLabel}</span>
+            <span className="psi-grid-metric-button-icon" aria-hidden="true">
+              ▾
+            </span>
+          </button>
         </div>
+        {isMetricMenuOpen && metricMenuAvailable && (
+          <div className="psi-grid-metric-menu" role="menu" ref={metricMenuRef}>
+            <div className="psi-grid-metric-options">
+              {availableMetrics.map((metric) => {
+                const checked = selectedMetricKeySet.has(metric.key);
+                return (
+                  <label key={metric.key} className="psi-grid-metric-option">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => handleMetricToggle(metric.key)}
+                    />
+                    <span>{metric.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="psi-grid-metric-menu-actions">
+              <button
+                type="button"
+                onClick={handleSelectAllMetrics}
+                disabled={selectedMetricKeys.length === availableMetrics.length}
+              >
+                全選択
+              </button>
+              <button
+                type="button"
+                onClick={handleClearMetrics}
+                disabled={selectedMetricKeys.length === 0}
+              >
+                全解除
+              </button>
+            </div>
+          </div>
+        )}
       </div>,
       metricHeaderElement
     );
@@ -548,13 +677,6 @@ const PSITableContent = ({
   const showSelectionPlaceholder = !selectedSku && hasAnyData;
   const showNoDataMessage = !hasAnyData && sessionId && !isLoading;
   const showNoMetricsMessage = Boolean(selectedSku && visibleMetrics.length === 0);
-  const showNoMetricFilterResults = Boolean(
-    normalizedMetricFilter &&
-    rows.length === 0 &&
-    hasAnyData &&
-    visibleMetrics.length > 0 &&
-    allDates.length > 0
-  );
   const showNoDatesMessage = Boolean(selectedSku && visibleMetrics.length > 0 && allDates.length === 0);
 
   return (
@@ -564,16 +686,42 @@ const PSITableContent = ({
       {hasRows ? (
         <div className="psi-table-wrapper">
           <div className="psi-table-toolbar">
-            <div className="psi-table-toolbar-group">
-              <button
-                type="button"
-                className="psi-button secondary"
-                onClick={onDownload}
-                disabled={!canDownload}
-                aria-label="CSVをダウンロード"
-              >
-                <span>CSV</span>
-              </button>
+            <div className="psi-table-toolbar-groups">
+              <div className="psi-table-toolbar-group">
+                <button
+                  type="button"
+                  className="psi-button secondary"
+                  onClick={onDownload}
+                  disabled={!canDownload}
+                  aria-label="CSVをダウンロード"
+                >
+                  <span>CSV</span>
+                </button>
+              </div>
+              <div className="psi-table-toolbar-group psi-table-sku-navigator">
+                <button
+                  type="button"
+                  className="psi-button secondary"
+                  onClick={() => onGoToPreviousSku?.()}
+                  disabled={!onGoToPreviousSku}
+                  aria-label="前のSKUを表示"
+                >
+                  ‹ 前のSKU
+                </button>
+                <div className="psi-table-sku-label" role="status" aria-live="polite">
+                  <span className="psi-table-sku-code">{activeSkuCode ?? "SKU未選択"}</span>
+                  {activeSkuName && <span className="psi-table-sku-name">{activeSkuName}</span>}
+                </div>
+                <button
+                  type="button"
+                  className="psi-button secondary"
+                  onClick={() => onGoToNextSku?.()}
+                  disabled={!onGoToNextSku}
+                  aria-label="次のSKUを表示"
+                >
+                  次のSKU ›
+                </button>
+              </div>
             </div>
             {(applyError || applySuccess) && (
               <div className="psi-table-messages">
@@ -618,8 +766,6 @@ const PSITableContent = ({
         <p className="psi-table-status">上段の集計からSKUを選択してください。</p>
       ) : showNoDataMessage ? (
         <p className="psi-table-status">No PSI data for the current filters.</p>
-      ) : showNoMetricFilterResults ? (
-        <p className="psi-table-status">Metricフィルタに一致する行がありません。</p>
       ) : showNoMetricsMessage ? (
         <p className="psi-table-status">表示するメトリクスが選択されていません。</p>
       ) : (

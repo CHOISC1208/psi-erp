@@ -8,7 +8,8 @@ export type MetricKey =
   | "net_flow"
   | "stock_closing"
   | "safety_stock"
-  | "movable_stock";
+  | "movable_stock"
+  | "inventory_days";
 
 export type EditableField = "inbound_qty" | "outbound_qty" | "safety_stock";
 
@@ -72,6 +73,7 @@ export const metricDefinitions: MetricDefinition[] = [
   { key: "stock_closing", label: "stock_closing" },
   { key: "safety_stock", label: "safety_stock", editable: true },
   { key: "movable_stock", label: "movable_stock" },
+  { key: "inventory_days", label: "inventory_days" },
 ];
 
 export const isEditableMetric = (
