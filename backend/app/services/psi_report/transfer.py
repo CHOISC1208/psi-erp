@@ -14,7 +14,7 @@ class TransferSuggestion:
     date: date
     sku_code: str
     sku_name: str | None
-    warehouse_name: str
+    warehouse_name: str | None
     from_channel: str
     to_channel: str
     quantity: float
@@ -42,7 +42,7 @@ def _average_outbound(rows: Iterable[PivotRow]) -> float:
 
 
 def suggest_channel_transfers(rows: Iterable[PivotRow], cfg: Settings) -> list[TransferSuggestion]:
-    grouped: dict[tuple[str, str], list[PivotRow]] = defaultdict(list)
+    grouped: dict[tuple[str, str | None], list[PivotRow]] = defaultdict(list)
     for row in rows:
         grouped[(row.sku_code, row.warehouse_name)].append(row)
 
@@ -135,5 +135,12 @@ def suggest_channel_transfers(rows: Iterable[PivotRow], cfg: Settings) -> list[T
                     )
                 )
 
-    suggestions.sort(key=lambda item: (item.date, item.warehouse_name, item.from_channel, item.to_channel))
+    suggestions.sort(
+        key=lambda item: (
+            item.date,
+            item.warehouse_name or "",
+            item.from_channel,
+            item.to_channel,
+        )
+    )
     return suggestions

@@ -15,7 +15,7 @@ class PivotRow:
 
     sku_code: str
     sku_name: str | None
-    warehouse_name: str
+    warehouse_name: str | None
     channel: str
     date: date
     stock_closing: float
@@ -70,7 +70,7 @@ def build_pivot_rows(
     if not rows:
         return PivotResult(rows=[], start_date=None, end_date=None)
 
-    rows.sort(key=lambda item: (item.date, item.warehouse_name, item.channel))
+    rows.sort(key=lambda item: (item.date, item.warehouse_name or "", item.channel))
     start = rows[0].date
     cutoff = start + timedelta(days=target_days_ahead - 1)
     filtered = [row for row in rows if row.date <= cutoff]

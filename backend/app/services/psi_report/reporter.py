@@ -33,7 +33,16 @@ def _format_quantity(value: float) -> str:
     return f"{value:,.0f}" if abs(value) >= 1 else f"{value:,.2f}"
 
 
-def _warehouse_transfer_summary(transfers: Sequence[TransferSuggestion], warehouse: str) -> list[tuple[str, str, float]]:
+def _normalise_warehouse_name(value: str | None) -> str:
+    if value is None:
+        return "未設定倉庫"
+    stripped = value.strip()
+    return stripped or "未設定倉庫"
+
+
+def _warehouse_transfer_summary(
+    transfers: Sequence[TransferSuggestion], warehouse: str | None
+) -> list[tuple[str, str, float]]:
     grouped: dict[tuple[str, str], float] = defaultdict(float)
     for transfer in transfers:
         if transfer.warehouse_name != warehouse:
@@ -52,7 +61,7 @@ def _coverage_reason(row: StockoutRisk) -> str:
 
 
 def _compute_warehouse_coverage(
-    warehouse: str,
+    warehouse: str | None,
     sku_code: str,
     risks: Sequence[StockoutRisk],
     transfers: Sequence[TransferSuggestion],
@@ -62,9 +71,11 @@ def _compute_warehouse_coverage(
         key=lambda item: item.date,
     )
     first = next((row for row in relevant if row.has_deficit), None)
+    display_name = _normalise_warehouse_name(warehouse)
+
     if first is None:
         return WarehouseCoverage(
-            warehouse_name=warehouse,
+            warehouse_name=display_name,
             first_stockout=None,
             coverage_start=None,
             coverage_end=None,
@@ -103,7 +114,7 @@ def _compute_warehouse_coverage(
         reason = _coverage_reason(first)
 
     return WarehouseCoverage(
-        warehouse_name=warehouse,
+        warehouse_name=display_name,
         first_stockout=first.date,
         coverage_start=coverage_start,
         coverage_end=coverage_end,
@@ -120,7 +131,7 @@ def _risk_table_rows(risks: Sequence[StockoutRisk], limit: int) -> list[list[str
         rows.append(
             [
                 _format_date(row.date),
-                row.warehouse_name,
+                _normalise_warehouse_name(row.warehouse_name),
                 _format_quantity(row.total_stock),
                 _format_quantity(row.total_deficit),
                 _format_quantity(row.total_surplus),
@@ -138,7 +149,7 @@ def _transfer_table_rows(transfers: Sequence[TransferSuggestion], limit: int) ->
         rows.append(
             [
                 transfer.date.strftime("%Y-%m-%d"),
-                transfer.warehouse_name,
+                _normalise_warehouse_name(transfer.warehouse_name),
                 f"{transfer.from_channel} → {transfer.to_channel}",
                 _format_quantity(transfer.quantity),
             ]
@@ -172,7 +183,9 @@ def build_summary_md(
     sku_name = rows[0].sku_name
     start_date = min(row.date for row in rows)
     end_date = max(row.date for row in rows)
-    warehouses = sorted({row.warehouse_name for row in rows})
+    warehouses = sorted(
+        {row.warehouse_name for row in rows}, key=_normalise_warehouse_name
+    )
 
     lines: list[str] = []
     lines.append(f"# 在庫移動レポート — SKU: {sku_code}")
@@ -192,7 +205,7 @@ def build_summary_md(
     lines.append("## 倉庫別ハイライト")
     for warehouse in warehouses:
         coverage = _compute_warehouse_coverage(warehouse, sku_code, risks, transfers)
-        lines.append(f"### {warehouse}")
+        lines.append(f"### {coverage.warehouse_name}")
         lines.append(f"- 初回欠品日: {_format_date(coverage.first_stockout)}")
         lines.append(
             f"- 移動で賄える期間: {_format_date(coverage.coverage_start)} 〜 {_format_date(coverage.coverage_end)}"
