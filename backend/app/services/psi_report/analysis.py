@@ -15,7 +15,7 @@ from .data import PivotRow
 class StockoutRisk:
     sku_code: str
     sku_name: str | None
-    warehouse_name: str
+    warehouse_name: str | None
     date: date
     channels_count: int
     total_stock: float
@@ -27,7 +27,7 @@ class StockoutRisk:
 
 def detect_stockout_risk(rows: Iterable[PivotRow], cfg: Settings) -> list[StockoutRisk]:
     _ = cfg  # placeholder for future tuning knobs
-    grouped: dict[tuple[str, str, date], list[PivotRow]] = defaultdict(list)
+    grouped: dict[tuple[str, str | None, date], list[PivotRow]] = defaultdict(list)
     for row in rows:
         grouped[(row.sku_code, row.warehouse_name, row.date)].append(row)
 
@@ -54,11 +54,13 @@ def detect_stockout_risk(rows: Iterable[PivotRow], cfg: Settings) -> list[Stocko
             )
         )
 
-    risks.sort(key=lambda item: (item.date, item.warehouse_name))
+    risks.sort(key=lambda item: (item.date, item.warehouse_name or ""))
     return risks
 
 
-def first_stockout_date(risk_rows: Iterable[StockoutRisk], sku_code: str, warehouse_name: str) -> date | None:
+def first_stockout_date(
+    risk_rows: Iterable[StockoutRisk], sku_code: str, warehouse_name: str | None
+) -> date | None:
     for row in risk_rows:
         if row.sku_code == sku_code and row.warehouse_name == warehouse_name and row.has_deficit:
             return row.date
