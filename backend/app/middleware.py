@@ -14,7 +14,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, *, csp: str | None = None) -> None:  # type: ignore[override]
         super().__init__(app)
-        self.csp = csp or "default-src 'self'; frame-ancestors 'none'; form-action 'self'"
+        self.csp = csp or (
+            "default-src 'self'; "
+            "img-src 'self' data: https://img.icons8.com; "
+            "frame-ancestors 'none'; "
+            "form-action 'self'"
+        )
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         response: Response = await call_next(request)
