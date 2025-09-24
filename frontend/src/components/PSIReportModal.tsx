@@ -1,7 +1,6 @@
 import { MouseEvent, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import MarkdownRenderer from "./MarkdownRenderer";
 
 import { PSIReportSettings } from "../types";
 
@@ -144,7 +143,7 @@ const PSIReportModal = ({
           {error && !isLoading && <p className="psi-report-modal__status error">{error}</p>}
           {!isLoading && !error && report && (
             <div className="psi-report-modal__content" aria-live="polite">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
+              <MarkdownRenderer source={report} />
             </div>
           )}
           {!isLoading && !error && !report && <p className="psi-report-modal__status">表示するレポートがありません。</p>}
