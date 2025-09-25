@@ -94,6 +94,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
     headerHeight: defaultHeaderHeight,
     bodyContentHeight: defaultBodyContentHeight,
     horizontalScrollbarHeight: 0,
+    containerWidth: 0,
   }));
 
   const orderedChannels = useMemo(() => {
@@ -163,18 +164,21 @@ const PSISummaryTable = memo(function PSISummaryTable({
     const measuredHeaderHeight = headerRow?.getBoundingClientRect().height ?? defaultHeaderHeight;
     const measuredBodyContentHeight = body?.scrollHeight ?? defaultBodyContentHeight;
     const scrollbarHeight = body ? Math.max(0, body.offsetHeight - body.clientHeight) : 0;
+    const measuredContainerWidth = container.getBoundingClientRect().width;
 
     setGridLayoutMetrics((previous) => {
       const next = {
         headerHeight: measuredHeaderHeight,
         bodyContentHeight: measuredBodyContentHeight,
         horizontalScrollbarHeight: scrollbarHeight,
+        containerWidth: measuredContainerWidth,
       };
 
       if (
         Math.abs(previous.headerHeight - next.headerHeight) < 0.5 &&
         Math.abs(previous.bodyContentHeight - next.bodyContentHeight) < 0.5 &&
-        Math.abs(previous.horizontalScrollbarHeight - next.horizontalScrollbarHeight) < 0.5
+        Math.abs(previous.horizontalScrollbarHeight - next.horizontalScrollbarHeight) < 0.5 &&
+        Math.abs(previous.containerWidth - next.containerWidth) < 0.5
       ) {
         return previous;
       }
@@ -466,6 +470,8 @@ const PSISummaryTable = memo(function PSISummaryTable({
     viewport.addEventListener("scroll", handleScrollOrResize, { passive: true });
     window.addEventListener("resize", handleScrollOrResize);
 
+    handleScrollOrResize();
+
     return () => {
       viewport.removeEventListener("scroll", handleScrollOrResize);
       window.removeEventListener("resize", handleScrollOrResize);
@@ -476,6 +482,16 @@ const PSISummaryTable = memo(function PSISummaryTable({
   }, [measureGridLayout, updateSelectionOverlay, visibleRows]);
 
   const columns = useMemo<Column<SummaryGridRow>[]>(() => {
+    const flexibleColumnCount = Math.max(orderedChannels.length + 1, 1);
+    const totalFrozenWidth = skuColumnWidth + metricColumnWidth;
+    const availableWidth = Math.max(gridLayoutMetrics.containerWidth - totalFrozenWidth, 0);
+    const baseFlexibleWidth = baseColumnWidth * flexibleColumnCount;
+    const expandedFlexibleWidth =
+      flexibleColumnCount > 0 && availableWidth > baseFlexibleWidth
+        ? availableWidth / flexibleColumnCount
+        : baseColumnWidth;
+    const flexibleColumnWidth = Math.max(baseColumnWidth, expandedFlexibleWidth);
+
     const skuColumn: Column<SummaryGridRow> = {
       key: "sku",
       name: "SKU",
@@ -540,7 +556,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
     const channelColumns = orderedChannels.map((channel) => ({
       key: channel,
       name: channel,
-      width: baseColumnWidth,
+      width: flexibleColumnWidth,
       className: (row: SummaryGridRow) => valueClassName(row, channel),
       headerCellClass: "psi-grid-header-numeric",
       renderCell: ({ row }: { row: SummaryGridRow }) => {
@@ -554,7 +570,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
     const totalColumn: Column<SummaryGridRow> = {
       key: "total",
       name: "合計",
-      width: baseColumnWidth,
+      width: flexibleColumnWidth,
       className: (row) => valueClassName(row, "total"),
       headerCellClass: "psi-grid-header-numeric",
       renderCell: ({ row }) =>
@@ -565,6 +581,7 @@ const PSISummaryTable = memo(function PSISummaryTable({
   }, [
     handleMetricHeaderRef,
     handleSkuHeaderRef,
+    gridLayoutMetrics.containerWidth,
     orderedChannels,
     scheduleSelectionOverlayUpdate,
     toggleSkuCollapse,
