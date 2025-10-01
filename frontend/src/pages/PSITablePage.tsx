@@ -138,6 +138,11 @@ const recomputeChannel = (channel: PSIEditableChannel): PSIEditableChannel => {
 
     const safety = entry.safety_stock ?? 0;
     const movableStock = stockClosing === null ? null : stockClosing - safety;
+    const stdstock = entry.stdstock ?? null;
+    const gap =
+      stdstock === null || stockClosing === null
+        ? entry.gap ?? null
+        : stdstock - stockClosing;
     const inventoryDays =
       stockClosing === null || outbound <= 0 ? null : stockClosing / outbound;
 
@@ -149,6 +154,7 @@ const recomputeChannel = (channel: PSIEditableChannel): PSIEditableChannel => {
       net_flow: netFlow,
       stock_closing: stockClosing,
       movable_stock: movableStock,
+      gap,
       inventory_days: inventoryDays,
     };
   });

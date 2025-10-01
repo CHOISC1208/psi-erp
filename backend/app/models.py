@@ -284,6 +284,8 @@ class PSIBase(Base, SchemaMixin):
     stock_closing: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
     safety_stock: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
     movable_stock: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    stdstock: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    gap: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

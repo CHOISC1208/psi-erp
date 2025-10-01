@@ -60,6 +60,8 @@ class DailyPSI(BaseModel):
     stock_closing: float | None = None
     safety_stock: float | None = None
     movable_stock: float | None = None
+    stdstock: float | None = None
+    gap: float | None = None
     inventory_days: float | None = None
 
 
