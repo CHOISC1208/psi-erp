@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -192,12 +193,30 @@ class MasterRecordRead(MasterRecordBase):
     model_config = {"from_attributes": True}
 
 
-class WarehouseMasterRead(BaseModel):
-    """Warehouse metadata returned by the warehouse master endpoint."""
+class WarehouseMasterBase(BaseModel):
+    """Shared attributes for warehouse master payloads."""
 
-    warehouse_name: str
+    warehouse_name: Annotated[str, Field(min_length=1)]
+    region: Annotated[str | None, Field(default=None)] = None
+    main_channel: Annotated[str | None, Field(default=None)] = None
+
+
+class WarehouseMasterCreate(WarehouseMasterBase):
+    """Schema for creating a warehouse master record."""
+
+    pass
+
+
+class WarehouseMasterUpdate(BaseModel):
+    """Schema for updating mutable warehouse master fields."""
+
+    warehouse_name: Annotated[str, Field(min_length=1)] | None = None
     region: str | None = None
     main_channel: str | None = None
+
+
+class WarehouseMasterRead(WarehouseMasterBase):
+    """Warehouse metadata returned by the warehouse master endpoint."""
 
     model_config = {"from_attributes": True}
 
@@ -226,6 +245,36 @@ class PSIMetricUpdate(BaseModel):
 
 class PSIMetricRead(PSIMetricBase):
     """PSI metric definition returned by the API."""
+
+    model_config = {"from_attributes": True}
+
+
+class CategoryRankParameterBase(BaseModel):
+    """Shared attributes for category rank parameter payloads."""
+
+    rank_type: Annotated[str, Field(min_length=1)]
+    category_1: Annotated[str, Field(min_length=1)]
+    category_2: Annotated[str, Field(min_length=1)]
+    threshold: Annotated[Decimal, Field(max_digits=20, decimal_places=6)]
+
+
+class CategoryRankParameterCreate(CategoryRankParameterBase):
+    """Schema for creating a category rank parameter."""
+
+    pass
+
+
+class CategoryRankParameterUpdate(BaseModel):
+    """Schema for updating a category rank parameter."""
+
+    rank_type: Annotated[str, Field(min_length=1)] | None = None
+    category_1: Annotated[str, Field(min_length=1)] | None = None
+    category_2: Annotated[str, Field(min_length=1)] | None = None
+    threshold: Annotated[Decimal, Field(max_digits=20, decimal_places=6)] | None = None
+
+
+class CategoryRankParameterRead(CategoryRankParameterBase):
+    """Category rank parameter returned by the API."""
 
     model_config = {"from_attributes": True}
 

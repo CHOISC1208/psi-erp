@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def _perform_json_request(app, method: str, path: str):
+def _perform_json_request(app, method: str, path: str, payload: dict | None = None):
     scope = {
         "type": "http",
         "http_version": "1.1",
@@ -20,7 +20,7 @@ def _perform_json_request(app, method: str, path: str):
         "path": path,
         "raw_path": path.encode("latin-1"),
         "scheme": "http",
-        "headers": [],
+        "headers": [(b"content-type", b"application/json")] if payload else [],
         "query_string": b"",
         "server": ("testserver", 80),
         "client": ("testclient", 12345),
@@ -34,7 +34,8 @@ def _perform_json_request(app, method: str, path: str):
         if received:
             return {"type": "http.disconnect"}
         received = True
-        return {"type": "http.request", "body": b"", "more_body": False}
+        body = json.dumps(payload).encode("utf-8") if payload else b""
+        return {"type": "http.request", "body": body, "more_body": False}
 
     async def send(message: dict[str, object]) -> None:
         messages.append(message)
@@ -152,3 +153,90 @@ def test_get_warehouse_missing_returns_404(app_env: SimpleNamespace) -> None:
     status, payload = _perform_json_request(app_env.app, "GET", "/warehouses/Unknown")
     assert status == 404
     assert payload == {"detail": "warehouse not found"}
+
+
+def test_create_warehouse_inserts_record(app_env: SimpleNamespace) -> None:
+    with app_env.SessionLocal() as session:
+        session.add(app_env.models.ChannelMaster(channel="Retail", display_name="店舗"))
+        session.commit()
+
+    status, payload = _perform_json_request(
+        app_env.app,
+        "POST",
+        "/warehouses",
+        {
+            "warehouse_name": "Central",
+            "region": "Kanto",
+            "main_channel": "Retail",
+        },
+    )
+
+    assert status == 201
+    assert payload == {
+        "warehouse_name": "Central",
+        "region": "Kanto",
+        "main_channel": "Retail",
+    }
+
+    with app_env.SessionLocal() as session:
+        record = session.get(app_env.models.WarehouseMaster, "Central")
+        assert record is not None
+        assert record.region == "Kanto"
+        assert record.main_channel == "Retail"
+
+
+def test_update_warehouse_allows_rename(app_env: SimpleNamespace) -> None:
+    with app_env.SessionLocal() as session:
+        session.add_all(
+            [
+                app_env.models.ChannelMaster(channel="Retail", display_name="店舗"),
+                app_env.models.ChannelMaster(channel="Outlet", display_name="アウトレット"),
+            ]
+        )
+        session.add(
+            app_env.models.WarehouseMaster(
+                warehouse_name="Central",
+                region="Kanto",
+                main_channel="Retail",
+            )
+        )
+        session.commit()
+
+    status, payload = _perform_json_request(
+        app_env.app,
+        "PUT",
+        "/warehouses/Central",
+        {
+            "warehouse_name": "Central-East",
+            "region": "Kanto East",
+            "main_channel": "Outlet",
+        },
+    )
+
+    assert status == 200
+    assert payload == {
+        "warehouse_name": "Central-East",
+        "region": "Kanto East",
+        "main_channel": "Outlet",
+    }
+
+    with app_env.SessionLocal() as session:
+        original = session.get(app_env.models.WarehouseMaster, "Central")
+        assert original is None
+        updated = session.get(app_env.models.WarehouseMaster, "Central-East")
+        assert updated is not None
+        assert updated.region == "Kanto East"
+        assert updated.main_channel == "Outlet"
+
+
+def test_delete_warehouse_removes_record(app_env: SimpleNamespace) -> None:
+    with app_env.SessionLocal() as session:
+        session.add(app_env.models.WarehouseMaster(warehouse_name="Central", region=None, main_channel=None))
+        session.commit()
+
+    status, payload = _perform_json_request(app_env.app, "DELETE", "/warehouses/Central")
+    assert status == 204
+    assert payload is None
+
+    with app_env.SessionLocal() as session:
+        assert session.get(app_env.models.WarehouseMaster, "Central") is None

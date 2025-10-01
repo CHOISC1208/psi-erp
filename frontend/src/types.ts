@@ -114,6 +114,19 @@ export interface PSIMetricDefinition {
   display_order: number;
 }
 
+export interface WarehouseMaster {
+  warehouse_name: string;
+  region?: string | null;
+  main_channel?: string | null;
+}
+
+export interface CategoryRankParameter {
+  rank_type: string;
+  category_1: string;
+  category_2: string;
+  threshold: string;
+}
+
 export interface MasterRecord {
   id: string;
   master_type: string;

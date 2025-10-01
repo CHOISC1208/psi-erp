@@ -15,6 +15,7 @@ from .config import settings
 from .middleware import CSRFMiddleware, SecurityHeadersMiddleware
 from .routers import (
     auth,
+    category_rank_parameters,
     channel_transfers,
     masters,
     psi,
@@ -48,6 +49,11 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(masters.router, prefix="/masters", tags=["masters"])
 app.include_router(psi_metrics.router, prefix="/psi-metrics", tags=["psi-metrics"])
+app.include_router(
+    category_rank_parameters.router,
+    prefix="/category-rank-parameters",
+    tags=["category-rank-parameters"],
+)
 app.include_router(psi.router, prefix="/psi", tags=["psi"])
 app.include_router(psi_edits.router, prefix="/psi-edits", tags=["psi-edits"])
 app.include_router(
@@ -64,6 +70,11 @@ app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(masters.router, prefix="/api/masters", tags=["masters"])
 app.include_router(
     psi_metrics.router, prefix="/api/psi-metrics", tags=["psi-metrics"]
+)
+app.include_router(
+    category_rank_parameters.router,
+    prefix="/api/category-rank-parameters",
+    tags=["category-rank-parameters"],
 )
 app.include_router(psi.router, prefix="/api/psi", tags=["psi"])
 app.include_router(psi_edits.router, prefix="/api/psi-edits", tags=["psi-edits"])
@@ -110,6 +121,7 @@ API_PREFIXES = (
     "psi-metrics",
     "psi",
     "psi-edits",
+    "category-rank-parameters",
     "channel-transfers",
     "auth",
     "health",
