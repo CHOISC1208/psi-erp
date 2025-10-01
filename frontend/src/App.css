@@ -462,6 +462,10 @@ body {
   align-items: center;
 }
 
+.reallocation-page .filter-actions {
+  margin-top: 1rem;
+}
+
 .filter-actions button {
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
@@ -623,6 +627,46 @@ button.collapse-toggle:focus-visible {
   display: grid;
   gap: 0.25rem;
   font-weight: 600;
+}
+
+.existing-plans {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.existing-plans__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.existing-plans__label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  min-width: 260px;
+}
+
+.existing-plans__select {
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+  color: inherit;
+}
+
+.existing-plans__status {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-subtle, #9ca3af);
+}
+
+.existing-plans__status--error {
+  color: var(--accent-red, #dc2626);
 }
 
 .psi-summary-card {

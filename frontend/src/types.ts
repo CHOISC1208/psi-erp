@@ -112,6 +112,7 @@ export interface ChannelTransfer extends ChannelTransferCreate {
 
 export interface MatrixRow {
   sku_code: string;
+  sku_name?: string | null;
   warehouse_name: string;
   channel: string;
   stock_at_anchor: number;
@@ -132,6 +133,10 @@ export interface TransferPlan {
   start_date: string;
   end_date: string;
   status: TransferPlanStatus;
+  created_at: string;
+  updated_at: string;
+  created_by?: string | null;
+  updated_by?: string | null;
 }
 
 export interface TransferPlanLine {
@@ -145,6 +150,11 @@ export interface TransferPlanLine {
   qty: number;
   is_manual: boolean;
   reason?: string | null;
+}
+
+export interface TransferPlanWithLines {
+  plan: TransferPlan;
+  lines: TransferPlanLine[];
 }
 
 export interface PSIMetricDefinition {

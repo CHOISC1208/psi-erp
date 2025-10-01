@@ -86,25 +86,6 @@ function ProtectedLayout() {
             </NavLink>
           </li>
           <li>
-            <NavLink to="/psi" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <span className="menu-icon" aria-hidden="true">
-                📊
-              </span>
-              <span className="menu-label">PSI Table</span>
-            </NavLink>
-          </li>
-          <li>
-            <NavLink
-              to="/transfer"
-              className={({ isActive }) => (isActive ? "active" : undefined)}
-            >
-              <span className="menu-icon" aria-hidden="true">
-                🔄
-              </span>
-              <span className="menu-label">Transfer</span>
-            </NavLink>
-          </li>
-          <li>
             <NavLink
               to="/reallocation"
               className={({ isActive }) => (isActive ? "active" : undefined)}
@@ -113,14 +94,6 @@ function ProtectedLayout() {
                 ♻️
               </span>
               <span className="menu-label">Reallocation</span>
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/edits" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <span className="menu-icon" aria-hidden="true">
-                ✏️
-              </span>
-              <span className="menu-label">Edits</span>
             </NavLink>
           </li>
           <li>

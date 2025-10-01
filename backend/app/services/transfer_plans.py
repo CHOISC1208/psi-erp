@@ -28,6 +28,7 @@ def _to_decimal(value: Decimal | float | int | None) -> Decimal:
 @dataclass(slots=True)
 class MatrixRowData:
     sku_code: str
+    sku_name: str | None
     warehouse_name: str
     channel: str
     stock_at_anchor: Decimal
@@ -100,6 +101,7 @@ def fetch_matrix_rows(
     stock_anchor_expr = func.max(
         case((psi.date == start_date, psi.stock_at_anchor), else_=None)
     ).label("stock_at_anchor")
+    sku_name_expr = func.max(psi.sku_name).label("sku_name")
     stdstock_expr = func.max(case((psi.date == start_date, psi.stdstock), else_=None)).label(
         "stdstock"
     )
@@ -115,6 +117,7 @@ def fetch_matrix_rows(
             psi.warehouse_name,
             psi.channel,
             stock_anchor_expr,
+            sku_name_expr,
             inbound_expr,
             outbound_expr,
             stock_close_expr,
@@ -197,6 +200,7 @@ def fetch_matrix_rows(
     query = (
         select(
             keys.c.sku_code,
+            aggregated.c.sku_name,
             keys.c.warehouse_name,
             keys.c.channel,
             func.coalesce(aggregated.c.stock_at_anchor, ZERO).label("stock_at_anchor"),
@@ -243,6 +247,7 @@ def fetch_matrix_rows(
         result.append(
             MatrixRowData(
                 sku_code=row.sku_code,
+                sku_name=row.sku_name,
                 warehouse_name=row.warehouse_name,
                 channel=row.channel,
                 stock_at_anchor=stock_at_anchor,

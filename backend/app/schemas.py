@@ -329,6 +329,7 @@ class MatrixRow(BaseModel):
     """Aggregated PSI metrics decorated with plan movements."""
 
     sku_code: str
+    sku_name: str | None = None
     warehouse_name: str
     channel: str
     stock_at_anchor: float
@@ -352,6 +353,10 @@ class TransferPlanRead(BaseModel):
     start_date: date
     end_date: date
     status: TransferPlanStatus
+    created_at: datetime
+    updated_at: datetime
+    created_by: UUID | None = None
+    updated_by: UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -396,11 +401,15 @@ class TransferPlanRecommendRequest(BaseModel):
     channels: list[str] | None = None
 
 
-class TransferPlanRecommendResponse(BaseModel):
-    """Transfer plan created by the recommendation engine."""
+class TransferPlanWithLines(BaseModel):
+    """Transfer plan along with the associated line items."""
 
     plan: TransferPlanRead
     lines: list[TransferPlanLineRead]
+
+
+class TransferPlanRecommendResponse(TransferPlanWithLines):
+    """Transfer plan created by the recommendation engine."""
 
 
 class TransferPlanLineUpsertRequest(BaseModel):
