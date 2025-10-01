@@ -16,6 +16,7 @@ from sqlalchemy import (
     Integer,
     JSON,
     Numeric,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -185,14 +186,38 @@ class WarehouseMaster(Base, SchemaMixin):
     """Warehouse definitions enriched with metadata such as main channel."""
 
     __tablename__ = "warehouse_master"
+    __table_args__ = (
+        Index("idx_warehouse_master_main_channel", "main_channel"),
+        SchemaMixin.__table_args__,
+    )
 
     warehouse_name: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
     region: Mapped[str | None] = mapped_column(Text, nullable=True)
     main_channel: Mapped[str | None] = mapped_column(
         Text,
-        ForeignKey(_qualified("channel_master", "channel")),
+        ForeignKey(
+            _qualified("channel_master", "channel"),
+            ondelete="SET NULL",
+            onupdate="CASCADE",
+        ),
         nullable=True,
     )
+
+
+class CategoryRankParameter(Base, SchemaMixin):
+    """Threshold configuration used to derive FW/SS ranks per category."""
+
+    __tablename__ = "category_rank_parameters"
+
+    __table_args__ = (
+        PrimaryKeyConstraint("rank_type", "category_1", "category_2", name="pk_category_rank_parameters"),
+        SchemaMixin.__table_args__,
+    )
+
+    rank_type: Mapped[str] = mapped_column(Text, nullable=False)
+    category_1: Mapped[str] = mapped_column(Text, nullable=False)
+    category_2: Mapped[str] = mapped_column(Text, nullable=False)
+    threshold: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
 
 
 class PSIMetricDefinition(Base, SchemaMixin):
@@ -214,6 +239,27 @@ class PSIBase(Base, SchemaMixin):
     """
 
     __tablename__ = "psi_base"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "sku_code",
+            "warehouse_name",
+            "channel",
+            "date",
+            name="uq_psibase_key",
+        ),
+        Index(
+            "idx_psibase_lookup",
+            "session_id",
+            "sku_code",
+            "warehouse_name",
+            "channel",
+            "date",
+        ),
+        Index("idx_psi_base_fw_rank", "fw_rank"),
+        Index("idx_psi_base_ss_rank", "ss_rank"),
+        SchemaMixin.__table_args__,
+    )
 
     id: Mapped[int] = mapped_column(AUTO_INCREMENT_PK, primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
