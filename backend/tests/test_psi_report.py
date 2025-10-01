@@ -14,6 +14,11 @@ def test_build_pivot_rows_handles_missing_inventory_days():
     channel = schemas.ChannelDailyPSI(
         sku_code="SKU-1",
         sku_name="Sample",
+        category_1="Apparel",
+        category_2="Outer",
+        category_3="Coat",
+        fw_rank=1,
+        ss_rank=3,
         warehouse_name="WH-A",
         channel="Online",
         daily=[
@@ -33,3 +38,6 @@ def test_build_pivot_rows_handles_missing_inventory_days():
     result = build_pivot_rows([channel], target_days_ahead=14)
 
     assert result.rows[0].inventory_days is None
+    assert result.rows[0].category_1 == "Apparel"
+    assert result.rows[0].fw_rank == 1
+    assert result.rows[0].ss_rank == 3

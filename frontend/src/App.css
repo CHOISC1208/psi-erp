@@ -5,16 +5,35 @@
   background-color: var(--surface-body);
   --psi-col-sku-width: clamp(10ch, 14ch, 20ch);
   --psi-col-sku-name-width: clamp(12ch, 18ch, 24ch);
+  --psi-col-category-1-width: clamp(10ch, 16ch, 24ch);
+  --psi-col-category-2-width: clamp(10ch, 16ch, 24ch);
+  --psi-col-category-3-width: clamp(10ch, 16ch, 24ch);
+  --psi-col-fw-rank-width: clamp(6ch, 8ch, 10ch);
+  --psi-col-ss-rank-width: clamp(6ch, 8ch, 10ch);
   --psi-col-warehouse-width: clamp(10ch, 14ch, 20ch);
   --psi-col-channel-width: clamp(8ch, 12ch, 18ch);
   --psi-col-div-width: clamp(8ch, 11ch, 16ch);
   --psi-col-offset-sku-name: var(--psi-col-sku-width);
-  --psi-col-offset-warehouse: calc(var(--psi-col-offset-sku-name) + var(--psi-col-sku-name-width));
+  --psi-col-offset-category-1: calc(var(--psi-col-offset-sku-name) + var(--psi-col-sku-name-width));
+  --psi-col-offset-category-2: calc(
+    var(--psi-col-offset-category-1) + var(--psi-col-category-1-width)
+  );
+  --psi-col-offset-category-3: calc(
+    var(--psi-col-offset-category-2) + var(--psi-col-category-2-width)
+  );
+  --psi-col-offset-fw-rank: calc(var(--psi-col-offset-category-3) + var(--psi-col-category-3-width));
+  --psi-col-offset-ss-rank: calc(var(--psi-col-offset-fw-rank) + var(--psi-col-fw-rank-width));
+  --psi-col-offset-warehouse: calc(var(--psi-col-offset-ss-rank) + var(--psi-col-ss-rank-width));
   --psi-col-offset-channel: calc(var(--psi-col-offset-warehouse) + var(--psi-col-warehouse-width));
   --psi-col-offset-div: calc(var(--psi-col-offset-channel) + var(--psi-col-channel-width));
   --psi-left-width: calc(
     var(--psi-col-sku-width) +
       var(--psi-col-sku-name-width) +
+      var(--psi-col-category-1-width) +
+      var(--psi-col-category-2-width) +
+      var(--psi-col-category-3-width) +
+      var(--psi-col-fw-rank-width) +
+      var(--psi-col-ss-rank-width) +
       var(--psi-col-warehouse-width) +
       var(--psi-col-channel-width) +
       var(--psi-col-div-width)
@@ -1194,6 +1213,38 @@ button.icon-button:focus-visible {
   width: var(--psi-col-sku-name-width);
 }
 
+.psi-table .col-category-1 {
+  left: var(--psi-col-offset-category-1);
+  min-width: var(--psi-col-category-1-width);
+  width: var(--psi-col-category-1-width);
+}
+
+.psi-table .col-category-2 {
+  left: var(--psi-col-offset-category-2);
+  min-width: var(--psi-col-category-2-width);
+  width: var(--psi-col-category-2-width);
+}
+
+.psi-table .col-category-3 {
+  left: var(--psi-col-offset-category-3);
+  min-width: var(--psi-col-category-3-width);
+  width: var(--psi-col-category-3-width);
+}
+
+.psi-table .col-fw-rank {
+  left: var(--psi-col-offset-fw-rank);
+  min-width: var(--psi-col-fw-rank-width);
+  width: var(--psi-col-fw-rank-width);
+  text-align: right;
+}
+
+.psi-table .col-ss-rank {
+  left: var(--psi-col-offset-ss-rank);
+  min-width: var(--psi-col-ss-rank-width);
+  width: var(--psi-col-ss-rank-width);
+  text-align: right;
+}
+
 .psi-table .col-warehouse {
   left: var(--psi-col-offset-warehouse);
   min-width: var(--psi-col-warehouse-width);
@@ -1706,6 +1757,22 @@ button.icon-button:focus-visible {
 .psi-grid-summary-metric-cell {
   justify-content: flex-start;
   font-weight: 600;
+}
+
+.psi-grid-meta-cell {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.psi-grid-meta-header {
+  font-weight: 600;
+  background-color: rgba(148, 163, 184, 0.14) !important;
+  color: var(--text-secondary);
+}
+
+.psi-grid-rank-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .psi-grid-summary-metric-cell {

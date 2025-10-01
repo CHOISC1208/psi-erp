@@ -293,6 +293,11 @@ const PSITableSplit = ({
                 <tr>
                   <th className="col-sku">sku_code</th>
                   <th className="col-sku-name">sku_name</th>
+                  <th className="col-category-1">category_1</th>
+                  <th className="col-category-2">category_2</th>
+                  <th className="col-category-3">category_3</th>
+                  <th className="col-fw-rank">fw_rank</th>
+                  <th className="col-ss-rank">ss_rank</th>
                   <th className="col-warehouse">warehouse_name</th>
                   <th className="col-channel">channel</th>
                   <th className="col-div">{renderMetricSelector()}</th>
@@ -366,6 +371,40 @@ const PSITableSplit = ({
                         </td>
                         <td className={`col-sku-name${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
                           <div className="psi-cell-text">{channel.sku_name ?? "—"}</div>
+                        </td>
+                        <td
+                          className={`col-category-1${isSelected ? " selected" : ""}`}
+                          rowSpan={rowSpan}
+                        >
+                          <div className="psi-cell-text">{channel.category_1 ?? "—"}</div>
+                        </td>
+                        <td
+                          className={`col-category-2${isSelected ? " selected" : ""}`}
+                          rowSpan={rowSpan}
+                        >
+                          <div className="psi-cell-text">{channel.category_2 ?? "—"}</div>
+                        </td>
+                        <td
+                          className={`col-category-3${isSelected ? " selected" : ""}`}
+                          rowSpan={rowSpan}
+                        >
+                          <div className="psi-cell-text">{channel.category_3 ?? "—"}</div>
+                        </td>
+                        <td
+                          className={`col-fw-rank${isSelected ? " selected" : ""}`}
+                          rowSpan={rowSpan}
+                        >
+                          <div className="psi-cell-text">
+                            {channel.fw_rank ?? "—"}
+                          </div>
+                        </td>
+                        <td
+                          className={`col-ss-rank${isSelected ? " selected" : ""}`}
+                          rowSpan={rowSpan}
+                        >
+                          <div className="psi-cell-text">
+                            {channel.ss_rank ?? "—"}
+                          </div>
                         </td>
                         <td className={`col-warehouse${isSelected ? " selected" : ""}`} rowSpan={rowSpan}>
                           <div className="psi-cell-text">{channel.warehouse_name}</div>

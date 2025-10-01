@@ -195,6 +195,12 @@ const PSITableContent = ({
           id: `${channelKey}__header`,
           channelKey,
           sku_code: channel.sku_code,
+          sku_name: channel.sku_name ?? null,
+          category_1: channel.category_1 ?? null,
+          category_2: channel.category_2 ?? null,
+          category_3: channel.category_3 ?? null,
+          fw_rank: channel.fw_rank ?? null,
+          ss_rank: channel.ss_rank ?? null,
           warehouse_name: channel.warehouse_name,
           channel: channel.channel,
           metric: "",
@@ -213,6 +219,12 @@ const PSITableContent = ({
             id: `${channelKey}__${metricKey}`,
             channelKey,
             sku_code: channel.sku_code,
+            sku_name: channel.sku_name ?? null,
+            category_1: channel.category_1 ?? null,
+            category_2: channel.category_2 ?? null,
+            category_3: channel.category_3 ?? null,
+            fw_rank: channel.fw_rank ?? null,
+            ss_rank: channel.ss_rank ?? null,
             warehouse_name: channel.warehouse_name,
             channel: channel.channel,
             metric: metric.label,
@@ -350,8 +362,79 @@ const PSITableContent = ({
     setMetricHeaderElement(element);
   }, []);
 
-  const baseColumns = useMemo<Column<PSIGridRow>[]>(
-    () => [
+  const baseColumns = useMemo<Column<PSIGridRow>[]>(() => {
+    const metaClassName = (row: PSIGridRow) =>
+      classNames(
+        "psi-grid-meta-cell",
+        row.rowType === "channelHeader" && "psi-grid-meta-header"
+      );
+
+    const rankClassName = (row: PSIGridRow) =>
+      classNames(
+        "psi-grid-meta-cell",
+        "psi-grid-rank-cell",
+        row.rowType === "channelHeader" && "psi-grid-meta-header"
+      );
+
+    return [
+      {
+        key: "sku_code",
+        name: "SKU",
+        width: 150,
+        frozen: true,
+        className: metaClassName,
+        renderCell: ({ row }) => row.sku_code,
+      },
+      {
+        key: "sku_name",
+        name: "SKU Name",
+        width: 200,
+        frozen: true,
+        className: metaClassName,
+        renderCell: ({ row }) => row.sku_name ?? "—",
+      },
+      {
+        key: "category_1",
+        name: "Category 1",
+        width: 170,
+        frozen: true,
+        className: metaClassName,
+        renderCell: ({ row }) => row.category_1 ?? "—",
+      },
+      {
+        key: "category_2",
+        name: "Category 2",
+        width: 170,
+        frozen: true,
+        className: metaClassName,
+        renderCell: ({ row }) => row.category_2 ?? "—",
+      },
+      {
+        key: "category_3",
+        name: "Category 3",
+        width: 170,
+        frozen: true,
+        className: metaClassName,
+        renderCell: ({ row }) => row.category_3 ?? "—",
+      },
+      {
+        key: "fw_rank",
+        name: "FW Rank",
+        width: 110,
+        frozen: true,
+        className: rankClassName,
+        renderCell: ({ row }) =>
+          row.fw_rank === null || row.fw_rank === undefined ? "—" : row.fw_rank,
+      },
+      {
+        key: "ss_rank",
+        name: "SS Rank",
+        width: 110,
+        frozen: true,
+        className: rankClassName,
+        renderCell: ({ row }) =>
+          row.ss_rank === null || row.ss_rank === undefined ? "—" : row.ss_rank,
+      },
       {
         key: "channel",
         name: "Channel",
@@ -400,9 +483,8 @@ const PSITableContent = ({
         renderCell: ({ row }) => (row.rowType === "channelHeader" ? null : row.metric),
         setHeaderRef: handleMetricHeaderRef,
       },
-    ],
-    [handleMetricHeaderRef]
-  );
+    ];
+  }, [handleMetricHeaderRef]);
 
   const duplicateCellMap = useMemo(() => {
     const metricRows = rows.filter((row): row is PSIGridMetricRow => row.rowType === "metric");

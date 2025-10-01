@@ -760,6 +760,11 @@ export default function PSITablePage() {
     const header = [
       "sku_code",
       "sku_name",
+      "category_1",
+      "category_2",
+      "category_3",
+      "fw_rank",
+      "ss_rank",
       "warehouse_name",
       "channel",
       "metric",
@@ -788,6 +793,11 @@ export default function PSITablePage() {
         return [
           item.sku_code,
           item.sku_name ?? "",
+          item.category_1 ?? "",
+          item.category_2 ?? "",
+          item.category_3 ?? "",
+          item.fw_rank ?? "",
+          item.ss_rank ?? "",
           item.warehouse_name,
           item.channel,
           metric.label,
