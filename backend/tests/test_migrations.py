@@ -42,6 +42,7 @@ def test_upgrade_adds_audit_columns(tmp_path, monkeypatch):
         "psi_edits": {"created_by", "updated_by"},
         "channel_transfers": {"created_by", "updated_by"},
         "psi_edit_log": {"created_at", "updated_at", "created_by", "updated_by", "edited_by"},
+        "warehouse_master": {"main_channel"},
     }
 
     for table, columns in expected_columns.items():

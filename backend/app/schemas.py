@@ -192,6 +192,16 @@ class MasterRecordRead(MasterRecordBase):
     model_config = {"from_attributes": True}
 
 
+class WarehouseMasterRead(BaseModel):
+    """Warehouse metadata returned by the warehouse master endpoint."""
+
+    warehouse_name: str
+    region: str | None = None
+    main_channel: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class PSIMetricBase(BaseModel):
     """Shared attributes for PSI metric definitions."""
 
