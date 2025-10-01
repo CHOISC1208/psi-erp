@@ -2,6 +2,9 @@
 """FastAPI application entry-point."""
 from __future__ import annotations
 
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -26,7 +29,18 @@ from .routers import (
     warehouses,
 )
 
-app = FastAPI(title="GEN-like PSI API")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    try:
+        yield
+    except asyncio.CancelledError:
+        logger.info("Application lifespan cancelled during shutdown.")
+
+
+app = FastAPI(title="GEN-like PSI API", lifespan=_lifespan)
 
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.add_middleware(SecurityHeadersMiddleware)
