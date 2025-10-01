@@ -68,6 +68,9 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 const fetchMetrics = async (): Promise<PSIMetricDefinition[]> => {
   const { data } = await api.get<PSIMetricDefinition[]>("/psi-metrics/");
+  if (!Array.isArray(data)) {
+    throw new Error("Unexpected metrics response format.");
+  }
   return data;
 };
 
@@ -93,6 +96,9 @@ const deleteMetric = async (metricName: string): Promise<void> => {
 
 const fetchWarehouses = async (): Promise<WarehouseMaster[]> => {
   const { data } = await api.get<WarehouseMaster[]>("/warehouses/");
+  if (!Array.isArray(data)) {
+    throw new Error("Unexpected warehouses response format.");
+  }
   return data;
 };
 
@@ -118,6 +124,9 @@ const deleteWarehouse = async (warehouseName: string): Promise<void> => {
 
 const fetchRankParameters = async (): Promise<CategoryRankParameter[]> => {
   const { data } = await api.get<CategoryRankParameter[]>("/category-rank-parameters/");
+  if (!Array.isArray(data)) {
+    throw new Error("Unexpected rank parameters response format.");
+  }
   return data;
 };
 
