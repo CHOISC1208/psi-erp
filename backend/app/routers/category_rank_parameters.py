@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from threading import Lock
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from psycopg2 import errorcodes
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
@@ -12,6 +13,85 @@ from .. import models, schemas
 from ..deps import get_db
 
 router = APIRouter()
+
+
+_OLD_RANK_TYPE_CONSTRAINT = "ck_category_rank_parameters_rank_type"
+_NEW_RANK_TYPE_CONSTRAINT = "ck_category_rank_parameters_rank_type_length"
+_rank_type_constraint_lock = Lock()
+_rank_type_constraint_checked = False
+
+
+def _quote_identifier(identifier: str) -> str:
+    return identifier.replace("\"", "\"\"")
+
+
+def _qualified_table_name(table_name: str, schema: str | None) -> str:
+    if schema:
+        return f'"{_quote_identifier(schema)}"."{_quote_identifier(table_name)}"'
+    return f'"{_quote_identifier(table_name)}"'
+
+
+def _ensure_rank_type_constraint(db: DBSession) -> None:
+    """Ensure the relaxed rank_type constraint is present in the database."""
+
+    global _rank_type_constraint_checked
+
+    if _rank_type_constraint_checked:
+        return
+
+    with _rank_type_constraint_lock:
+        if _rank_type_constraint_checked:
+            return
+
+        bind = db.get_bind()
+        if bind is None:
+            _rank_type_constraint_checked = True
+            return
+
+        table = models.CategoryRankParameter.__table__
+        schema = table.schema
+
+        inspector = inspect(bind)
+        checks = inspector.get_check_constraints(table.name, schema=schema)
+        constraint_names = {
+            check.get("name") for check in checks if check.get("name") is not None
+        }
+
+        if _NEW_RANK_TYPE_CONSTRAINT in constraint_names:
+            _rank_type_constraint_checked = True
+            return
+
+        if bind.dialect.name != "postgresql" or (
+            _OLD_RANK_TYPE_CONSTRAINT not in constraint_names
+        ):
+            _rank_type_constraint_checked = True
+            return
+
+        qualified_table = _qualified_table_name(table.name, schema)
+
+        try:
+            db.execute(
+                text(
+                    f"ALTER TABLE {qualified_table} DROP CONSTRAINT "
+                    f'"{_quote_identifier(_OLD_RANK_TYPE_CONSTRAINT)}"'
+                )
+            )
+            db.execute(
+                text(
+                    f"ALTER TABLE {qualified_table} ADD CONSTRAINT "
+                    f'"{_quote_identifier(_NEW_RANK_TYPE_CONSTRAINT)}" '
+                    "CHECK (length(rank_type) BETWEEN 1 AND 2)"
+                )
+            )
+            db.commit()
+        except Exception as exc:  # pragma: no cover - depends on external DB state
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update rank_type constraint. Please run database migrations.",
+            ) from exc
+
+        _rank_type_constraint_checked = True
 
 
 def _normalize_required(value: str, field_name: str) -> str:
@@ -91,6 +171,8 @@ def list_rank_parameters(
 def create_rank_parameter(
     payload: schemas.CategoryRankParameterCreate, db: DBSession = Depends(get_db)
 ) -> schemas.CategoryRankParameterRead:
+    _ensure_rank_type_constraint(db)
+
     rank_type = _normalize_rank_type(payload.rank_type)
     category_1 = _normalize_required(payload.category_1, "category_1")
     category_2 = _normalize_required(payload.category_2, "category_2")
@@ -123,6 +205,8 @@ def update_rank_parameter(
     payload: schemas.CategoryRankParameterUpdate,
     db: DBSession = Depends(get_db),
 ) -> schemas.CategoryRankParameterRead:
+    _ensure_rank_type_constraint(db)
+
     record = _get_record_or_404(db, rank_type, category_1, category_2)
 
     update_values = payload.model_dump(exclude_unset=True)
