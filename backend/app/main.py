@@ -25,6 +25,7 @@ from .routers import (
     psi_edits,
     psi_metrics,
     sessions,
+    transfer_plans,
     users,
     warehouses,
 )
@@ -75,6 +76,11 @@ app.include_router(
     prefix="/channel-transfers",
     tags=["channel-transfers"],
 )
+app.include_router(
+    transfer_plans.router,
+    prefix="/transfer-plans",
+    tags=["transfer-plans"],
+)
 app.include_router(warehouses.router, prefix="/warehouses", tags=["warehouses"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 
@@ -96,6 +102,11 @@ app.include_router(
     channel_transfers.router,
     prefix="/api/channel-transfers",
     tags=["channel-transfers"],
+)
+app.include_router(
+    transfer_plans.router,
+    prefix="/api/transfer-plans",
+    tags=["transfer-plans"],
 )
 app.include_router(warehouses.router, prefix="/api/warehouses", tags=["warehouses"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
