@@ -65,6 +65,7 @@ def _handle_integrity_error(db: DBSession, exc: IntegrityError) -> None:
     raise HTTPException(status_code=400, detail="Invalid rank parameter data") from exc
 
 
+@router.get("", response_model=list[schemas.CategoryRankParameterRead])
 @router.get("/", response_model=list[schemas.CategoryRankParameterRead])
 def list_rank_parameters(
     db: DBSession = Depends(get_db),
@@ -79,6 +80,11 @@ def list_rank_parameters(
 
 @router.post(
     "",
+    response_model=schemas.CategoryRankParameterRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@router.post(
+    "/",
     response_model=schemas.CategoryRankParameterRead,
     status_code=status.HTTP_201_CREATED,
 )
