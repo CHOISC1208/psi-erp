@@ -504,7 +504,11 @@ function WarehouseMasterManager() {
     queryFn: fetchWarehouses,
   });
 
-  const warehouses = warehousesQuery.data ?? [];
+  const warehouses = Array.isArray(warehousesQuery.data) ? warehousesQuery.data : [];
+  const warehousesResponseError =
+    !Array.isArray(warehousesQuery.data) && !warehousesQuery.isLoading
+      ? "Unexpected response format received for warehouses."
+      : null;
 
   const normalizePayload = (payload: WarehouseFormState): WarehouseMaster => ({
     warehouse_name: payload.warehouse_name.trim(),
@@ -673,6 +677,9 @@ function WarehouseMasterManager() {
         {warehousesQuery.error ? (
           <p className="error-text">Failed to load warehouses. Please try again.</p>
         ) : null}
+        {warehousesResponseError ? (
+          <p className="error-text">{warehousesResponseError}</p>
+        ) : null}
         <div className="table-container">
           <table className="data-table">
             <thead>
@@ -810,7 +817,13 @@ function RankParametersMaster() {
     queryFn: fetchRankParameters,
   });
 
-  const rankParameters = rankParametersQuery.data ?? [];
+  const rankParameters = Array.isArray(rankParametersQuery.data)
+    ? rankParametersQuery.data
+    : [];
+  const rankParametersResponseError =
+    !Array.isArray(rankParametersQuery.data) && !rankParametersQuery.isLoading
+      ? "Unexpected response format received for rank parameters."
+      : null;
 
   const normalizePayload = (payload: RankParameterFormState): CategoryRankParameter => ({
     rank_type: payload.rank_type.trim(),
@@ -1023,6 +1036,9 @@ function RankParametersMaster() {
         {rankParametersQuery.isLoading && !rankParameters.length ? <p>Loading rank parameters…</p> : null}
         {rankParametersQuery.error ? (
           <p className="error-text">Failed to load rank parameters. Please try again.</p>
+        ) : null}
+        {rankParametersResponseError ? (
+          <p className="error-text">{rankParametersResponseError}</p>
         ) : null}
         <div className="table-container">
           <table className="data-table">
