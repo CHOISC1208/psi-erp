@@ -39,6 +39,8 @@ PSI 基礎データ取り込み API (`POST /psi/{session_id}/upload`) の入力�
 - `stock_closing`
 - `safety_stock`
 - `movable_stock`
+- `stdstock`
+- `gap`
 
 ヘッダー名は大文字小文字・スペースの違いを無視して突き合わせます。
 
@@ -67,6 +69,8 @@ PSI 基礎データ取り込み API (`POST /psi/{session_id}/upload`) の入力�
 | `stock_closing` | numeric | 必須 (空欄可) | 当日終値。 |
 | `safety_stock` | numeric | 必須 (空欄可) | 安全在庫。 |
 | `movable_stock` | numeric | 必須 (空欄可) | 可動在庫（終値−安全在庫）。 |
+| `stdstock` | numeric | 必須 (空欄可) | 標準在庫。編集対象指標として `psi_metrics_master` に登録されます。 |
+| `gap` | numeric | 必須 (空欄可) | 在庫ギャップなど派生指標。アップロード値をそのまま保存します。 |
 
 ## データフォーマット
 

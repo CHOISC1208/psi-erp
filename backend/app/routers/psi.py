@@ -276,6 +276,8 @@ async def upload_csv_for_session(
         "stock_closing",
         "safety_stock",
         "movable_stock",
+        "stdstock",
+        "gap",
     }
     missing = required_columns - set(headers)
     if missing:
@@ -383,6 +385,8 @@ async def upload_csv_for_session(
             movable_stock=_parse_decimal(
                 raw_row.get(header_map["movable_stock"]), "movable_stock"
             ),
+            stdstock=_parse_decimal(raw_row.get(header_map["stdstock"]), "stdstock"),
+            gap=_parse_decimal(raw_row.get(header_map["gap"]), "gap"),
         )
         affected_dates.add(row_date)
 
@@ -629,6 +633,12 @@ def daily_psi(
         else:
             movable_stock = (base_row.movable_stock or zero) + channel_move_val
 
+        stdstock_value = base_row.stdstock
+        gap_value = base_row.gap
+        if stdstock_value is not None:
+            if recalc_closing or gap_value is None or channel_move_raw is not None:
+                gap_value = stdstock_value - stock_closing
+
         bucket["records"].append(
             schemas.DailyPSI(
                 date=base_row.date,
@@ -642,6 +652,8 @@ def daily_psi(
                 stock_closing=float(stock_closing),
                 safety_stock=float(safety_val),
                 movable_stock=float(movable_stock),
+                stdstock=_to_optional_float(stdstock_value),
+                gap=_to_optional_float(gap_value),
             )
         )
 

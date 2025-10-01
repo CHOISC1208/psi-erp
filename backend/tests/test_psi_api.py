@@ -2,15 +2,19 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import sys
 import uuid
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
+from starlette.datastructures import UploadFile
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -305,3 +309,195 @@ def test_apply_edits_response_obeys_audit_flag(
     assert body["last_edited_by_username"] == user.username
     assert isinstance(body["last_edited_at"], str)
     assert body["last_edited_at"]
+
+
+def test_upload_persists_stdstock_and_gap(
+    app_env: SimpleNamespace, auth_user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.app.routers import psi as psi_router
+
+    user = auth_user
+    session = _create_session(app_env, user)
+
+    with app_env.engine.begin() as connection:
+        app_env.models.PSIBase.__table__.drop(bind=connection, checkfirst=True)
+        app_env.models.PSIBase.__table__.create(bind=connection, checkfirst=True)
+
+    monkeypatch.setattr(
+        "backend.app.routers.psi._ensure_channel_transfer_table", lambda db: None
+    )
+
+    rows = [
+        [
+            "sku_code",
+            "category_1",
+            "category_2",
+            "category_3",
+            "sku_name",
+            "warehouse_name",
+            "channel",
+            "fw_rank",
+            "ss_rank",
+            "date",
+            "stock_at_anchor",
+            "inbound_qty",
+            "outbound_qty",
+            "net_flow",
+            "stock_closing",
+            "safety_stock",
+            "movable_stock",
+            "stdstock",
+            "gap",
+        ],
+        [
+            "SKU001",
+            "CatA",
+            "CatB",
+            "CatC",
+            "Sample Item",
+            "Tokyo",
+            "online",
+            "A",
+            "B",
+            "2025/10/02",
+            "100",
+            "10",
+            "5",
+            "5",
+            "105",
+            "80",
+            "25",
+            "110",
+            "5",
+        ],
+        [
+            "SKU001",
+            "CatA",
+            "CatB",
+            "CatC",
+            "Sample Item",
+            "Tokyo",
+            "online",
+            "A",
+            "B",
+            "2025/10/03",
+            "105",
+            "0",
+            "20",
+            "-20",
+            "85",
+            "80",
+            "5",
+            "90",
+            "5",
+        ],
+    ]
+    csv_text = "\n".join("\t".join(str(value) for value in row) for row in rows)
+
+    upload_file = UploadFile(filename="psi_base.tsv", file=io.BytesIO(csv_text.encode("utf-8")))
+
+    with app_env.SessionLocal() as db:
+        result = asyncio.run(
+            psi_router.upload_csv_for_session(
+                session_id=session.id, file=upload_file, db=db
+            )
+        )
+        assert result.rows_imported == 2
+
+        stored_rows = db.scalars(
+            select(app_env.models.PSIBase).order_by(app_env.models.PSIBase.date.asc())
+        ).all()
+
+    assert len(stored_rows) == 2
+    first_row, second_row = stored_rows
+    assert first_row.stdstock == Decimal("110")
+    assert first_row.gap == Decimal("5")
+    assert second_row.stdstock == Decimal("90")
+    assert second_row.gap == Decimal("5")
+
+    # Gap values should reflect the stored decimals after upload.
+    assert first_row.gap == Decimal("5")
+
+
+def test_daily_psi_computes_gap_from_stdstock(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.routers import psi as psi_router
+
+    base_row_first = SimpleNamespace(
+        sku_code="SKU001",
+        warehouse_name="Tokyo",
+        channel="online",
+        sku_name="Sample Item",
+        category_1="CatA",
+        category_2="CatB",
+        category_3="CatC",
+        fw_rank="A",
+        ss_rank="B",
+        date=date(2025, 10, 2),
+        stock_at_anchor=Decimal("100"),
+        inbound_qty=Decimal("10"),
+        outbound_qty=Decimal("5"),
+        net_flow=Decimal("5"),
+        stock_closing=Decimal("105"),
+        safety_stock=Decimal("80"),
+        movable_stock=Decimal("25"),
+        stdstock=Decimal("110"),
+        gap=Decimal("1"),
+    )
+    base_row_second = SimpleNamespace(
+        sku_code="SKU001",
+        warehouse_name="Tokyo",
+        channel="online",
+        sku_name="Sample Item",
+        category_1="CatA",
+        category_2="CatB",
+        category_3="CatC",
+        fw_rank="A",
+        ss_rank="B",
+        date=date(2025, 10, 3),
+        stock_at_anchor=Decimal("105"),
+        inbound_qty=Decimal("0"),
+        outbound_qty=Decimal("20"),
+        net_flow=Decimal("-20"),
+        stock_closing=Decimal("85"),
+        safety_stock=Decimal("80"),
+        movable_stock=Decimal("5"),
+        stdstock=Decimal("90"),
+        gap=Decimal("5"),
+    )
+
+    fake_rows = [
+        (base_row_first, None, Decimal("2")),
+        (base_row_second, None, None),
+    ]
+
+    class FakeResult:
+        def __init__(self, rows: list[tuple[object, object, object]]) -> None:
+            self._rows = rows
+
+        def all(self) -> list[tuple[object, object, object]]:
+            return self._rows
+
+    class FakeDB:
+        def execute(self, _query):
+            return FakeResult(fake_rows)
+
+        def get_bind(self):
+            return None
+
+    monkeypatch.setattr(
+        "backend.app.routers.psi._get_session_or_404", lambda db, session_id: None
+    )
+    monkeypatch.setattr(
+        "backend.app.routers.psi._ensure_channel_transfer_table", lambda db: None
+    )
+
+    response = psi_router.daily_psi(session_id=uuid.uuid4(), db=FakeDB())
+
+    assert len(response) == 1
+    daily = response[0].daily
+    assert len(daily) == 2
+    assert daily[0].stdstock == pytest.approx(110.0)
+    # Channel move triggers gap recalculation: 110 - (105 + 2) == 3
+    assert daily[0].gap == pytest.approx(3.0)
+    assert daily[1].stdstock == pytest.approx(90.0)
+    assert daily[1].gap == pytest.approx(5.0)
