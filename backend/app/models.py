@@ -205,7 +205,7 @@ class WarehouseMaster(Base, SchemaMixin):
 
 
 class CategoryRankParameter(Base, SchemaMixin):
-    """Threshold configuration used to derive FW/SS ranks per category."""
+    """Threshold configuration used to derive rank classifications per category."""
 
     __tablename__ = "category_rank_parameters"
 

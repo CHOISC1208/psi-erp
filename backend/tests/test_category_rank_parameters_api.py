@@ -97,7 +97,7 @@ def test_create_rank_parameter(app_env: SimpleNamespace) -> None:
         "POST",
         "/category-rank-parameters",
         {
-            "rank_type": "FW",
+            "rank_type": "A",
             "category_1": "A",
             "category_2": "01",
             "threshold": "12.5",
@@ -106,13 +106,13 @@ def test_create_rank_parameter(app_env: SimpleNamespace) -> None:
 
     assert status == 201
     assert payload is not None
-    assert payload["rank_type"] == "FW"
+    assert payload["rank_type"] == "A"
     assert payload["category_1"] == "A"
     assert payload["category_2"] == "01"
     assert float(payload["threshold"]) == 12.5
 
     with app_env.SessionLocal() as session:
-        record = session.get(app_env.models.CategoryRankParameter, ("FW", "A", "01"))
+        record = session.get(app_env.models.CategoryRankParameter, ("A", "A", "01"))
         assert record is not None
         assert float(record.threshold) == 12.5
 
@@ -121,7 +121,7 @@ def test_update_rank_parameter_changes_key(app_env: SimpleNamespace) -> None:
     with app_env.SessionLocal() as session:
         session.add(
             app_env.models.CategoryRankParameter(
-                rank_type="FW",
+                rank_type="A",
                 category_1="A",
                 category_2="01",
                 threshold=12.5,
@@ -132,9 +132,9 @@ def test_update_rank_parameter_changes_key(app_env: SimpleNamespace) -> None:
     status, payload = _perform_json_request(
         app_env.app,
         "PUT",
-        "/category-rank-parameters/FW/A/01",
+        "/category-rank-parameters/A/A/01",
         {
-            "rank_type": "SS",
+            "rank_type": "B",
             "category_1": "A",
             "category_2": "02",
             "threshold": "20.000000",
@@ -143,15 +143,15 @@ def test_update_rank_parameter_changes_key(app_env: SimpleNamespace) -> None:
 
     assert status == 200
     assert payload is not None
-    assert payload["rank_type"] == "SS"
+    assert payload["rank_type"] == "B"
     assert payload["category_1"] == "A"
     assert payload["category_2"] == "02"
     assert float(payload["threshold"]) == 20
 
     with app_env.SessionLocal() as session:
-        old_record = session.get(app_env.models.CategoryRankParameter, ("FW", "A", "01"))
+        old_record = session.get(app_env.models.CategoryRankParameter, ("A", "A", "01"))
         assert old_record is None
-        new_record = session.get(app_env.models.CategoryRankParameter, ("SS", "A", "02"))
+        new_record = session.get(app_env.models.CategoryRankParameter, ("B", "A", "02"))
         assert new_record is not None
         assert float(new_record.threshold) == 20
 
@@ -160,7 +160,7 @@ def test_delete_rank_parameter(app_env: SimpleNamespace) -> None:
     with app_env.SessionLocal() as session:
         session.add(
             app_env.models.CategoryRankParameter(
-                rank_type="FW",
+                rank_type="A",
                 category_1="A",
                 category_2="01",
                 threshold=12.5,
@@ -169,7 +169,7 @@ def test_delete_rank_parameter(app_env: SimpleNamespace) -> None:
         session.commit()
 
     status, payload = _perform_json_request(
-        app_env.app, "DELETE", "/category-rank-parameters/FW/A/01"
+        app_env.app, "DELETE", "/category-rank-parameters/A/A/01"
     )
 
     assert status == 204
@@ -177,5 +177,22 @@ def test_delete_rank_parameter(app_env: SimpleNamespace) -> None:
 
     with app_env.SessionLocal() as session:
         assert (
-            session.get(app_env.models.CategoryRankParameter, ("FW", "A", "01")) is None
+            session.get(app_env.models.CategoryRankParameter, ("A", "A", "01")) is None
         )
+
+
+def test_rank_type_cannot_exceed_two_characters(app_env: SimpleNamespace) -> None:
+    status, payload = _perform_json_request(
+        app_env.app,
+        "POST",
+        "/category-rank-parameters",
+        {
+            "rank_type": "AAA",
+            "category_1": "A",
+            "category_2": "01",
+            "threshold": "10",
+        },
+    )
+
+    assert status == 422
+    assert payload == {"detail": "rank_type must be at most 2 characters"}
