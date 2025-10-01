@@ -165,6 +165,34 @@ def _parse_decimal(raw_value: str | None, column: str) -> Decimal | None:
         ) from exc
 
 
+def _parse_int(raw_value: str | None, column: str) -> int | None:
+    """Parse an integer value from the CSV."""
+
+    if raw_value is None:
+        return None
+
+    stripped = raw_value.strip()
+    if not stripped:
+        return None
+
+    try:
+        decimal_value = Decimal(stripped)
+    except (InvalidOperation, ValueError) as exc:  # pragma: no cover - defensive safety
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid integer value in column '{column}'",
+        ) from exc
+
+    integral = decimal_value.to_integral_value()
+    if integral != decimal_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid integer value in column '{column}'",
+        )
+
+    return int(integral)
+
+
 def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
     """Return the session or raise a 404 error.
 
@@ -238,6 +266,11 @@ async def upload_csv_for_session(
         "warehouse_name",
         "channel",
         "date",
+        "category_1",
+        "category_2",
+        "category_3",
+        "fw_rank",
+        "ss_rank",
         "stock_at_anchor",
         "inbound_qty",
         "outbound_qty",
@@ -307,12 +340,29 @@ async def upload_csv_for_session(
             raw_row.get(sku_name_key, "").strip() if sku_name_key else ""
         ) or None
 
+        category_1_value = (
+            raw_row.get(header_map["category_1"], "").strip() or None
+        )
+        category_2_value = (
+            raw_row.get(header_map["category_2"], "").strip() or None
+        )
+        category_3_value = (
+            raw_row.get(header_map["category_3"], "").strip() or None
+        )
+        fw_rank_value = _parse_int(raw_row.get(header_map["fw_rank"]), "fw_rank")
+        ss_rank_value = _parse_int(raw_row.get(header_map["ss_rank"]), "ss_rank")
+
         key = (sku_code_value, warehouse_value, channel_value, row_date)
 
         rows_by_key[key] = models.PSIBase(
             session_id=session_id,
             sku_code=sku_code_value,
             sku_name=sku_name_value,
+            category_1=category_1_value,
+            category_2=category_2_value,
+            category_3=category_3_value,
+            fw_rank=fw_rank_value,
+            ss_rank=ss_rank_value,
             warehouse_name=warehouse_value,
             channel=channel_value,
             date=row_date,
@@ -483,7 +533,15 @@ def daily_psi(
 
     zero = Decimal("0")
     grouped: dict[tuple[str, str, str], dict[str, Any]] = defaultdict(
-        lambda: {"sku_name": None, "records": []}
+        lambda: {
+            "sku_name": None,
+            "category_1": None,
+            "category_2": None,
+            "category_3": None,
+            "fw_rank": None,
+            "ss_rank": None,
+            "records": [],
+        }
     )
 
     def _to_optional_float(value: Decimal | None) -> float | None:
@@ -494,7 +552,30 @@ def daily_psi(
     for base_row, edit_row, transfer_move in rows:
         key = (base_row.sku_code, base_row.warehouse_name, base_row.channel)
         bucket = grouped[key]
-        bucket["sku_name"] = base_row.sku_name or bucket["sku_name"]
+
+        def _assign_meta(field: str, value: Any) -> None:
+            if value is None:
+                return
+            current = bucket.get(field)
+            if current is None:
+                bucket[field] = value
+            elif current != value:  # pragma: no cover - inconsistent source data
+                logger.warning(
+                    "Inconsistent %s for %s/%s/%s: %r vs %r",
+                    field,
+                    base_row.sku_code,
+                    base_row.warehouse_name,
+                    base_row.channel,
+                    current,
+                    value,
+                )
+
+        _assign_meta("sku_name", base_row.sku_name)
+        _assign_meta("category_1", base_row.category_1)
+        _assign_meta("category_2", base_row.category_2)
+        _assign_meta("category_3", base_row.category_3)
+        _assign_meta("fw_rank", base_row.fw_rank)
+        _assign_meta("ss_rank", base_row.ss_rank)
 
         inbound = (
             edit_row.inbound_qty if edit_row and edit_row.inbound_qty is not None else base_row.inbound_qty
@@ -575,6 +656,11 @@ def daily_psi(
             schemas.ChannelDailyPSI(
                 sku_code=sku,
                 sku_name=values["sku_name"],
+                category_1=values["category_1"],
+                category_2=values["category_2"],
+                category_3=values["category_3"],
+                fw_rank=values["fw_rank"],
+                ss_rank=values["ss_rank"],
                 warehouse_name=warehouse,
                 channel=channel_name,
                 daily=daily_records,

@@ -23,7 +23,12 @@ class PivotRow:
     outbound_qty: float
     channel_move: float
     safety_stock: float
-    inventory_days: float | None
+    inventory_days: float | None = None
+    category_1: str | None = None
+    category_2: str | None = None
+    category_3: str | None = None
+    fw_rank: int | None = None
+    ss_rank: int | None = None
 
 
 @dataclass(slots=True)
@@ -53,6 +58,11 @@ def build_pivot_rows(
                 PivotRow(
                     sku_code=channel.sku_code,
                     sku_name=channel.sku_name,
+                    category_1=channel.category_1,
+                    category_2=channel.category_2,
+                    category_3=channel.category_3,
+                    fw_rank=channel.fw_rank,
+                    ss_rank=channel.ss_rank,
                     warehouse_name=channel.warehouse_name,
                     channel=channel.channel,
                     date=entry.date,

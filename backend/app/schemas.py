@@ -67,6 +67,11 @@ class ChannelDailyPSI(BaseModel):
 
     sku_code: str
     sku_name: str | None = None
+    category_1: str | None = None
+    category_2: str | None = None
+    category_3: str | None = None
+    fw_rank: int | None = None
+    ss_rank: int | None = None
     warehouse_name: str
     channel: str
     daily: list[DailyPSI]
