@@ -172,6 +172,29 @@ class MasterRecord(Base, SchemaMixin, TimestampMixin):
     data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
 
+class ChannelMaster(Base, SchemaMixin):
+    """Sales channel master data shared across warehouses."""
+
+    __tablename__ = "channel_master"
+
+    channel: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class WarehouseMaster(Base, SchemaMixin):
+    """Warehouse definitions enriched with metadata such as main channel."""
+
+    __tablename__ = "warehouse_master"
+
+    warehouse_name: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    region: Mapped[str | None] = mapped_column(Text, nullable=True)
+    main_channel: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey(_qualified("channel_master", "channel")),
+        nullable=True,
+    )
+
+
 class PSIMetricDefinition(Base, SchemaMixin):
     """Definition of metrics displayed on the PSI table."""
 

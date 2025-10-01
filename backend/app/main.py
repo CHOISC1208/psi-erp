@@ -22,6 +22,7 @@ from .routers import (
     psi_metrics,
     sessions,
     users,
+    warehouses,
 )
 
 app = FastAPI(title="GEN-like PSI API")
@@ -54,6 +55,7 @@ app.include_router(
     prefix="/channel-transfers",
     tags=["channel-transfers"],
 )
+app.include_router(warehouses.router, prefix="/warehouses", tags=["warehouses"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 
 # /api 配下にもミラー（フロントが /api/* を叩いてもOKに）
@@ -70,6 +72,7 @@ app.include_router(
     prefix="/api/channel-transfers",
     tags=["channel-transfers"],
 )
+app.include_router(warehouses.router, prefix="/api/warehouses", tags=["warehouses"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 
 @app.get("/health")
