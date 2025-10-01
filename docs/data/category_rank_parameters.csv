@@ -1,0 +1,3 @@
+rank_type,category_1,category_2,threshold
+FW,FOOTWEAR,SNEAKERS,0.75
+SS,APPAREL,TOPS,0.60
