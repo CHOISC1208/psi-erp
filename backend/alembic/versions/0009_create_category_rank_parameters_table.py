@@ -8,7 +8,7 @@ from alembic import op
 
 from app.config import settings
 
-revision: str = "0009"
+revision: str = "0009a"
 down_revision: Union[str, Sequence[str], None] = "0008"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
