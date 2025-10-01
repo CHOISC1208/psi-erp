@@ -10,7 +10,7 @@ export default defineConfig({
       // 認証
       "^/(auth)(/|$)": { target: "http://localhost:8000", changeOrigin: true },
       // PSI / セッション / マスター系など、使ってるAPIを全部ここに
-      "^/(psi|sessions|masters|api)(/|$)": {
+      "^/(psi|psi-metrics|sessions|masters|api|warehouses|category-rank-parameters|channel-transfers|psi-edits|users)(/|$)": {
         target: "http://localhost:8000",
         changeOrigin: true,
       },
