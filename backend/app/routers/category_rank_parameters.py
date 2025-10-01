@@ -21,6 +21,16 @@ def _normalize_required(value: str, field_name: str) -> str:
     return trimmed
 
 
+def _normalize_rank_type(value: str) -> str:
+    normalized = _normalize_required(value, "rank_type")
+    if len(normalized) > 2:
+        raise HTTPException(
+            status_code=422,
+            detail="rank_type must be at most 2 characters",
+        )
+    return normalized
+
+
 def _get_record_or_404(
     db: DBSession, rank_type: str, category_1: str, category_2: str
 ) -> models.CategoryRankParameter:
@@ -43,10 +53,13 @@ def _handle_integrity_error(db: DBSession, exc: IntegrityError) -> None:
     if constraint_name in {"pk_category_rank_parameters"} or pgcode == errorcodes.UNIQUE_VIOLATION:
         raise HTTPException(status_code=409, detail="rank parameter already exists") from exc
 
-    if constraint_name == "ck_category_rank_parameters_rank_type" or pgcode == errorcodes.CHECK_VIOLATION:
+    if constraint_name in {
+        "ck_category_rank_parameters_rank_type",
+        "ck_category_rank_parameters_rank_type_length",
+    } or pgcode == errorcodes.CHECK_VIOLATION:
         raise HTTPException(
             status_code=422,
-            detail="rank_type must be either 'FW' or 'SS'",
+            detail="rank_type must be at most 2 characters",
         ) from exc
 
     raise HTTPException(status_code=400, detail="Invalid rank parameter data") from exc
@@ -69,15 +82,10 @@ def list_rank_parameters(
     response_model=schemas.CategoryRankParameterRead,
     status_code=status.HTTP_201_CREATED,
 )
-@router.post(
-    "/",
-    response_model=schemas.CategoryRankParameterRead,
-    status_code=status.HTTP_201_CREATED,
-)
 def create_rank_parameter(
     payload: schemas.CategoryRankParameterCreate, db: DBSession = Depends(get_db)
 ) -> schemas.CategoryRankParameterRead:
-    rank_type = _normalize_required(payload.rank_type, "rank_type")
+    rank_type = _normalize_rank_type(payload.rank_type)
     category_1 = _normalize_required(payload.category_1, "category_1")
     category_2 = _normalize_required(payload.category_2, "category_2")
 
@@ -113,7 +121,7 @@ def update_rank_parameter(
 
     update_values = payload.model_dump(exclude_unset=True)
     if "rank_type" in update_values:
-        update_values["rank_type"] = _normalize_required(update_values["rank_type"], "rank_type")
+        update_values["rank_type"] = _normalize_rank_type(update_values["rank_type"])
     if "category_1" in update_values:
         update_values["category_1"] = _normalize_required(update_values["category_1"], "category_1")
     if "category_2" in update_values:
