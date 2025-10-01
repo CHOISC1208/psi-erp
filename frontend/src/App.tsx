@@ -12,6 +12,7 @@ import SessionsPage from "./pages/SessionsPage";
 import PSITablePage from "./pages/PSITablePage";
 import MasterPage from "./pages/MasterPage";
 import TransferPage from "./pages/TransferPage";
+import ReallocationPage from "./pages/ReallocationPage";
 import EditsPage from "./pages/EditsPage";
 import DocsPage from "./pages/DocsPage";
 import LoginPage from "./pages/LoginPage";
@@ -104,6 +105,17 @@ function ProtectedLayout() {
             </NavLink>
           </li>
           <li>
+            <NavLink
+              to="/reallocation"
+              className={({ isActive }) => (isActive ? "active" : undefined)}
+            >
+              <span className="menu-icon" aria-hidden="true">
+                ♻️
+              </span>
+              <span className="menu-label">Reallocation</span>
+            </NavLink>
+          </li>
+          <li>
             <NavLink to="/edits" className={({ isActive }) => (isActive ? "active" : undefined)}>
               <span className="menu-icon" aria-hidden="true">
                 ✏️
@@ -159,6 +171,7 @@ function ProtectedLayout() {
           <Route path="/psi" element={<PSITablePage />} />
           <Route path="/docs" element={<DocsPage />} />
           <Route path="/transfer" element={<TransferPage />} />
+          <Route path="/reallocation" element={<ReallocationPage />} />
           <Route path="/edits" element={<EditsPage />} />
           <Route path="/masters" element={<Navigate to={masters[0].path} replace />} />
         </Routes>

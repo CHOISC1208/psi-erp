@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import and_, delete, func, or_, select, union_all
 from sqlalchemy.orm import Session as DBSession
 
@@ -24,6 +24,7 @@ from ..services.psi_report import (
     suggest_channel_transfers,
     build_summary_md,
 )
+from ..services.transfer_plans import fetch_matrix_rows
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -769,6 +770,64 @@ def session_summary(session_id: UUID, db: DBSession = Depends(get_db)) -> schema
         start_date=min_date,
         end_date=max_date,
     )
+
+
+@router.get("/matrix", response_model=list[schemas.MatrixRow])
+def psi_matrix(
+    *,
+    session_id: UUID = Query(...),
+    start: date = Query(...),
+    end: date = Query(...),
+    plan_id: UUID | None = Query(default=None),
+    sku_codes: list[str] | None = Query(default=None),
+    warehouses: list[str] | None = Query(default=None),
+    channels: list[str] | None = Query(default=None),
+    db: DBSession = Depends(get_db),
+    _: models.User = Depends(get_current_user),
+) -> list[schemas.MatrixRow]:
+    """Return aggregated PSI matrix rows for the requested window."""
+
+    if start > end:
+        raise HTTPException(status_code=400, detail="start must be on or before end")
+
+    _get_session_or_404(db, session_id)
+
+    resolved_plan_id: UUID | None = None
+    if plan_id is not None:
+        plan = db.get(models.TransferPlan, plan_id)
+        if plan is None:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        if plan.session_id != session_id:
+            raise HTTPException(status_code=422, detail="plan session_id mismatch")
+        resolved_plan_id = plan.plan_id
+
+    rows = fetch_matrix_rows(
+        db,
+        session_id=session_id,
+        start_date=start,
+        end_date=end,
+        plan_id=resolved_plan_id,
+        sku_codes=sku_codes,
+        warehouses=warehouses,
+        channels=channels,
+    )
+
+    return [
+        schemas.MatrixRow(
+            sku_code=row.sku_code,
+            warehouse_name=row.warehouse_name,
+            channel=row.channel,
+            stock_at_anchor=float(row.stock_at_anchor),
+            inbound_qty=float(row.inbound_qty),
+            outbound_qty=float(row.outbound_qty),
+            stock_closing=float(row.stock_closing),
+            stdstock=float(row.stdstock),
+            gap=float(row.gap),
+            move=float(row.move),
+            stock_fin=float(row.stock_fin),
+        )
+        for row in rows
+    ]
 
 
 @router.post("/{session_id}/edits/apply", response_model=schemas.PSIEditApplyResult)

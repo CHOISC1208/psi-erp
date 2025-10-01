@@ -310,6 +310,38 @@ body {
   color: #b91c1c;
 }
 
+.reallocation-page .table-wrapper {
+  margin-top: 0.5rem;
+  overflow-x: auto;
+}
+
+.reallocation-page textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.reallocation-page .matrix-section,
+.reallocation-page .plan-lines-section {
+  margin-top: 2rem;
+}
+
+.reallocation-page .plan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.reallocation-page .plan-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.reallocation-page .checkbox-cell {
+  text-align: center;
+}
+
 .table-container {
   border: 1px solid var(--border-subtle, #d1d5db);
   border-radius: 0.75rem;

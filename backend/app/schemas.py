@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -323,6 +323,96 @@ class ChannelTransferRead(ChannelTransferBase):
     updated_by_username: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class MatrixRow(BaseModel):
+    """Aggregated PSI metrics decorated with plan movements."""
+
+    sku_code: str
+    warehouse_name: str
+    channel: str
+    stock_at_anchor: float
+    inbound_qty: float
+    outbound_qty: float
+    stock_closing: float
+    stdstock: float
+    gap: float
+    move: float
+    stock_fin: float
+
+
+TransferPlanStatus = Literal["draft", "confirmed", "applied", "cancelled"]
+
+
+class TransferPlanRead(BaseModel):
+    """Transfer plan metadata returned by the API."""
+
+    plan_id: UUID
+    session_id: UUID
+    start_date: date
+    end_date: date
+    status: TransferPlanStatus
+
+    model_config = {"from_attributes": True}
+
+
+class TransferPlanLineBase(BaseModel):
+    """Shared attributes for transfer plan line payloads."""
+
+    sku_code: str
+    from_warehouse: str
+    from_channel: str
+    to_warehouse: str
+    to_channel: str
+    qty: Annotated[float, Field(gt=0)]
+    is_manual: bool
+    reason: str | None = None
+
+
+class TransferPlanLineRead(TransferPlanLineBase):
+    """Transfer plan line returned by the API."""
+
+    line_id: UUID
+    plan_id: UUID
+
+    model_config = {"from_attributes": True}
+
+
+class TransferPlanLineWrite(TransferPlanLineBase):
+    """Transfer plan line submitted from the client."""
+
+    line_id: UUID | None = None
+    plan_id: UUID | None = None
+
+
+class TransferPlanRecommendRequest(BaseModel):
+    """Payload describing the scope of a recommendation run."""
+
+    session_id: UUID
+    start: date
+    end: date
+    sku_codes: list[str] | None = None
+    warehouses: list[str] | None = None
+    channels: list[str] | None = None
+
+
+class TransferPlanRecommendResponse(BaseModel):
+    """Transfer plan created by the recommendation engine."""
+
+    plan: TransferPlanRead
+    lines: list[TransferPlanLineRead]
+
+
+class TransferPlanLineUpsertRequest(BaseModel):
+    """Payload for replacing all lines of a transfer plan."""
+
+    lines: list[TransferPlanLineWrite]
+
+
+class TransferPlanLineUpsertResponse(BaseModel):
+    """Simple acknowledgement of a successful upsert operation."""
+
+    ok: bool
 
 
 class LoginRequest(BaseModel):

@@ -110,6 +110,43 @@ export interface ChannelTransfer extends ChannelTransferCreate {
   updated_by_username?: string | null;
 }
 
+export interface MatrixRow {
+  sku_code: string;
+  warehouse_name: string;
+  channel: string;
+  stock_at_anchor: number;
+  inbound_qty: number;
+  outbound_qty: number;
+  stock_closing: number;
+  stdstock: number;
+  gap: number;
+  move: number;
+  stock_fin: number;
+}
+
+export type TransferPlanStatus = "draft" | "confirmed" | "applied" | "cancelled";
+
+export interface TransferPlan {
+  plan_id: string;
+  session_id: string;
+  start_date: string;
+  end_date: string;
+  status: TransferPlanStatus;
+}
+
+export interface TransferPlanLine {
+  line_id: string;
+  plan_id: string;
+  sku_code: string;
+  from_warehouse: string;
+  from_channel: string;
+  to_warehouse: string;
+  to_channel: string;
+  qty: number;
+  is_manual: boolean;
+  reason?: string | null;
+}
+
 export interface PSIMetricDefinition {
   name: string;
   is_editable: boolean;
