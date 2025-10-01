@@ -9,8 +9,6 @@ export interface MatrixQueryArgs {
   end: string;
   planId?: string | null;
   skuCodes?: string[];
-  warehouses?: string[];
-  channels?: string[];
 }
 
 export interface TransferPlanLineWrite {
@@ -44,22 +42,12 @@ const buildMatrixParams = (args: MatrixQueryArgs) => {
       params.append("sku_codes", code.trim());
     }
   });
-  args.warehouses?.forEach((warehouse) => {
-    if (warehouse.trim()) {
-      params.append("warehouses", warehouse.trim());
-    }
-  });
-  args.channels?.forEach((channel) => {
-    if (channel.trim()) {
-      params.append("channels", channel.trim());
-    }
-  });
   return params;
 };
 
 const fetchMatrix = async (args: MatrixQueryArgs): Promise<MatrixRow[]> => {
   const params = buildMatrixParams(args);
-  const { data } = await api.get<MatrixRow[]>("/psi/matrix", { params });
+  const { data } = await api.get<MatrixRow[]>("/api/psi/matrix", { params });
   return data;
 };
 
@@ -73,8 +61,6 @@ export const useMatrixQuery = (args: MatrixQueryArgs | null) =>
           args.end,
           args.planId ?? "",
           (args.skuCodes ?? []).join("|"),
-          (args.warehouses ?? []).join("|"),
-          (args.channels ?? []).join("|"),
         ]
       : ["psi-matrix", "idle"],
     queryFn: () => fetchMatrix(args as MatrixQueryArgs),
@@ -84,8 +70,6 @@ export const useMatrixQuery = (args: MatrixQueryArgs | null) =>
 const recommendPlan = async (
   payload: Omit<MatrixQueryArgs, "planId"> & {
     skuCodes?: string[];
-    warehouses?: string[];
-    channels?: string[];
   },
 ): Promise<TransferPlanRecommendResponse> => {
   const body = {
@@ -93,11 +77,9 @@ const recommendPlan = async (
     start: payload.start,
     end: payload.end,
     sku_codes: payload.skuCodes,
-    warehouses: payload.warehouses,
-    channels: payload.channels,
   };
   const { data } = await api.post<TransferPlanRecommendResponse>(
-    "/transfer-plans/recommend",
+    "/api/transfer-plans/recommend",
     body,
   );
   return data;
@@ -115,7 +97,7 @@ const savePlanLines = async ({
   planId: string;
   lines: TransferPlanLineWrite[];
 }): Promise<void> => {
-  await api.put(`/transfer-plans/${encodeURIComponent(planId)}/lines`, {
+  await api.put(`/api/transfer-plans/${encodeURIComponent(planId)}/lines`, {
     lines,
   });
 };

@@ -98,14 +98,13 @@ export default function ReallocationPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [skuFilter, setSkuFilter] = useState<string>("");
-  const [warehouseFilter, setWarehouseFilter] = useState<string>("");
-  const [channelFilter, setChannelFilter] = useState<string>("");
 
   const [plan, setPlan] = useState<TransferPlan | null>(null);
   const [lines, setLines] = useState<LineDraft[]>([]);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [baseFilters, setBaseFilters] = useState<Omit<MatrixQueryArgs, "planId"> | null>(null);
   const [planDirty, setPlanDirty] = useState(false);
+  const [selectedSkuIndex, setSelectedSkuIndex] = useState(0);
 
   const summaryQuery = useSessionSummaryQuery(selectedSessionId);
 
@@ -162,8 +161,6 @@ export default function ReallocationPage() {
       start: startDate,
       end: endDate,
       skuCodes: parseListInput(skuFilter),
-      warehouses: parseListInput(warehouseFilter),
-      channels: parseListInput(channelFilter),
     };
     setBaseFilters(nextFilters);
   };
@@ -175,16 +172,12 @@ export default function ReallocationPage() {
       return;
     }
     const skuCodes = parseListInput(skuFilter);
-    const warehouses = parseListInput(warehouseFilter);
-    const channels = parseListInput(channelFilter);
     try {
       const response = await recommendMutation.mutateAsync({
         sessionId: selectedSessionId,
         start: startDate,
         end: endDate,
         skuCodes,
-        warehouses,
-        channels,
       });
       setPlan(response.plan);
       setLines(response.lines.map(toDraftLine));
@@ -195,8 +188,6 @@ export default function ReallocationPage() {
         start: startDate,
         end: endDate,
         skuCodes,
-        warehouses,
-        channels,
       });
     } catch (error) {
       setStatus({
@@ -302,6 +293,36 @@ export default function ReallocationPage() {
   };
 
   const matrixRows: MatrixRow[] = matrixQuery.data ?? [];
+  const skuList = useMemo(
+    () => Array.from(new Set(matrixRows.map((row) => row.sku_code))),
+    [matrixRows],
+  );
+  const skuCount = skuList.length;
+
+  const skuListKey = skuList.join("|");
+
+  useEffect(() => {
+    setSelectedSkuIndex(0);
+  }, [skuListKey]);
+
+  useEffect(() => {
+    if (selectedSkuIndex >= skuCount && skuCount > 0) {
+      setSelectedSkuIndex(skuCount - 1);
+    }
+  }, [selectedSkuIndex, skuCount]);
+
+  const selectedSku = skuList[selectedSkuIndex] ?? null;
+  const displayedRows = selectedSku
+    ? matrixRows.filter((row) => row.sku_code === selectedSku)
+    : matrixRows;
+
+  const handlePrevSku = () => {
+    setSelectedSkuIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleNextSku = () => {
+    setSelectedSkuIndex((prev) => (skuCount === 0 ? 0 : Math.min(skuCount - 1, prev + 1)));
+  };
 
   return (
     <div className="page reallocation-page">
@@ -347,22 +368,6 @@ export default function ReallocationPage() {
               rows={3}
             />
           </label>
-          <label>
-            Warehouses
-            <textarea
-              value={warehouseFilter}
-              onChange={(event) => setWarehouseFilter(event.target.value)}
-              rows={3}
-            />
-          </label>
-          <label>
-            Channels
-            <textarea
-              value={channelFilter}
-              onChange={(event) => setChannelFilter(event.target.value)}
-              rows={3}
-            />
-          </label>
         </div>
         <div className="filter-actions">
           <button type="submit" disabled={matrixQuery.isFetching}>
@@ -391,6 +396,25 @@ export default function ReallocationPage() {
         )}
         {matrixRows.length > 0 && (
           <div className="table-wrapper">
+            <div className="sku-navigation">
+              <button
+                type="button"
+                onClick={handlePrevSku}
+                disabled={selectedSkuIndex <= 0}
+              >
+                前のSKU
+              </button>
+              <span className="sku-indicator">
+                {selectedSku ? `${selectedSkuIndex + 1} / ${skuList.length} : ${selectedSku}` : "-"}
+              </span>
+              <button
+                type="button"
+                onClick={handleNextSku}
+                disabled={skuCount === 0 || selectedSkuIndex >= skuCount - 1}
+              >
+                次のSKU
+              </button>
+            </div>
             <table className="data-table">
               <thead>
                 <tr>
@@ -409,7 +433,7 @@ export default function ReallocationPage() {
                 </tr>
               </thead>
               <tbody>
-                {matrixRows.map((row) => {
+                {displayedRows.map((row) => {
                   const gapAfter = row.stock_fin - row.stdstock;
                   return (
                     <tr key={`${row.sku_code}|${row.warehouse_name}|${row.channel}`}>
