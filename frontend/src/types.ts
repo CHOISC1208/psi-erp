@@ -30,8 +30,8 @@ export interface PSIChannel {
   category_1?: string | null;
   category_2?: string | null;
   category_3?: string | null;
-  fw_rank?: number | null;
-  ss_rank?: number | null;
+  fw_rank?: string | null;
+  ss_rank?: string | null;
   warehouse_name: string;
   channel: string;
   daily: PSIDailyEntry[];

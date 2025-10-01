@@ -165,8 +165,8 @@ def _parse_decimal(raw_value: str | None, column: str) -> Decimal | None:
         ) from exc
 
 
-def _parse_int(raw_value: str | None, column: str) -> int | None:
-    """Parse an integer value from the CSV."""
+def _parse_rank(raw_value: str | None, column: str) -> str | None:
+    """Parse a rank code from the CSV."""
 
     if raw_value is None:
         return None
@@ -175,22 +175,20 @@ def _parse_int(raw_value: str | None, column: str) -> int | None:
     if not stripped:
         return None
 
-    try:
-        decimal_value = Decimal(stripped)
-    except (InvalidOperation, ValueError) as exc:  # pragma: no cover - defensive safety
+    normalized = stripped.upper()
+    if len(normalized) > 2:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid integer value in column '{column}'",
-        ) from exc
-
-    integral = decimal_value.to_integral_value()
-    if integral != decimal_value:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid integer value in column '{column}'",
+            detail=f"Rank values in column '{column}' must be at most 2 characters.",
         )
 
-    return int(integral)
+    if not normalized.isalpha():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Rank values in column '{column}' must contain only alphabetic characters.",
+        )
+
+    return normalized
 
 
 def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
@@ -349,8 +347,8 @@ async def upload_csv_for_session(
         category_3_value = (
             raw_row.get(header_map["category_3"], "").strip() or None
         )
-        fw_rank_value = _parse_int(raw_row.get(header_map["fw_rank"]), "fw_rank")
-        ss_rank_value = _parse_int(raw_row.get(header_map["ss_rank"]), "ss_rank")
+        fw_rank_value = _parse_rank(raw_row.get(header_map["fw_rank"]), "fw_rank")
+        ss_rank_value = _parse_rank(raw_row.get(header_map["ss_rank"]), "ss_rank")
 
         key = (sku_code_value, warehouse_value, channel_value, row_date)
 

@@ -17,8 +17,8 @@ def test_build_pivot_rows_handles_missing_inventory_days():
         category_1="Apparel",
         category_2="Outer",
         category_3="Coat",
-        fw_rank=1,
-        ss_rank=3,
+        fw_rank="S",
+        ss_rank="A",
         warehouse_name="WH-A",
         channel="Online",
         daily=[
@@ -39,5 +39,5 @@ def test_build_pivot_rows_handles_missing_inventory_days():
 
     assert result.rows[0].inventory_days is None
     assert result.rows[0].category_1 == "Apparel"
-    assert result.rows[0].fw_rank == 1
-    assert result.rows[0].ss_rank == 3
+    assert result.rows[0].fw_rank == "S"
+    assert result.rows[0].ss_rank == "A"

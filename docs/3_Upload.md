@@ -55,8 +55,8 @@ PSI 基礎データ取り込み API (`POST /psi/{session_id}/upload`) の入力�
 | `category_1` | text | 必須 (空欄可) | カテゴリ第 1 階層。UI 表示とエクスポートで利用します。 |
 | `category_2` | text | 必須 (空欄可) | カテゴリ第 2 階層。空欄は `NULL` として保存されます。 |
 | `category_3` | text | 必須 (空欄可) | カテゴリ第 3 階層。空欄は `NULL` として保存されます。 |
-| `fw_rank` | integer | 必須 (空欄可) | FW ランク。チャネルや SKU の優先度指標として UI／レポートで参照します。 |
-| `ss_rank` | integer | 必須 (空欄可) | Safety Stock ランク。安全在庫順序の把握に利用します。 |
+| `fw_rank` | varchar(2) | 必須 (空欄可) | FW ランク。チャネルや SKU の優先度指標として UI／レポートで参照します。最大 2 文字までの英字を想定しています。 |
+| `ss_rank` | varchar(2) | 必須 (空欄可) | Safety Stock ランク。安全在庫順序の把握に利用します。最大 2 文字までの英字を想定しています。 |
 | `warehouse_name` | text | 必須 | 倉庫名称。 |
 | `channel` | text | 必須 | 販売チャネル。 |
 | `date` | date | 必須 | 計上日。`YYYY-MM-DD` または `YYYY/MM/DD`。 |
@@ -72,7 +72,7 @@ PSI 基礎データ取り込み API (`POST /psi/{session_id}/upload`) の入力�
 
 - `date`: `YYYY-MM-DD` もしくは `YYYY/MM/DD`
 - 数値列: 空欄は `NULL` として扱われます。それ以外は 10 進数として解釈されます。
-- `fw_rank`, `ss_rank`: 空欄は `NULL`、それ以外は整数として検証されます（小数はエラー）。
+- `fw_rank`, `ss_rank`: 空欄は `NULL`、それ以外は最大 2 文字の英字として検証され、英大文字に正規化されます。
 - 空行はスキップされます。
 
 ## エラー応答
