@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Iterable, Sequence
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, select, union_all
+from sqlalchemy import and_, case, func, literal, select, union_all
 from sqlalchemy.orm import Session as DBSession
 
 from .. import models
@@ -192,6 +192,8 @@ def fetch_matrix_rows(
     else:
         keys = aggregated
 
+    move_expr = func.coalesce(moves_sub.c.move, ZERO) if moves_sub is not None else literal(ZERO)
+
     query = (
         select(
             keys.c.sku_code,
@@ -202,7 +204,7 @@ def fetch_matrix_rows(
             func.coalesce(aggregated.c.outbound_qty, ZERO).label("outbound_qty"),
             func.coalesce(aggregated.c.stock_closing, ZERO).label("stock_closing"),
             func.coalesce(aggregated.c.stdstock, ZERO).label("stdstock"),
-            func.coalesce(moves_sub.c.move, ZERO).label("move"),
+            move_expr.label("move"),
         )
         .outerjoin(
             aggregated,
@@ -212,7 +214,11 @@ def fetch_matrix_rows(
                 aggregated.c.channel == keys.c.channel,
             ),
         )
-        .outerjoin(
+        .order_by(keys.c.sku_code, keys.c.warehouse_name, keys.c.channel)
+    )
+
+    if moves_sub is not None:
+        query = query.outerjoin(
             moves_sub,
             and_(
                 moves_sub.c.sku_code == keys.c.sku_code,
@@ -220,8 +226,6 @@ def fetch_matrix_rows(
                 moves_sub.c.channel == keys.c.channel,
             ),
         )
-        .order_by(keys.c.sku_code, keys.c.warehouse_name, keys.c.channel)
-    )
 
     rows = db.execute(query).all()
 
