@@ -37,7 +37,6 @@ function ProtectedLayout() {
   const masters = useMemo(() => {
     const items = [
       { path: "/masters/metrics", label: "Metrics", icon: "🧮" },
-      { path: "/masters/rank-parameters", label: "Rank Parameters", icon: "📈" },
       { path: "/masters/warehouses", label: "Warehouse", icon: "🏭" },
     ];
 
