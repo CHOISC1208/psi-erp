@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from psycopg2 import errorcodes
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
@@ -27,6 +28,28 @@ def _get_record_or_404(
     if record is None:
         raise HTTPException(status_code=404, detail="rank parameter not found")
     return record
+
+
+def _handle_integrity_error(db: DBSession, exc: IntegrityError) -> None:
+    """Convert integrity constraint violations into helpful API errors."""
+
+    db.rollback()
+
+    orig = getattr(exc, "orig", None)
+    diag = getattr(orig, "diag", None)
+    constraint_name = getattr(diag, "constraint_name", "") if diag is not None else ""
+    pgcode = getattr(orig, "pgcode", "")
+
+    if constraint_name in {"pk_category_rank_parameters"} or pgcode == errorcodes.UNIQUE_VIOLATION:
+        raise HTTPException(status_code=409, detail="rank parameter already exists") from exc
+
+    if constraint_name == "ck_category_rank_parameters_rank_type" or pgcode == errorcodes.CHECK_VIOLATION:
+        raise HTTPException(
+            status_code=422,
+            detail="rank_type must be either 'FW' or 'SS'",
+        ) from exc
+
+    raise HTTPException(status_code=400, detail="Invalid rank parameter data") from exc
 
 
 @router.get("/", response_model=list[schemas.CategoryRankParameterRead])
@@ -69,8 +92,7 @@ def create_rank_parameter(
     try:
         db.commit()
     except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="rank parameter already exists") from exc
+        _handle_integrity_error(db, exc)
 
     db.refresh(record)
     return record
@@ -119,7 +141,10 @@ def update_rank_parameter(
         else:
             setattr(record, field, value)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        _handle_integrity_error(db, exc)
     db.refresh(record)
     return record
 
