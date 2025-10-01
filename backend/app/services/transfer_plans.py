@@ -132,7 +132,7 @@ def fetch_matrix_rows(
     if channels:
         base_query = base_query.where(psi.channel.in_(list({*channels})))
 
-    aggregated = base_query.subquery()
+    aggregated = base_query.subquery().alias("aggregated")
 
     moves_sub = None
     if plan_id is not None:
@@ -206,7 +206,12 @@ def fetch_matrix_rows(
             func.coalesce(aggregated.c.stdstock, ZERO).label("stdstock"),
             move_expr.label("move"),
         )
-        .outerjoin(
+        .select_from(keys)
+        .order_by(keys.c.sku_code, keys.c.warehouse_name, keys.c.channel)
+    )
+
+    if aggregated is not keys:
+        query = query.outerjoin(
             aggregated,
             and_(
                 aggregated.c.sku_code == keys.c.sku_code,
@@ -214,8 +219,6 @@ def fetch_matrix_rows(
                 aggregated.c.channel == keys.c.channel,
             ),
         )
-        .order_by(keys.c.sku_code, keys.c.warehouse_name, keys.c.channel)
-    )
 
     if moves_sub is not None:
         query = query.outerjoin(
