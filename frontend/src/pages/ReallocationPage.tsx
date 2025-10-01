@@ -5,6 +5,8 @@ import {
   useMatrixQuery,
   useRecommendPlanMutation,
   useSavePlanLinesMutation,
+  useTransferPlanDetailMutation,
+  useTransferPlansQuery,
   type MatrixQueryArgs,
   type TransferPlanLineWrite,
 } from "../hooks/useTransferPlans";
@@ -33,12 +35,6 @@ const formatNumber = (value: number) =>
   Number.isFinite(value)
     ? value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
     : "-";
-
-const parseListInput = (value: string) =>
-  value
-    .split(/[\n,]/)
-    .map((part) => part.trim())
-    .filter(Boolean);
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -86,6 +82,17 @@ const draftToPayload = (draft: LineDraft): TransferPlanLineWrite => ({
   reason: draft.reason.trim() ? draft.reason.trim() : null,
 });
 
+const formatDateRange = (start: string, end: string) =>
+  start && end ? (start === end ? start : `${start} – ${end}`) : "";
+
+const formatDateTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+};
+
 export default function ReallocationPage() {
   const sessionsQuery = useSessionsQuery();
   const sessions = sessionsQuery.data ?? [];
@@ -97,7 +104,6 @@ export default function ReallocationPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
-  const [skuFilter, setSkuFilter] = useState<string>("");
 
   const [plan, setPlan] = useState<TransferPlan | null>(null);
   const [lines, setLines] = useState<LineDraft[]>([]);
@@ -105,8 +111,13 @@ export default function ReallocationPage() {
   const [baseFilters, setBaseFilters] = useState<Omit<MatrixQueryArgs, "planId"> | null>(null);
   const [planDirty, setPlanDirty] = useState(false);
   const [selectedSkuIndex, setSelectedSkuIndex] = useState(0);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>("");
 
   const summaryQuery = useSessionSummaryQuery(selectedSessionId);
+  const transferPlansQuery = useTransferPlansQuery(selectedSessionId, {
+    limit: 50,
+  });
+  const loadPlanMutation = useTransferPlanDetailMutation();
 
   useEffect(() => {
     if (!selectedSessionId && sessions.length) {
@@ -132,6 +143,7 @@ export default function ReallocationPage() {
     setPlan(null);
     setLines([]);
     setPlanDirty(false);
+    setSelectedPlanId("");
   }, [selectedSessionId]);
 
   const matrixArgs = useMemo<MatrixQueryArgs | null>(() => {
@@ -160,7 +172,6 @@ export default function ReallocationPage() {
       sessionId: selectedSessionId,
       start: startDate,
       end: endDate,
-      skuCodes: parseListInput(skuFilter),
     };
     setBaseFilters(nextFilters);
   };
@@ -171,24 +182,23 @@ export default function ReallocationPage() {
       setStatus({ type: "error", text: "Please select session, start, and end dates." });
       return;
     }
-    const skuCodes = parseListInput(skuFilter);
     try {
       const response = await recommendMutation.mutateAsync({
         sessionId: selectedSessionId,
         start: startDate,
         end: endDate,
-        skuCodes,
       });
       setPlan(response.plan);
       setLines(response.lines.map(toDraftLine));
       setPlanDirty(false);
       setStatus({ type: "success", text: "Recommendation created." });
+      setSelectedPlanId(response.plan.plan_id);
       setBaseFilters({
         sessionId: selectedSessionId,
         start: startDate,
         end: endDate,
-        skuCodes,
       });
+      await transferPlansQuery.refetch();
     } catch (error) {
       setStatus({
         type: "error",
@@ -284,6 +294,7 @@ export default function ReallocationPage() {
       if (matrixArgs) {
         await matrixQuery.refetch();
       }
+      await transferPlansQuery.refetch();
     } catch (error) {
       setStatus({
         type: "error",
@@ -291,6 +302,80 @@ export default function ReallocationPage() {
       });
     }
   };
+
+  const handleLoadPlan = async () => {
+    if (!selectedPlanId) {
+      return;
+    }
+    setStatus(null);
+    try {
+      const response = await loadPlanMutation.mutateAsync(selectedPlanId);
+      const loadedPlan = response.plan;
+      if (loadedPlan.session_id !== selectedSessionId) {
+        setSelectedSessionId(loadedPlan.session_id);
+      }
+      setSelectedPlanId(loadedPlan.plan_id);
+      setStartDate(loadedPlan.start_date);
+      setEndDate(loadedPlan.end_date);
+      setPlan(loadedPlan);
+      setLines(response.lines.map(toDraftLine));
+      setPlanDirty(false);
+      setBaseFilters({
+        sessionId: loadedPlan.session_id,
+        start: loadedPlan.start_date,
+        end: loadedPlan.end_date,
+      });
+      setStatus({ type: "success", text: "Plan loaded." });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        text: getErrorMessage(error, "Failed to load plan."),
+      });
+    }
+  };
+
+  const planOptions = useMemo(() => {
+    const data = transferPlansQuery.data ?? [];
+    const filtered = data.filter((item) => {
+      if (startDate && item.start_date !== startDate) {
+        return false;
+      }
+      if (endDate && item.end_date !== endDate) {
+        return false;
+      }
+      return true;
+    });
+    return filtered
+      .slice()
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  }, [transferPlansQuery.data, startDate, endDate]);
+
+  const planSelectOptions = useMemo(
+    () =>
+      planOptions.map((item) => {
+        const rangeLabel = formatDateRange(item.start_date, item.end_date);
+        const createdLabel = formatDateTime(item.created_at);
+        const prefix = rangeLabel ? `${rangeLabel} • ` : "";
+        return {
+          value: item.plan_id,
+          label: `${prefix}作成 ${createdLabel}`,
+        };
+      }),
+    [planOptions],
+  );
+
+  const isPlanListLoading = transferPlansQuery.isLoading || transferPlansQuery.isFetching;
+  const hasPlanOptions = planOptions.length > 0;
+  const isLoadPlanDisabled = !selectedPlanId || loadPlanMutation.isPending;
+
+  useEffect(() => {
+    if (!selectedPlanId) {
+      return;
+    }
+    if (!planOptions.some((plan) => plan.plan_id === selectedPlanId)) {
+      setSelectedPlanId("");
+    }
+  }, [planOptions, selectedPlanId]);
 
   const matrixRows: MatrixRow[] = matrixQuery.data ?? [];
   const skuList = useMemo(
@@ -360,14 +445,6 @@ export default function ReallocationPage() {
               onChange={(event) => setEndDate(event.target.value)}
             />
           </label>
-          <label>
-            SKU codes (comma or newline separated)
-            <textarea
-              value={skuFilter}
-              onChange={(event) => setSkuFilter(event.target.value)}
-              rows={3}
-            />
-          </label>
         </div>
         <div className="filter-actions">
           <button type="submit" disabled={matrixQuery.isFetching}>
@@ -382,6 +459,50 @@ export default function ReallocationPage() {
           </button>
         </div>
       </form>
+
+      <section className="existing-plans">
+        <h2>保存済みの再配置計画</h2>
+        <div className="existing-plans__controls">
+          <label className="existing-plans__label">
+            作成済みプラン
+            <select
+              className="existing-plans__select"
+              value={selectedPlanId}
+              onChange={(event) => setSelectedPlanId(event.target.value)}
+              disabled={!hasPlanOptions || isPlanListLoading}
+            >
+              <option value="">Select plan</option>
+              {planSelectOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" onClick={handleLoadPlan} disabled={isLoadPlanDisabled}>
+            {loadPlanMutation.isPending ? "Loading…" : "Load plan"}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              void transferPlansQuery.refetch();
+            }}
+            disabled={transferPlansQuery.isFetching}
+          >
+            {transferPlansQuery.isFetching ? "Refreshing…" : "Refresh list"}
+          </button>
+        </div>
+        {isPlanListLoading && <p className="existing-plans__status">Loading saved plans…</p>}
+        {transferPlansQuery.isError && (
+          <p className="existing-plans__status existing-plans__status--error">
+            Failed to load saved plans.
+          </p>
+        )}
+        {!isPlanListLoading && !hasPlanOptions && (
+          <p className="existing-plans__status">No saved plans match the selected filters.</p>
+        )}
+      </section>
 
       {status && <div className={`status-message ${status.type}`}>{status.text}</div>}
 
@@ -419,6 +540,7 @@ export default function ReallocationPage() {
               <thead>
                 <tr>
                   <th>SKU</th>
+                  <th>SKU Name</th>
                   <th>Warehouse</th>
                   <th>Channel</th>
                   <th>Stock @ Start</th>
@@ -438,6 +560,7 @@ export default function ReallocationPage() {
                   return (
                     <tr key={`${row.sku_code}|${row.warehouse_name}|${row.channel}`}>
                       <td>{row.sku_code}</td>
+                      <td>{row.sku_name ?? "-"}</td>
                       <td>{row.warehouse_name}</td>
                       <td>{row.channel}</td>
                       <td>{formatNumber(row.stock_at_anchor)}</td>

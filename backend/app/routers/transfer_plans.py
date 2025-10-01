@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DBSession
 
@@ -28,6 +29,89 @@ def _ensure_plan(session: DBSession, plan_id: UUID) -> models.TransferPlan:
     if plan is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     return plan
+
+
+@router.get("", response_model=list[schemas.TransferPlanRead])
+def list_transfer_plans(
+    *,
+    session_id: UUID = Query(...),
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+    created_after: datetime | None = Query(default=None),
+    created_before: datetime | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+    db: DBSession = Depends(get_db),
+    _: models.User = Depends(get_current_user),
+) -> list[schemas.TransferPlanRead]:
+    """Return transfer plans for a session sorted by creation time."""
+
+    if start and end and start > end:
+        raise HTTPException(status_code=400, detail="start must be on or before end")
+    if created_after and created_before and created_after > created_before:
+        raise HTTPException(
+            status_code=400, detail="created_after must be on or before created_before"
+        )
+
+    session = db.get(models.Session, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    query = (
+        select(models.TransferPlan)
+        .where(models.TransferPlan.session_id == session_id)
+        .order_by(models.TransferPlan.created_at.desc())
+    )
+
+    if start:
+        query = query.where(models.TransferPlan.start_date >= start)
+    if end:
+        query = query.where(models.TransferPlan.end_date <= end)
+    if created_after:
+        query = query.where(models.TransferPlan.created_at >= created_after)
+    if created_before:
+        query = query.where(models.TransferPlan.created_at <= created_before)
+    if limit:
+        query = query.limit(limit)
+
+    plans = db.execute(query).scalars().all()
+
+    return [
+        schemas.TransferPlanRead.model_validate(plan, from_attributes=True)
+        for plan in plans
+    ]
+
+
+@router.get("/{plan_id}", response_model=schemas.TransferPlanWithLines)
+def get_transfer_plan(
+    plan_id: UUID,
+    db: DBSession = Depends(get_db),
+    _: models.User = Depends(get_current_user),
+) -> schemas.TransferPlanWithLines:
+    """Return a single transfer plan including its lines."""
+
+    plan = db.get(models.TransferPlan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    lines = (
+        db.execute(
+            select(models.TransferPlanLine)
+            .where(models.TransferPlanLine.plan_id == plan_id)
+            .order_by(
+                models.TransferPlanLine.created_at, models.TransferPlanLine.line_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return schemas.TransferPlanWithLines(
+        plan=schemas.TransferPlanRead.model_validate(plan, from_attributes=True),
+        lines=[
+            schemas.TransferPlanLineRead.model_validate(line, from_attributes=True)
+            for line in lines
+        ],
+    )
 
 
 @router.post(

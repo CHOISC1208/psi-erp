@@ -1,7 +1,12 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import api from "../lib/api";
-import type { MatrixRow, TransferPlan, TransferPlanLine } from "../types";
+import type {
+  MatrixRow,
+  TransferPlan,
+  TransferPlanLine,
+  TransferPlanWithLines,
+} from "../types";
 
 export interface MatrixQueryArgs {
   sessionId: string;
@@ -24,10 +29,7 @@ export interface TransferPlanLineWrite {
   reason?: string | null;
 }
 
-export interface TransferPlanRecommendResponse {
-  plan: TransferPlan;
-  lines: TransferPlanLine[];
-}
+export type TransferPlanRecommendResponse = TransferPlanWithLines;
 
 const buildMatrixParams = (args: MatrixQueryArgs) => {
   const params = new URLSearchParams();
@@ -105,4 +107,78 @@ const savePlanLines = async ({
 export const useSavePlanLinesMutation = () =>
   useMutation({
     mutationFn: savePlanLines,
+  });
+
+interface TransferPlansQueryArgs {
+  sessionId: string;
+  start?: string;
+  end?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+  limit?: number;
+}
+
+const fetchTransferPlans = async (
+  args: TransferPlansQueryArgs,
+): Promise<TransferPlan[]> => {
+  const params = new URLSearchParams();
+  params.set("session_id", args.sessionId);
+  if (args.start) {
+    params.set("start", args.start);
+  }
+  if (args.end) {
+    params.set("end", args.end);
+  }
+  if (args.createdAfter) {
+    params.set("created_after", args.createdAfter);
+  }
+  if (args.createdBefore) {
+    params.set("created_before", args.createdBefore);
+  }
+  if (args.limit) {
+    params.set("limit", String(args.limit));
+  }
+  const { data } = await api.get<TransferPlan[]>("/api/transfer-plans", { params });
+  return data;
+};
+
+export const useTransferPlansQuery = (
+  sessionId: string | null,
+  options?: Omit<TransferPlansQueryArgs, "sessionId">,
+) => {
+  return useQuery({
+    queryKey: [
+      "transfer-plans",
+      sessionId ?? "",
+      options?.start ?? "",
+      options?.end ?? "",
+      options?.createdAfter ?? "",
+      options?.createdBefore ?? "",
+      options?.limit ?? 20,
+    ],
+    queryFn: () =>
+      fetchTransferPlans({
+        sessionId: sessionId as string,
+        start: options?.start,
+        end: options?.end,
+        createdAfter: options?.createdAfter,
+        createdBefore: options?.createdBefore,
+        limit: options?.limit,
+      }),
+    enabled: Boolean(sessionId),
+  });
+};
+
+const fetchTransferPlanDetail = async (
+  planId: string,
+): Promise<TransferPlanWithLines> => {
+  const { data } = await api.get<TransferPlanWithLines>(
+    `/api/transfer-plans/${encodeURIComponent(planId)}`,
+  );
+  return data;
+};
+
+export const useTransferPlanDetailMutation = () =>
+  useMutation({
+    mutationFn: fetchTransferPlanDetail,
   });

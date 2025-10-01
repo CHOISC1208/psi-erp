@@ -815,6 +815,7 @@ def psi_matrix(
     return [
         schemas.MatrixRow(
             sku_code=row.sku_code,
+            sku_name=row.sku_name,
             warehouse_name=row.warehouse_name,
             channel=row.channel,
             stock_at_anchor=float(row.stock_at_anchor),
