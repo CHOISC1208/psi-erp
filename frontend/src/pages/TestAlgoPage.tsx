@@ -214,6 +214,13 @@ const buildMarkdownReport = (
     lines.push(`- Channels: ${metadata.channels.length}`);
   }
   lines.push("");
+  lines.push("## Algorithm overview");
+  lines.push("");
+  lines.push("- メインチャネルの不足量を抽出");
+  lines.push("- 同一倉庫内の余剰から充当（intra）");
+  lines.push("- それでも不足が残れば他倉庫の余剰から充当（inter）");
+  lines.push("- 充当量は在庫残・余剰残を考慮し 1 個単位で四捨五入");
+  lines.push("");
   lines.push("## Input totals");
   lines.push("| Metric | Total |");
   lines.push("| --- | ---: |");
