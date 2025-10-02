@@ -131,6 +131,18 @@ const ensureOption = (options: string[], value: string) => {
   return [...options, trimmed].sort((a, b) => a.localeCompare(b));
 };
 
+const formatCsvValue = (value: string | number | boolean | null | undefined) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const stringValue = String(value);
+  const escaped = stringValue.replace(/"/g, '""');
+  return /[",\r\n]/.test(stringValue) ? `"${escaped}"` : escaped;
+};
+
+const buildCsvContent = (rows: (string | number | boolean | null | undefined)[][]) =>
+  rows.map((row) => row.map(formatCsvValue).join(",")).join("\r\n");
+
 export default function ReallocationPage() {
   const sessionsQuery = useSessionsQuery();
   const sessions = sessionsQuery.data ?? [];
@@ -561,6 +573,56 @@ export default function ReallocationPage() {
     return map;
   }, [skuOptions]);
 
+  const handleExportLinesCsv = useCallback(() => {
+    if (!lines.length || typeof window === "undefined") {
+      return;
+    }
+
+    const planId = plan?.plan_id ?? "";
+    const header: string[] = [
+      "Plan ID",
+      "SKU",
+      "SKU name",
+      "From warehouse",
+      "From channel",
+      "To warehouse",
+      "To channel",
+      "Qty",
+      "Manual?",
+      "Reason",
+    ];
+
+    const rows = lines.map((line) => {
+      const trimmedSku = line.sku_code.trim();
+      const skuName = skuNameMap.get(trimmedSku) ?? skuOptionNameMap.get(trimmedSku) ?? "";
+      return [
+        planId,
+        trimmedSku,
+        skuName,
+        line.from_warehouse.trim(),
+        line.from_channel.trim(),
+        line.to_warehouse.trim(),
+        line.to_channel.trim(),
+        line.qty.trim(),
+        line.is_manual ? "はい" : "いいえ",
+        line.reason,
+      ];
+    });
+
+    const csvContent = buildCsvContent([header, ...rows]);
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const planLabel = planId ? `plan-${planId}` : "draft";
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    anchor.href = url;
+    anchor.download = `transfer-plan-lines_${planLabel}_${timestamp}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }, [lines, plan?.plan_id, skuNameMap, skuOptionNameMap]);
+
   const warehouseOptions = useMemo(() => {
     const set = new Set<string>();
     for (const row of baseMatrixRows) {
@@ -751,6 +813,14 @@ export default function ReallocationPage() {
               disabled={!plan || !planDirty || saveLinesMutation.isPending}
             >
               {saveLinesMutation.isPending ? "Saving…" : "Save lines"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleExportLinesCsv}
+              disabled={lines.length === 0}
+            >
+              CSVダウンロード
             </button>
           </div>
         </div>

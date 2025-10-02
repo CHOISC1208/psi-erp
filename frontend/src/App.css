@@ -326,20 +326,7 @@ body {
 }
 
 .reallocation-page .sku-navigation {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
   margin-bottom: 0.75rem;
-}
-
-.reallocation-page .sku-navigation button {
-  min-width: 8rem;
-}
-
-.reallocation-page .sku-navigation .sku-indicator {
-  font-weight: 600;
 }
 
 .reallocation-page .plan-header {
