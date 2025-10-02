@@ -1,7 +1,13 @@
 import { useMemo } from "react";
 
 import type { MetricDefinition, PsiRow } from "../types";
-import { buildColumnGroups, formatMetricValue, getMetricValue, makeColumnKey } from "../utils";
+import {
+  buildColumnGroups,
+  formatMetricValue,
+  getMetricValue,
+  makeColumnKey,
+  safeNumber,
+} from "../utils";
 
 interface CrossTableViewProps {
   rows: PsiRow[];
@@ -91,6 +97,18 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
     return <p className="psi-matrix-empty">No rows match the current filters.</p>;
   }
 
+  const totalsByMetric = useMemo(() => {
+    const totals = new Map<string, number>();
+    metrics.forEach((metric) => {
+      const total = headerColumns.reduce((sum, column) => {
+        const value = getMetricValue(rowMap.get(column.key), metric.key);
+        return sum + safeNumber(value);
+      }, 0);
+      totals.set(metric.key, total);
+    });
+    return totals;
+  }, [headerColumns, metrics, rowMap]);
+
   return (
     <div className="psi-matrix-scroll">
       <table className="psi-matrix-table">
@@ -104,6 +122,9 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
                 {group.label}
               </th>
             ))}
+            <th rowSpan={2} className="total-column">
+              Total
+            </th>
           </tr>
           <tr>
             {headerGroups.flatMap((group) =>
@@ -129,6 +150,7 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
                   </td>
                 );
               })}
+              <td className="total-cell">{formatMetricValue(totalsByMetric.get(metric.key) ?? 0)}</td>
             </tr>
           ))}
         </tbody>

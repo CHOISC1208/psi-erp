@@ -223,6 +223,36 @@ const buildMarkdownReport = (
     },
   );
   lines.push("");
+  lines.push("## Crosstable");
+  const metricColumns = METRIC_DEFINITIONS.map((definition) => ({
+    key: definition.key,
+    label: definition.shortLabel ?? definition.label,
+  }));
+  lines.push(
+    `| SKU | Warehouse | Channel | ${metricColumns.map((column) => column.label).join(" | ")} |`,
+  );
+  lines.push(
+    `| --- | --- | --- | ${metricColumns.map(() => "---:").join(" | ")} |`,
+  );
+  const sortedRows = [...rows].sort((a, b) => {
+    if (a.sku !== b.sku) {
+      return String(a.sku).localeCompare(String(b.sku));
+    }
+    if (a.warehouse !== b.warehouse) {
+      return a.warehouse.localeCompare(b.warehouse);
+    }
+    return a.channel.localeCompare(b.channel);
+  });
+  sortedRows.forEach((row) => {
+    const metricValues = metricColumns.map((column) => {
+      const value = row[column.key as MetricKey];
+      return typeof value === "number" ? formatIntegerValue(value) : "-";
+    });
+    lines.push(
+      `| ${row.sku} | ${row.warehouse} | ${row.channel} | ${metricValues.join(" | ")} |`,
+    );
+  });
+  lines.push("");
   lines.push("## Recommended moves");
   if (moves.length === 0) {
     lines.push("No recommended transfers.");
@@ -459,6 +489,18 @@ export default function TestAlgoPage() {
     });
   };
 
+  const totalsByMetric = useMemo(() => {
+    const totals = new Map<MetricKey, number>();
+    METRIC_DEFINITIONS.forEach((metric) => {
+      const total = rowsForActiveSku.reduce((sum, row) => {
+        const value = row[metric.key];
+        return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+      }, 0);
+      totals.set(metric.key, total);
+    });
+    return totals;
+  }, [rowsForActiveSku]);
+
   const isLoading = metadataQuery.isLoading || runMutation.isPending;
 
   return (
@@ -548,6 +590,9 @@ export default function TestAlgoPage() {
                       {group.warehouse}
                     </th>
                   ))}
+                  <th rowSpan={2} className="total-column">
+                    Total
+                  </th>
                 </tr>
                 <tr>
                   {columnGroups.flatMap((group) =>
@@ -596,6 +641,9 @@ export default function TestAlgoPage() {
                         </td>
                       );
                     })}
+                    <td className="total-cell">
+                      {formatIntegerValue(totalsByMetric.get(metric.key) ?? 0)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
