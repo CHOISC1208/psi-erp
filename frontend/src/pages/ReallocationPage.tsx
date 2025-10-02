@@ -12,6 +12,7 @@ import {
 } from "../hooks/useTransferPlans";
 import { useSessionsQuery, useSessionSummaryQuery } from "../hooks/usePsiQueries";
 import type { MatrixRow, TransferPlan, TransferPlanLine } from "../types";
+import { PSIMatrixTabs } from "../features/reallocation/psi/PSIMatrixTabs";
 
 interface StatusMessage {
   type: "success" | "error";
@@ -30,11 +31,6 @@ interface LineDraft {
   is_manual: boolean;
   reason: string;
 }
-
-const formatNumber = (value: number) =>
-  Number.isFinite(value)
-    ? value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-    : "-";
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -152,7 +148,6 @@ export default function ReallocationPage() {
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [baseFilters, setBaseFilters] = useState<Omit<MatrixQueryArgs, "planId"> | null>(null);
   const [planDirty, setPlanDirty] = useState(false);
-  const [selectedSkuIndex, setSelectedSkuIndex] = useState(0);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [hasAutoLoadedPlan, setHasAutoLoadedPlan] = useState(false);
   const skuDatalistId = useId();
@@ -597,32 +592,26 @@ export default function ReallocationPage() {
     () => Array.from(new Set(simulatedMatrixRows.map((row) => row.sku_code))),
     [simulatedMatrixRows],
   );
-  const skuCount = skuList.length;
 
-  const skuListKey = skuList.join("|");
-
-  useEffect(() => {
-    setSelectedSkuIndex(0);
-  }, [skuListKey]);
-
-  useEffect(() => {
-    if (selectedSkuIndex >= skuCount && skuCount > 0) {
-      setSelectedSkuIndex(skuCount - 1);
-    }
-  }, [selectedSkuIndex, skuCount]);
-
-  const selectedSku = skuList[selectedSkuIndex] ?? null;
-  const displayedRows = selectedSku
-    ? simulatedMatrixRows.filter((row) => row.sku_code === selectedSku)
-    : simulatedMatrixRows;
-
-  const handlePrevSku = () => {
-    setSelectedSkuIndex((prev) => Math.max(0, prev - 1));
-  };
-
-  const handleNextSku = () => {
-    setSelectedSkuIndex((prev) => (skuCount === 0 ? 0 : Math.min(skuCount - 1, prev + 1)));
-  };
+  const psiRows = useMemo(
+    () =>
+      simulatedMatrixRows.map((row) => ({
+        sku: row.sku_code,
+        skuName: row.sku_name ?? undefined,
+        warehouse: row.warehouse_name,
+        channel: row.channel,
+        stockStart: row.stock_at_anchor,
+        inbound: row.inbound_qty,
+        outbound: row.outbound_qty,
+        stockClosing: row.stock_closing,
+        stdStock: row.stdstock,
+        gap: row.gap,
+        move: row.move,
+        stockFinal: row.stock_fin,
+        gapAfter: row.stock_fin - row.stdstock,
+      })),
+    [simulatedMatrixRows],
+  );
 
   return (
     <div className="page reallocation-page">
@@ -729,72 +718,7 @@ export default function ReallocationPage() {
         {!matrixQuery.isLoading && simulatedMatrixRows.length === 0 && (
           <p>No data for the selected filters.</p>
         )}
-        {simulatedMatrixRows.length > 0 && (
-          <div className="table-wrapper">
-            <div className="sku-navigation">
-              <button
-                type="button"
-                onClick={handlePrevSku}
-                disabled={selectedSkuIndex <= 0}
-              >
-                前のSKU
-              </button>
-              <span className="sku-indicator">
-                {selectedSku ? `${selectedSkuIndex + 1} / ${skuList.length} : ${selectedSku}` : "-"}
-              </span>
-              <button
-                type="button"
-                onClick={handleNextSku}
-                disabled={skuCount === 0 || selectedSkuIndex >= skuCount - 1}
-              >
-                次のSKU
-              </button>
-            </div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>SKU</th>
-                  <th>SKU Name</th>
-                  <th>Warehouse</th>
-                  <th>Channel</th>
-                  <th>Stock @ Start</th>
-                  <th>Inbound</th>
-                  <th>Outbound</th>
-                  <th>Stock Closing</th>
-                  <th>Std Stock</th>
-                  <th>Gap</th>
-                  <th>Move</th>
-                  <th>Stock Final</th>
-                  <th>Gap After</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedRows.map((row) => {
-                  const gapAfter = row.stock_fin - row.stdstock;
-                  return (
-                    <tr key={`${row.sku_code}|${row.warehouse_name}|${row.channel}`}>
-                      <td>{row.sku_code}</td>
-                      <td>{row.sku_name ?? "-"}</td>
-                      <td>{row.warehouse_name}</td>
-                      <td>{row.channel}</td>
-                      <td>{formatNumber(row.stock_at_anchor)}</td>
-                      <td>{formatNumber(row.inbound_qty)}</td>
-                      <td>{formatNumber(row.outbound_qty)}</td>
-                      <td>{formatNumber(row.stock_closing)}</td>
-                      <td>{formatNumber(row.stdstock)}</td>
-                      <td>{formatNumber(row.gap)}</td>
-                      <td>{formatNumber(row.move)}</td>
-                      <td>{formatNumber(row.stock_fin)}</td>
-                      <td style={{ color: gapAfter < 0 ? "#c0392b" : undefined }}>
-                        {formatNumber(gapAfter)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {simulatedMatrixRows.length > 0 && <PSIMatrixTabs data={psiRows} skuList={skuList} />}
       </section>
 
       <section className="plan-lines-section">
