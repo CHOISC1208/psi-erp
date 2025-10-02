@@ -637,8 +637,15 @@ def daily_psi(
         stdstock_value = base_row.stdstock
         gap_value = base_row.gap
         if stdstock_value is not None:
-            if recalc_closing or gap_value is None or channel_move_raw is not None:
-                gap_value = stdstock_value - stock_closing
+            stock_start_for_gap = stock_anchor_raw if stock_anchor_raw is not None else zero
+            if (
+                gap_value is None
+                or recalc_closing
+                or recalc_flow
+                or channel_move_raw is not None
+                or gap_value != stock_start_for_gap - stdstock_value
+            ):
+                gap_value = stock_start_for_gap - stdstock_value
 
         bucket["records"].append(
             schemas.DailyPSI(

@@ -28,7 +28,10 @@ export default function OriginView({ rows }: OriginViewProps) {
         </thead>
         <tbody>
           {rows.map((row) => {
-            const gapAfter = row.gapAfter ?? safeNumber(row.stockFinal) - safeNumber(row.stdStock);
+            const stockStartValue = safeNumber(row.stockStart);
+            const moveValue = safeNumber(row.move);
+            const stdStockValue = safeNumber(row.stdStock);
+            const gapAfter = row.gapAfter ?? stockStartValue + moveValue - stdStockValue;
             return (
               <tr key={`${row.sku}|${row.warehouse}|${row.channel}`}>
                 <td>{row.sku}</td>

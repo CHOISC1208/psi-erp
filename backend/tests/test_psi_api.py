@@ -419,7 +419,9 @@ def test_upload_persists_stdstock_and_gap(
     assert first_row.gap == Decimal("5")
 
 
-def test_daily_psi_computes_gap_from_stdstock(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_daily_psi_computes_gap_from_stock_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from backend.app.routers import psi as psi_router
 
     base_row_first = SimpleNamespace(
@@ -497,7 +499,7 @@ def test_daily_psi_computes_gap_from_stdstock(monkeypatch: pytest.MonkeyPatch) -
     daily = response[0].daily
     assert len(daily) == 2
     assert daily[0].stdstock == pytest.approx(110.0)
-    # Channel move triggers gap recalculation: 110 - (105 + 2) == 3
-    assert daily[0].gap == pytest.approx(3.0)
+    # Gap is calculated from the starting stock regardless of channel moves: 100 - 110 == -10
+    assert daily[0].gap == pytest.approx(-10.0)
     assert daily[1].stdstock == pytest.approx(90.0)
-    assert daily[1].gap == pytest.approx(5.0)
+    assert daily[1].gap == pytest.approx(15.0)
