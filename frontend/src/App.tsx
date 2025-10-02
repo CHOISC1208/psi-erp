@@ -14,6 +14,7 @@ import MasterPage from "./pages/MasterPage";
 import TransferPage from "./pages/TransferPage";
 import ReallocationPage from "./pages/ReallocationPage";
 import EditsPage from "./pages/EditsPage";
+import TestAlgoPage from "./pages/TestAlgoPage";
 import DocsPage from "./pages/DocsPage";
 import LoginPage from "./pages/LoginPage";
 import { useAuth } from "./hooks/useAuth";
@@ -97,6 +98,12 @@ function ProtectedLayout() {
             </NavLink>
           </li>
           <li>
+            <NavLink to="/test-algo" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">🧪</span>
+              <span className="menu-label">Test_Algo</span>
+            </NavLink>
+          </li>
+          <li>
             <NavLink to="/docs" className={({ isActive }) => (isActive ? "active" : undefined)}>
               <span className="menu-icon" aria-hidden="true">
                 📚
@@ -145,6 +152,7 @@ function ProtectedLayout() {
           <Route path="/docs" element={<DocsPage />} />
           <Route path="/transfer" element={<TransferPage />} />
           <Route path="/reallocation" element={<ReallocationPage />} />
+          <Route path="/test-algo" element={<TestAlgoPage />} />
           <Route path="/edits" element={<EditsPage />} />
           <Route path="/masters" element={<Navigate to={masters[0].path} replace />} />
         </Routes>

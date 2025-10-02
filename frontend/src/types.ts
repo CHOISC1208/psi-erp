@@ -128,6 +128,47 @@ export interface MatrixRow {
   stock_fin: number;
 }
 
+export interface TestAlgoWarehouseMeta {
+  warehouse_name: string;
+  main_channel?: string | null;
+}
+
+export interface TestAlgoMetadata {
+  warehouses: TestAlgoWarehouseMeta[];
+  channels: string[];
+}
+
+export interface TestAlgoRowInput {
+  sku_code: string;
+  sku_name?: string | null;
+  warehouse_name: string;
+  channel: string;
+  stock_start: number;
+  inbound: number;
+  outbound: number;
+  stock_closing: number;
+  std_stock: number;
+}
+
+export interface TestAlgoRunRequest {
+  rows: TestAlgoRowInput[];
+}
+
+export interface RecommendedMoveSuggestion {
+  sku_code: string;
+  from_warehouse: string;
+  from_channel: string;
+  to_warehouse: string;
+  to_channel: string;
+  qty: number;
+  reason: string;
+}
+
+export interface TestAlgoRunResponse {
+  matrix_rows: MatrixRow[];
+  recommended_moves: RecommendedMoveSuggestion[];
+}
+
 export type TransferPlanStatus = "draft" | "confirmed" | "applied" | "cancelled";
 
 export interface TransferPlan {
