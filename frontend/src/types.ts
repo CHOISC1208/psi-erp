@@ -115,6 +115,9 @@ export interface MatrixRow {
   sku_name?: string | null;
   warehouse_name: string;
   channel: string;
+  category_1?: string | null;
+  category_2?: string | null;
+  category_3?: string | null;
   stock_at_anchor: number;
   inbound_qty: number;
   outbound_qty: number;
