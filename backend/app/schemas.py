@@ -369,7 +369,7 @@ class TransferPlanLineBase(BaseModel):
     from_channel: str
     to_warehouse: str
     to_channel: str
-    qty: Annotated[float, Field(gt=0)]
+    qty: Annotated[int, Field(gt=0)]
     is_manual: bool
     reason: str | None = None
 

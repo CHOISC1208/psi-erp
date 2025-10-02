@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
 ZERO = Decimal("0")
 QUANT = Decimal("0.000001")
+MOVE_UNIT = Decimal("1")
 
 
 @dataclass(slots=True)
@@ -124,7 +125,7 @@ def recommend_plan_lines(
                 qty = min(available, shortage_remaining)
                 if qty <= ZERO:
                     continue
-                qty = qty.quantize(QUANT)
+                qty = qty.quantize(MOVE_UNIT, rounding=ROUND_HALF_UP)
                 if qty <= ZERO:
                     continue
                 recommendations.append(
@@ -160,7 +161,7 @@ def recommend_plan_lines(
                 qty = min(available, shortage_remaining)
                 if qty <= ZERO:
                     continue
-                qty = qty.quantize(QUANT)
+                qty = qty.quantize(MOVE_UNIT, rounding=ROUND_HALF_UP)
                 if qty <= ZERO:
                     continue
                 recommendations.append(

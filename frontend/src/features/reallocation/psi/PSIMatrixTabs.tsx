@@ -12,6 +12,7 @@ import "../../../styles/psi-matrix.css";
 const TAB_CONFIG = [
   { value: "origin", label: "Origin" },
   { value: "cross", label: "Cross Table" },
+  { value: "cross2", label: "Cross Table_2" },
   { value: "heatmap", label: "Heatmap" },
   { value: "bars", label: "Bars" },
   { value: "kpis", label: "KPIs" },
@@ -43,7 +44,7 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
     return list;
   }, [data, skuList]);
 
-  const [activeTab, setActiveTab] = useState<TabValue>("origin");
+  const [activeTab, setActiveTab] = useState<TabValue>("cross");
   const [skuIndex, setSkuIndex] = useState(() => {
     if (!normalizedSkuList.length) {
       return 0;
@@ -140,7 +141,14 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
         tabContent = <OriginView rows={filteredRows} />;
         break;
       case "cross":
-        tabContent = <CrossTableView rows={filteredRows} metrics={METRIC_DEFINITIONS} />;
+        tabContent = (
+          <CrossTableView rows={filteredRows} metrics={METRIC_DEFINITIONS} orientation="warehouse-first" />
+        );
+        break;
+      case "cross2":
+        tabContent = (
+          <CrossTableView rows={filteredRows} metrics={METRIC_DEFINITIONS} orientation="channel-first" />
+        );
         break;
       case "heatmap":
         tabContent = <HeatmapView rows={filteredRows} metrics={METRIC_DEFINITIONS} />;
