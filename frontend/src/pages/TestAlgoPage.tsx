@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import {
-  buildColumnGroups,
-  formatMetricValue,
-  makeColumnKey,
-  METRIC_DEFINITIONS,
-  safeNumber,
-} from "../features/reallocation/psi/utils";
-import type { MetricDefinition, MetricKey, PsiRow } from "../features/reallocation/psi/types";
+import { buildColumnGroups, makeColumnKey, METRIC_DEFINITIONS, safeNumber } from "../features/reallocation/psi/utils";
+import type { MetricKey, PsiRow } from "../features/reallocation/psi/types";
 import {
   useTestAlgoMetadata,
   useTestAlgoRunMutation,
@@ -34,12 +28,6 @@ interface EditablePsiRow extends PsiRow {
   stockFinal: number;
 }
 
-interface SelectedCell {
-  sku: string;
-  metric: MetricKey;
-  columnKey: string;
-}
-
 interface DisplayColumn {
   key: string;
   warehouse: string;
@@ -47,23 +35,9 @@ interface DisplayColumn {
 }
 
 const DEFAULT_SKU_COUNT = 3;
+const DEFAULT_WAREHOUSE_COUNT = 2;
 
-const roundTo = (value: number, digits = 2) => {
-  const factor = 10 ** digits;
-  return Math.round(value * factor) / factor;
-};
-
-const createSeedFromString = (value: string) => {
-  if (!value) {
-    return Date.now() >>> 0;
-  }
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(index);
-    hash |= 0;
-  }
-  return Math.abs(hash) >>> 0;
-};
+const toInteger = (value: number) => Math.round(value);
 
 const mulberry32 = (seed: number) => {
   let t = seed + 0x6d2b79f5;
@@ -77,7 +51,7 @@ const mulberry32 = (seed: number) => {
 const randomMetric = (rng: () => number, min = 0, max = 1000) => {
   const span = max - min;
   const value = min + rng() * span;
-  return roundTo(value, 2);
+  return toInteger(value);
 };
 
 const toEditableRow = (row: MatrixRow): EditablePsiRow => {
@@ -115,34 +89,47 @@ const recalcRow = (row: EditablePsiRow): EditablePsiRow => {
   const stdStock = safeNumber(row.stdStock);
   const move = safeNumber(row.move);
   const stockClosing = safeNumber(row.stockClosing);
-  const gap = roundTo(stockStart - stdStock, 2);
-  const stockFinal = roundTo(stockClosing + move, 2);
-  const gapAfter = roundTo(stockStart + move - stdStock, 2);
+  const inbound = safeNumber(row.inbound);
+  const outbound = safeNumber(row.outbound);
+  const stockStartInt = toInteger(stockStart);
+  const inboundInt = toInteger(inbound);
+  const outboundInt = toInteger(outbound);
+  const stdStockInt = toInteger(stdStock);
+  const moveInt = toInteger(move);
+  const stockClosingInt = toInteger(stockClosing);
+  const gap = toInteger(stockStartInt - stdStockInt);
+  const stockFinal = toInteger(stockClosingInt + moveInt);
+  const gapAfter = toInteger(stockStartInt + moveInt - stdStockInt);
   return {
     ...row,
-    stockStart: roundTo(stockStart, 2),
-    stdStock: roundTo(stdStock, 2),
-    stockClosing: roundTo(stockClosing, 2),
-    move: roundTo(move, 2),
+    stockStart: stockStartInt,
+    inbound: inboundInt,
+    outbound: outboundInt,
+    stdStock: stdStockInt,
+    stockClosing: stockClosingInt,
+    move: moveInt,
     gap,
     stockFinal,
     gapAfter,
   };
 };
 
-const buildInitialRows = (metadata: TestAlgoMetadata, seedInput: string) => {
-  const seedSource = seedInput.trim() ? seedInput.trim() : `${Date.now()}`;
-  const seedNumber = createSeedFromString(seedSource);
+const buildInitialRows = (metadata: TestAlgoMetadata, warehouseCount: number) => {
+  const seedNumber = Date.now() >>> 0;
   const rng = mulberry32(seedNumber || 1);
   const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
   const skuCount = Math.max(1, DEFAULT_SKU_COUNT);
   const skuList: string[] = [];
   const rows: EditablePsiRow[] = [];
+  const availableWarehouses = metadata.warehouses.slice(
+    0,
+    Math.max(1, Math.min(warehouseCount, metadata.warehouses.length)),
+  );
 
   for (let index = 0; index < skuCount; index += 1) {
     const skuCode = `SKU-${timestamp}-${index + 1}`;
     skuList.push(skuCode);
-    metadata.warehouses.forEach((warehouse) => {
+    availableWarehouses.forEach((warehouse) => {
       metadata.channels.forEach((channel) => {
         const stockStart = randomMetric(rng, 50, 500);
         const inbound = randomMetric(rng, 0, 200);
@@ -173,29 +160,54 @@ const buildInitialRows = (metadata: TestAlgoMetadata, seedInput: string) => {
     });
   }
 
-  return { rows, skuList, seedLabel: seedSource };
+  return { rows, skuList };
 };
 
-const metricLabel = (metric: MetricKey, metrics: MetricDefinition[]) =>
-  metrics.find((item) => item.key === metric)?.label ?? metric;
-
 const sumMetric = (rows: EditablePsiRow[], metric: MetricKey) =>
-  roundTo(rows.reduce((total, row) => total + safeNumber(row[metric] as number | undefined), 0), 2);
+  toInteger(rows.reduce((total, row) => total + safeNumber(row[metric] as number | undefined), 0));
+
+const makeMoveKey = (sku: string | number, warehouse: string, channel: string) =>
+  `${String(sku)}|||${warehouse}|||${channel}`;
+
+const applyMovesToRows = (rows: EditablePsiRow[], moves: RecommendedMoveSuggestion[]) => {
+  if (moves.length === 0) {
+    return rows.map(recalcRow);
+  }
+  const moveMap = new Map<string, number>();
+  moves.forEach((move) => {
+    const qty = toInteger(move.qty);
+    if (!qty) {
+      return;
+    }
+    const fromKey = makeMoveKey(move.sku_code, move.from_warehouse, move.from_channel);
+    const toKey = makeMoveKey(move.sku_code, move.to_warehouse, move.to_channel);
+    moveMap.set(fromKey, (moveMap.get(fromKey) ?? 0) - qty);
+    moveMap.set(toKey, (moveMap.get(toKey) ?? 0) + qty);
+  });
+  return rows.map((row) => {
+    const key = makeMoveKey(row.sku, row.warehouse, row.channel);
+    const nextMove = moveMap.has(key) ? moveMap.get(key)! : safeNumber(row.move);
+    return recalcRow({ ...row, move: nextMove } as EditablePsiRow);
+  });
+};
+
+const formatIntegerValue = (value: number | null | undefined): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "-";
+  }
+  return toInteger(value).toLocaleString();
+};
 
 const buildMarkdownReport = (
   rows: EditablePsiRow[],
   moves: RecommendedMoveSuggestion[],
   metadata: TestAlgoMetadata | undefined,
-  seedLabel: string,
 ) => {
   const lines: string[] = [];
   const generatedAt = new Date().toISOString();
   lines.push("# Test_Algo Report");
   lines.push("");
   lines.push(`- Generated at: ${generatedAt}`);
-  if (seedLabel) {
-    lines.push(`- Seed: \`${seedLabel}\``);
-  }
   lines.push(`- SKUs: ${new Set(rows.map((row) => row.sku)).size}`);
   if (metadata) {
     lines.push(`- Warehouses: ${metadata.warehouses.length}`);
@@ -221,7 +233,7 @@ const buildMarkdownReport = (
     lines.push("| --- | --- | --- | --- | --- | ---: | --- |");
     moves.forEach((move) => {
       lines.push(
-        `| ${move.sku_code} | ${move.from_warehouse} | ${move.from_channel} | ${move.to_warehouse} | ${move.to_channel} | ${roundTo(move.qty, 2).toLocaleString()} | ${move.reason} |`,
+        `| ${move.sku_code} | ${move.from_warehouse} | ${move.from_channel} | ${move.to_warehouse} | ${move.to_channel} | ${toInteger(move.qty).toLocaleString()} | ${move.reason} |`,
       );
     });
   }
@@ -235,28 +247,61 @@ export default function TestAlgoPage() {
   const [rows, setRows] = useState<EditablePsiRow[]>([]);
   const [skuList, setSkuList] = useState<string[]>([]);
   const [activeSkuIndex, setActiveSkuIndex] = useState(0);
-  const [seedInput, setSeedInput] = useState("");
-  const [seedLabel, setSeedLabel] = useState("");
+  const [warehouseCount, setWarehouseCount] = useState(DEFAULT_WAREHOUSE_COUNT);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [swapSource, setSwapSource] = useState<SelectedCell | null>(null);
   const [recommendedMoves, setRecommendedMoves] = useState<RecommendedMoveSuggestion[]>([]);
   const [markdown, setMarkdown] = useState("");
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
   const metadata = metadataQuery.data;
+  const warehouseLimit = metadata?.warehouses.length ?? 0;
 
   const hasMasters = Boolean(metadata?.warehouses.length && metadata?.channels.length);
 
   useEffect(() => {
-    if (rows.length === 0 && metadataQuery.isSuccess && hasMasters) {
-      const initial = buildInitialRows(metadata!, seedInput);
-      setRows(initial.rows);
-      setSkuList(initial.skuList);
-      setSeedLabel(initial.seedLabel);
-      setActiveSkuIndex(0);
-      setStatusMessage("Generated initial dataset.");
+    if (warehouseLimit > 0) {
+      setWarehouseCount((prev) => {
+        const min = 1;
+        const max = warehouseLimit;
+        const fallback = Math.min(DEFAULT_WAREHOUSE_COUNT, max);
+        if (!Number.isFinite(prev) || prev < min) {
+          return fallback;
+        }
+        if (prev > max) {
+          return max;
+        }
+        return prev;
+      });
     }
-  }, [metadata, metadataQuery.isSuccess, hasMasters, rows.length, seedInput]);
+  }, [warehouseLimit]);
+
+  const regenerateDataset = useCallback(
+    (message?: string) => {
+      if (!metadata || !hasMasters) {
+        return null;
+      }
+      const initial = buildInitialRows(metadata, warehouseCount);
+      const normalizedRows = initial.rows.map(recalcRow);
+      setRows(normalizedRows);
+      setSkuList(initial.skuList);
+      setActiveSkuIndex(0);
+      setRecommendedMoves([]);
+      setMarkdown("");
+      setCopyStatus(null);
+      const effectiveCount = Math.min(warehouseCount, metadata.warehouses.length);
+      setStatusMessage(
+        message ?? `倉庫数${effectiveCount}件でデータセットを再生成しました。`,
+      );
+      return { rows: normalizedRows, skuList: initial.skuList };
+    },
+    [metadata, hasMasters, warehouseCount],
+  );
+
+  useEffect(() => {
+    if (rows.length === 0 && metadataQuery.isSuccess && hasMasters) {
+      regenerateDataset("初期データを生成しました。");
+    }
+  }, [metadataQuery.isSuccess, hasMasters, regenerateDataset, rows.length]);
 
   const activeSku = skuList[activeSkuIndex] ?? null;
   const rowsForActiveSku = useMemo(
@@ -286,20 +331,8 @@ export default function TestAlgoPage() {
   }, [rowsForActiveSku]);
 
   const handleReset = useCallback(() => {
-    if (!metadata || !hasMasters) {
-      return;
-    }
-    const next = buildInitialRows(metadata, seedInput);
-    setRows(next.rows);
-    setSkuList(next.skuList);
-    setActiveSkuIndex(0);
-    setSeedLabel(next.seedLabel);
-    setRecommendedMoves([]);
-    setMarkdown("");
-    setSwapSource(null);
-    setStatusMessage(`Dataset regenerated with seed \`${next.seedLabel}\`.`);
-    setCopyStatus(null);
-  }, [metadata, seedInput, hasMasters]);
+    regenerateDataset();
+  }, [regenerateDataset]);
 
   const handleMetricChange = useCallback(
     (columnKey: string, metric: MetricKey, value: number) => {
@@ -314,7 +347,8 @@ export default function TestAlgoPage() {
           if (makeColumnKey(row.warehouse, row.channel) !== columnKey) {
             return row;
           }
-          const nextRow = { ...row, [metric]: value } as EditablePsiRow;
+          const nextValue = toInteger(value);
+          const nextRow = { ...row, [metric]: nextValue } as EditablePsiRow;
           return recalcRow(nextRow);
         }),
       );
@@ -325,102 +359,80 @@ export default function TestAlgoPage() {
     },
     [activeSku],
   );
-
-  const handleSelectCell = useCallback(
-    (columnKey: string, metric: MetricKey) => {
-      if (!activeSku || !EDITABLE_METRICS.includes(metric)) {
-        return;
+  const runAlgorithm = useCallback(
+    async (inputRows: EditablePsiRow[]) => {
+      if (!metadata || inputRows.length === 0) {
+        return null;
       }
-      const currentValue = activeRowMap.get(columnKey);
-      if (!currentValue) {
-        return;
-      }
-      if (!swapSource || swapSource.metric !== metric || swapSource.sku !== activeSku) {
-        setSwapSource({ sku: activeSku, metric, columnKey });
-        setStatusMessage(`Selected ${metricLabel(metric, METRIC_DEFINITIONS)} at ${columnKey}.`);
-        return;
-      }
-      if (swapSource.columnKey === columnKey) {
-        setSwapSource(null);
-        setStatusMessage(null);
-        return;
-      }
-      const sourceRow = activeRowMap.get(swapSource.columnKey);
-      if (!sourceRow) {
-        setSwapSource(null);
-        return;
-      }
-      const targetRow = activeRowMap.get(columnKey);
-      if (!targetRow) {
-        setSwapSource(null);
-        return;
-      }
-      const sourceValue = safeNumber(sourceRow[metric] as number | undefined);
-      const targetValue = safeNumber(targetRow[metric] as number | undefined);
-      setRows((prev) =>
-        prev.map((row) => {
-          if (row.sku !== activeSku) {
-            return row;
-          }
-          const key = makeColumnKey(row.warehouse, row.channel);
-          if (key === swapSource.columnKey) {
-            return recalcRow({ ...row, [metric]: targetValue } as EditablePsiRow);
-          }
-          if (key === columnKey) {
-            return recalcRow({ ...row, [metric]: sourceValue } as EditablePsiRow);
-          }
-          return row;
-        }),
-      );
-      setSwapSource(null);
-      setRecommendedMoves([]);
-      setMarkdown("");
-      setStatusMessage(
-        `Swapped ${metricLabel(metric, METRIC_DEFINITIONS)} between ${swapSource.columnKey} and ${columnKey}.`,
-      );
-      setCopyStatus(null);
-    },
-    [activeSku, activeRowMap, swapSource],
-  );
-
-  const handleRun = useCallback(async () => {
-    if (!metadata || rows.length === 0) {
-      return;
-    }
-    const request: TestAlgoRunRequest = {
-      rows: rows.map<TestAlgoRowInput>((row) => ({
-        sku_code: String(row.sku),
-        sku_name: row.skuName ?? null,
-        warehouse_name: row.warehouse,
-        channel: row.channel,
-        stock_start: safeNumber(row.stockStart),
-        inbound: safeNumber(row.inbound),
-        outbound: safeNumber(row.outbound),
-        stock_closing: safeNumber(row.stockClosing),
-        std_stock: safeNumber(row.stdStock),
-      })),
-    };
-    try {
+      const request: TestAlgoRunRequest = {
+        rows: inputRows.map<TestAlgoRowInput>((row) => ({
+          sku_code: String(row.sku),
+          sku_name: row.skuName ?? null,
+          warehouse_name: row.warehouse,
+          channel: row.channel,
+          stock_start: safeNumber(row.stockStart),
+          inbound: safeNumber(row.inbound),
+          outbound: safeNumber(row.outbound),
+          stock_closing: safeNumber(row.stockClosing),
+          std_stock: safeNumber(row.stdStock),
+        })),
+      };
       const response = await runMutation.mutateAsync(request);
-      const nextRows = response.matrix_rows.map(toEditableRow);
-      const nextSkuList = Array.from(new Set(nextRows.map((row) => String(row.sku))));
-      setRows(nextRows.map(recalcRow));
+      const recalculatedRows = response.matrix_rows.map(toEditableRow).map(recalcRow);
+      const rowsWithMoves = applyMovesToRows(recalculatedRows, response.recommended_moves);
+      const nextSkuList = Array.from(new Set(rowsWithMoves.map((row) => String(row.sku))));
+      setRows(rowsWithMoves);
       setSkuList(nextSkuList);
       setActiveSkuIndex((prev) => (prev < nextSkuList.length ? prev : 0));
       setRecommendedMoves(response.recommended_moves);
-      setStatusMessage(`Calculated recommendations for ${nextSkuList.length} SKU(s).`);
       setCopyStatus(null);
+      return { rows: rowsWithMoves, moves: response.recommended_moves, skuList: nextSkuList };
+    },
+    [metadata, runMutation],
+  );
+
+  const handleRun = useCallback(async () => {
+    try {
+      const result = await runAlgorithm(rows);
+      if (result) {
+        setStatusMessage(`Calculated recommendations for ${result.skuList.length} SKU(s).`);
+      }
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Failed to run algorithm.");
     }
-  }, [metadata, rows, runMutation]);
+  }, [rows, runAlgorithm]);
 
   const handleGenerateReport = useCallback(() => {
-    const text = buildMarkdownReport(rows, recommendedMoves, metadata, seedLabel);
+    const text = buildMarkdownReport(rows, recommendedMoves, metadata);
     setMarkdown(text);
     setCopyStatus(null);
     setStatusMessage("Markdown report generated.");
-  }, [rows, recommendedMoves, metadata, seedLabel]);
+  }, [rows, recommendedMoves, metadata]);
+
+  const handleFullProcess = useCallback(async () => {
+    if (!metadata || !hasMasters) {
+      return;
+    }
+    const confirmed = window.confirm("ダイアグラムとかで実行しますがいいですか？");
+    if (!confirmed) {
+      return;
+    }
+    const initial = regenerateDataset();
+    if (!initial) {
+      return;
+    }
+    try {
+      const result = await runAlgorithm(initial.rows);
+      if (result) {
+        const reportText = buildMarkdownReport(result.rows, result.moves, metadata);
+        setMarkdown(reportText);
+        setCopyStatus(null);
+        setStatusMessage("一括実行が完了しました。");
+      }
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "処理に失敗しました。");
+    }
+  }, [metadata, hasMasters, regenerateDataset, runAlgorithm]);
 
   const handleCopyMarkdown = useCallback(async () => {
     if (!markdown) {
@@ -462,19 +474,41 @@ export default function TestAlgoPage() {
         )}
         <div className="control-grid">
           <label>
-            シード値
+            倉庫数
             <input
-              type="text"
-              value={seedInput}
-              onChange={(event) => setSeedInput(event.target.value)}
-              placeholder="任意の文字列"
+              type="number"
+              min={1}
+              max={Math.max(1, warehouseLimit || 1)}
+              value={warehouseCount}
+              onChange={(event) => {
+                const parsed = Number(event.target.value);
+                if (!Number.isFinite(parsed)) {
+                  setWarehouseCount(1);
+                  return;
+                }
+                const min = 1;
+                const max = warehouseLimit > 0 ? warehouseLimit : Math.max(1, warehouseCount);
+                const clamped = Math.min(Math.max(Math.round(parsed), min), max);
+                setWarehouseCount(clamped);
+              }}
+              disabled={!hasMasters || isLoading}
             />
           </label>
           <div className="control-buttons">
-            <button type="button" onClick={handleReset} disabled={!hasMasters || isLoading}>
+            <button
+              type="button"
+              className="btn-reset"
+              onClick={handleReset}
+              disabled={!hasMasters || isLoading}
+            >
               Reset
             </button>
-            <button type="button" onClick={handleRun} disabled={rows.length === 0 || runMutation.isPending}>
+            <button
+              type="button"
+              className="btn-run"
+              onClick={handleRun}
+              disabled={rows.length === 0 || runMutation.isPending}
+            >
               {runMutation.isPending ? "計算中…" : "計算"}
             </button>
           </div>
@@ -536,15 +570,13 @@ export default function TestAlgoPage() {
                       const row = activeRowMap.get(columnKey);
                       const value = row ? (row[metric.key] as number | undefined) : undefined;
                       if (EDITABLE_METRICS.includes(metric.key)) {
-                        const isSelected =
-                          swapSource?.metric === metric.key && swapSource?.columnKey === columnKey;
                         return (
-                          <td key={columnKey} className={`editable-cell ${isSelected ? "selected" : ""}`}>
+                          <td key={columnKey} className="editable-cell">
                             <div className="editable-cell-inner">
                               <input
                                 type="number"
-                                step="0.01"
-                                value={typeof value === "number" ? value : 0}
+                                step={1}
+                                value={typeof value === "number" ? toInteger(value) : 0}
                                 onChange={(event) => {
                                   const parsed = Number(event.target.value);
                                   handleMetricChange(
@@ -554,20 +586,13 @@ export default function TestAlgoPage() {
                                   );
                                 }}
                               />
-                              <button
-                                type="button"
-                                className="swap-button"
-                                onClick={() => handleSelectCell(columnKey, metric.key)}
-                              >
-                                Swap
-                              </button>
                             </div>
                           </td>
                         );
                       }
                       return (
                         <td key={columnKey} className="value-cell">
-                          {formatMetricValue(value)}
+                          {formatIntegerValue(value)}
                         </td>
                       );
                     })}
@@ -605,7 +630,7 @@ export default function TestAlgoPage() {
                     <td>{move.from_channel}</td>
                     <td>{move.to_warehouse}</td>
                     <td>{move.to_channel}</td>
-                    <td className="numeric">{formatMetricValue(move.qty)}</td>
+                    <td className="numeric">{formatIntegerValue(move.qty)}</td>
                     <td>{move.reason}</td>
                   </tr>
                 ))}
@@ -617,12 +642,20 @@ export default function TestAlgoPage() {
 
       <section className="report-section">
         <h2>Markdown Report</h2>
-        <div className="control-buttons">
+        <div className="control-buttons report-buttons">
           <button type="button" onClick={handleGenerateReport} disabled={rows.length === 0}>
             レポート生成
           </button>
           <button type="button" onClick={handleCopyMarkdown} disabled={!markdown}>
             コピー
+          </button>
+          <button
+            type="button"
+            className="btn-batch"
+            onClick={handleFullProcess}
+            disabled={!hasMasters || isLoading || runMutation.isPending}
+          >
+            一括実行
           </button>
         </div>
         {copyStatus ? <p className="status-text">{copyStatus}</p> : null}
