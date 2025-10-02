@@ -20,6 +20,18 @@ const TAB_CONFIG = [
 
 type TabValue = (typeof TAB_CONFIG)[number]["value"];
 
+type SkuMetadata = {
+  name?: string;
+  category_1?: string | null;
+  category_2?: string | null;
+  category_3?: string | null;
+};
+
+const normalizeCategoryValue = (value?: string | null) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};
+
 interface PSIMatrixTabsProps {
   data: PsiRow[];
   skuList: string[];
@@ -52,39 +64,97 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
     const nextIndex = initialSkuIndex ?? 0;
     return Math.min(Math.max(nextIndex, 0), normalizedSkuList.length - 1);
   });
-  const [warehouseFilter, setWarehouseFilter] = useState("");
-  const [channelFilter, setChannelFilter] = useState("");
+  const [skuSearch, setSkuSearch] = useState("");
+
+  const skuMetadataMap = useMemo(() => {
+    const map = new Map<string, SkuMetadata>();
+    data.forEach((row) => {
+      const skuCode = String(row.sku);
+      const existing = map.get(skuCode);
+      const category1 = normalizeCategoryValue(row.category_1);
+      const category2 = normalizeCategoryValue(row.category_2);
+      const category3 = normalizeCategoryValue(row.category_3);
+      if (existing) {
+        if (!existing.name && row.skuName) {
+          existing.name = row.skuName;
+        }
+        if ((existing.category_1 === undefined || existing.category_1 === null) && category1) {
+          existing.category_1 = category1;
+        }
+        if ((existing.category_2 === undefined || existing.category_2 === null) && category2) {
+          existing.category_2 = category2;
+        }
+        if ((existing.category_3 === undefined || existing.category_3 === null) && category3) {
+          existing.category_3 = category3;
+        }
+      } else {
+        map.set(skuCode, {
+          name: row.skuName,
+          category_1: category1,
+          category_2: category2,
+          category_3: category3,
+        });
+      }
+    });
+    return map;
+  }, [data]);
+
+  const normalizedSkuSearch = skuSearch.trim().toLowerCase();
+
+  const filteredSkuList = useMemo(() => {
+    if (!normalizedSkuSearch) {
+      return normalizedSkuList;
+    }
+    return normalizedSkuList.filter((skuCode) => {
+      const metadata = skuMetadataMap.get(skuCode);
+      const name = metadata?.name?.toLowerCase() ?? "";
+      return skuCode.toLowerCase().includes(normalizedSkuSearch) || name.includes(normalizedSkuSearch);
+    });
+  }, [normalizedSkuList, normalizedSkuSearch, skuMetadataMap]);
 
   useEffect(() => {
     if (typeof initialSkuIndex !== "number") {
       return;
     }
     setSkuIndex((prev) => {
-      if (!normalizedSkuList.length) {
+      if (!filteredSkuList.length) {
         return 0;
       }
-      const next = Math.min(Math.max(initialSkuIndex, 0), normalizedSkuList.length - 1);
+      const next = Math.min(Math.max(initialSkuIndex, 0), filteredSkuList.length - 1);
       return next === prev ? prev : next;
     });
-  }, [initialSkuIndex, normalizedSkuList.length]);
+  }, [filteredSkuList.length, initialSkuIndex]);
 
   useEffect(() => {
     setSkuIndex((prev) => {
-      if (!normalizedSkuList.length) {
+      if (!filteredSkuList.length) {
         return 0;
       }
-      const clamped = Math.min(Math.max(prev, 0), normalizedSkuList.length - 1);
+      const clamped = Math.min(Math.max(prev, 0), filteredSkuList.length - 1);
       return clamped === prev ? prev : clamped;
     });
-  }, [normalizedSkuList]);
+  }, [filteredSkuList]);
+
+  useEffect(() => {
+    if (normalizedSkuSearch) {
+      setSkuIndex(0);
+    }
+  }, [normalizedSkuSearch]);
 
   useEffect(() => {
     if (onSkuChange) {
-      onSkuChange(skuIndex);
+      const currentSkuCode =
+        filteredSkuList.length > 0
+          ? filteredSkuList[Math.min(Math.max(skuIndex, 0), filteredSkuList.length - 1)]
+          : null;
+      const originalIndex = currentSkuCode ? normalizedSkuList.indexOf(currentSkuCode) : -1;
+      onSkuChange(originalIndex);
     }
-  }, [skuIndex, onSkuChange]);
+  }, [filteredSkuList, normalizedSkuList, onSkuChange, skuIndex]);
 
-  const currentSku = normalizedSkuList.length > 0 ? normalizedSkuList[Math.min(skuIndex, normalizedSkuList.length - 1)] : null;
+  const safeSkuIndex =
+    filteredSkuList.length === 0 ? -1 : Math.min(Math.max(skuIndex, 0), filteredSkuList.length - 1);
+  const currentSku = safeSkuIndex === -1 ? null : filteredSkuList[safeSkuIndex];
 
   const rowsForSku = useMemo(() => {
     if (!currentSku) {
@@ -93,31 +163,22 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
     return data.filter((row) => String(row.sku) === currentSku);
   }, [currentSku, data]);
 
-  const normalizedWarehouseFilter = warehouseFilter.trim().toLowerCase();
-  const normalizedChannelFilter = channelFilter.trim().toLowerCase();
+  const skuMetadata = currentSku ? skuMetadataMap.get(currentSku) : undefined;
+  const skuName = skuMetadata?.name ?? rowsForSku[0]?.skuName ?? "";
+  const skuNameDisplay = skuName || "—";
+  const skuTitle = currentSku ? `${currentSku} – ${skuNameDisplay}` : "SKU未選択";
+  const categoryLabel = [skuMetadata?.category_1, skuMetadata?.category_2, skuMetadata?.category_3]
+    .map((value) => (value && value.trim() ? value : "—"))
+    .join(" – ");
+  const skuPositionLabel = safeSkuIndex === -1 ? "0 / 0" : `${safeSkuIndex + 1} / ${filteredSkuList.length}`;
 
-  const filteredRows = useMemo(() => {
-    if (!normalizedWarehouseFilter && !normalizedChannelFilter) {
-      return rowsForSku;
-    }
-    return rowsForSku.filter((row) => {
-      const warehouseMatch = normalizedWarehouseFilter
-        ? row.warehouse.toLowerCase().includes(normalizedWarehouseFilter)
-        : true;
-      const channelMatch = normalizedChannelFilter
-        ? row.channel.toLowerCase().includes(normalizedChannelFilter)
-        : true;
-      return warehouseMatch && channelMatch;
-    });
-  }, [rowsForSku, normalizedWarehouseFilter, normalizedChannelFilter]);
-
-  const skuName = rowsForSku[0]?.skuName ?? "";
-  const skuIndicator = currentSku
-    ? `${skuIndex + 1} / ${normalizedSkuList.length} : ${currentSku}${skuName ? ` – ${skuName}` : ""}`
-    : "-";
-
-  const hasFilteredRows = filteredRows.length > 0;
-  const emptyMessage = rowsForSku.length === 0 ? "No data for the selected SKU." : "No rows match the current filters.";
+  const hasRows = rowsForSku.length > 0;
+  const emptyMessage =
+    filteredSkuList.length === 0
+      ? normalizedSkuSearch
+        ? "No SKUs match the current search."
+        : "No data available."
+      : "No data for the selected SKU.";
 
   const handlePrevSku = () => {
     setSkuIndex((prev) => Math.max(0, prev - 1));
@@ -125,42 +186,42 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
 
   const handleNextSku = () => {
     setSkuIndex((prev) => {
-      if (!normalizedSkuList.length) {
+      if (!filteredSkuList.length) {
         return 0;
       }
-      return Math.min(normalizedSkuList.length - 1, prev + 1);
+      return Math.min(filteredSkuList.length - 1, prev + 1);
     });
   };
 
   let tabContent: JSX.Element;
-  if (!hasFilteredRows) {
+  if (!hasRows) {
     tabContent = <p className="psi-matrix-empty">{emptyMessage}</p>;
   } else {
     switch (activeTab) {
       case "origin":
-        tabContent = <OriginView rows={filteredRows} />;
+        tabContent = <OriginView rows={rowsForSku} />;
         break;
       case "cross":
         tabContent = (
-          <CrossTableView rows={filteredRows} metrics={METRIC_DEFINITIONS} orientation="warehouse-first" />
+          <CrossTableView rows={rowsForSku} metrics={METRIC_DEFINITIONS} orientation="warehouse-first" />
         );
         break;
       case "cross2":
         tabContent = (
-          <CrossTableView rows={filteredRows} metrics={METRIC_DEFINITIONS} orientation="channel-first" />
+          <CrossTableView rows={rowsForSku} metrics={METRIC_DEFINITIONS} orientation="channel-first" />
         );
         break;
       case "heatmap":
-        tabContent = <HeatmapView rows={filteredRows} metrics={METRIC_DEFINITIONS} />;
+        tabContent = <HeatmapView rows={rowsForSku} metrics={METRIC_DEFINITIONS} />;
         break;
       case "bars":
-        tabContent = <BarsView rows={filteredRows} />;
+        tabContent = <BarsView rows={rowsForSku} />;
         break;
       case "kpis":
-        tabContent = <KpiView rows={filteredRows} />;
+        tabContent = <KpiView rows={rowsForSku} />;
         break;
       default:
-        tabContent = <OriginView rows={filteredRows} />;
+        tabContent = <OriginView rows={rowsForSku} />;
     }
   }
 
@@ -168,35 +229,38 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
     <div className="psi-matrix-tabs">
       <div className="psi-matrix-toolbar">
         <div className="sku-navigation">
-          <button type="button" onClick={handlePrevSku} disabled={skuIndex <= 0}>
-            前のSKU
-          </button>
-          <span className="sku-indicator">{skuIndicator}</span>
-          <button
-            type="button"
-            onClick={handleNextSku}
-            disabled={normalizedSkuList.length === 0 || skuIndex >= normalizedSkuList.length - 1}
-          >
-            次のSKU
-          </button>
-        </div>
-        <div className="psi-matrix-filters">
-          <label>
-            Warehouse filter
+          <div className="sku-navigation-header">
+            <div className="sku-navigation-title" role="status" aria-live="polite">
+              {skuTitle}
+            </div>
+            <span className="sku-navigation-meta">{skuPositionLabel}</span>
+          </div>
+          <div className="sku-navigation-categories">{categoryLabel}</div>
+          <div className="sku-navigation-actions">
+            <button
+              type="button"
+              onClick={handlePrevSku}
+              disabled={safeSkuIndex <= 0}
+              aria-label="前のSKUを表示"
+            >
+              ‹ 前のSKU
+            </button>
+            <button
+              type="button"
+              onClick={handleNextSku}
+              disabled={safeSkuIndex === -1 || safeSkuIndex >= filteredSkuList.length - 1}
+              aria-label="次のSKUを表示"
+            >
+              次のSKU ›
+            </button>
+          </div>
+          <label className="sku-navigation-search">
+            <span>SKU検索</span>
             <input
               type="search"
-              value={warehouseFilter}
-              placeholder="Contains…"
-              onChange={(event) => setWarehouseFilter(event.target.value)}
-            />
-          </label>
-          <label>
-            Channel filter
-            <input
-              type="search"
-              value={channelFilter}
-              placeholder="Contains…"
-              onChange={(event) => setChannelFilter(event.target.value)}
+              value={skuSearch}
+              placeholder="SKUコード・名称を検索"
+              onChange={(event) => setSkuSearch(event.target.value)}
             />
           </label>
         </div>
@@ -218,11 +282,11 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
       <div className="psi-matrix-content" role="tabpanel">
         {tabContent}
       </div>
-      {hasFilteredRows && (
+      {hasRows && (
         <footer className="psi-matrix-footer">
           <span className="psi-matrix-count">
-            Showing {filteredRows.length} row{filteredRows.length === 1 ? "" : "s"}. Total:{" "}
-            {formatMetricValue(filteredRows.reduce((total, row) => total + safeNumber(row.stockFinal), 0))} Final
+            Showing {rowsForSku.length} row{rowsForSku.length === 1 ? "" : "s"}. Total:{" "}
+            {formatMetricValue(rowsForSku.reduce((total, row) => total + safeNumber(row.stockFinal), 0))} Final
           </span>
         </footer>
       )}

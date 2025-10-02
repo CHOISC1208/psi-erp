@@ -17,6 +17,9 @@ export interface PsiRowBase {
   skuName?: string;
   warehouse: string;
   channel: string;
+  category_1?: string | null;
+  category_2?: string | null;
+  category_3?: string | null;
 }
 
 export type PsiRow = PsiRowBase & PsiRowMetrics;

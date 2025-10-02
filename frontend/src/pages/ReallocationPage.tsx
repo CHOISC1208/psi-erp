@@ -500,11 +500,17 @@ export default function ReallocationPage() {
       const stdstock = baseRow?.stdstock ?? 0;
       const gap = stdstock - stock_closing;
       const sku_name = baseRow?.sku_name ?? skuNameMap.get(sku_code) ?? null;
+      const category_1 = baseRow?.category_1 ?? null;
+      const category_2 = baseRow?.category_2 ?? null;
+      const category_3 = baseRow?.category_3 ?? null;
       result.push({
         sku_code,
         sku_name,
         warehouse_name,
         channel,
+        category_1,
+        category_2,
+        category_3,
         stock_at_anchor,
         inbound_qty,
         outbound_qty,
@@ -607,6 +613,9 @@ export default function ReallocationPage() {
           skuName: row.sku_name ?? undefined,
           warehouse: row.warehouse_name,
           channel: row.channel,
+          category_1: row.category_1 ?? null,
+          category_2: row.category_2 ?? null,
+          category_3: row.category_3 ?? null,
           stockStart: row.stock_at_anchor,
           inbound: row.inbound_qty,
           outbound: row.outbound_qty,
