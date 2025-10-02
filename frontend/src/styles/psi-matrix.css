@@ -207,6 +207,17 @@
   text-align: left;
 }
 
+.psi-matrix-table .total-column {
+  background: var(--surface-table-header-highlight, var(--surface-table-header));
+  font-weight: 700;
+  text-align: right;
+}
+
+.psi-matrix-table .total-cell {
+  font-weight: 600;
+  background: var(--surface-table-total, rgba(59, 130, 246, 0.08));
+}
+
 .psi-matrix-table tbody tr:nth-child(even) {
   background: var(--surface-table-zebra);
 }

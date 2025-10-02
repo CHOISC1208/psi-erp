@@ -8,6 +8,7 @@ import {
   formatMetricValue,
   getMetricValue,
   makeColumnKey,
+  safeNumber,
 } from "../utils";
 
 interface HeatmapViewProps {
@@ -119,6 +120,9 @@ export default function HeatmapView({ rows, metrics }: HeatmapViewProps) {
                     {group.warehouse}
                   </th>
                 ))}
+                <th rowSpan={2} className="total-column">
+                  Total
+                </th>
               </tr>
               <tr>
                 {columnGroups.flatMap((group) =>
@@ -149,6 +153,14 @@ export default function HeatmapView({ rows, metrics }: HeatmapViewProps) {
                         </td>
                       );
                     })}
+                    <td className="total-cell">
+                      {formatMetricValue(
+                        columnKeys.reduce((sum, column) => {
+                          const value = getMetricValue(rowMap.get(column.key), metric.key);
+                          return sum + safeNumber(value);
+                        }, 0),
+                      )}
+                    </td>
                   </tr>
                 );
               })}
