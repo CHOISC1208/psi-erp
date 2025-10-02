@@ -14,41 +14,57 @@
   gap: 1rem;
 }
 
-.sku-navigation {
-  display: grid;
-  gap: 0.5rem;
+.psi-matrix-tabs .sku-navigation {
+  display: block;
 }
 
-.sku-navigation-header {
+.psi-matrix-tabs .sku-navigation-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.psi-matrix-tabs .sku-navigation-summary {
+  display: grid;
+  gap: 0.35rem;
+  text-align: center;
+  justify-items: center;
+}
+
+.psi-matrix-tabs .sku-navigation-header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
+  justify-content: center;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
-.sku-navigation-title {
+.psi-matrix-tabs .sku-navigation-title {
   font-weight: 600;
   font-size: 1.05rem;
   color: var(--text-primary);
 }
 
-.sku-navigation-meta {
+.psi-matrix-tabs .sku-navigation-meta {
   font-size: 0.85rem;
   color: var(--text-secondary);
 }
 
-.sku-navigation-categories {
+.psi-matrix-tabs .sku-navigation-categories {
   font-size: 0.9rem;
   color: var(--text-secondary);
 }
 
-.sku-navigation-actions {
+.psi-matrix-tabs .sku-navigation-actions {
   display: flex;
   gap: 0.5rem;
+  justify-content: flex-end;
+  justify-self: end;
+  flex-wrap: wrap;
 }
 
-.sku-navigation-actions button {
+.psi-matrix-tabs .sku-navigation-actions button {
   background: var(--surface-input);
   border: 1px solid var(--border-input);
   border-radius: 0.5rem;
@@ -57,19 +73,21 @@
   cursor: pointer;
 }
 
-.sku-navigation-actions button:disabled {
+.psi-matrix-tabs .sku-navigation-actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.sku-navigation-search {
+.psi-matrix-tabs .sku-navigation-search {
   display: grid;
   gap: 0.25rem;
   font-size: 0.85rem;
   color: var(--text-secondary);
+  justify-self: start;
+  max-width: 18rem;
 }
 
-.sku-navigation-search input {
+.psi-matrix-tabs .sku-navigation-search input {
   background: var(--surface-input);
   border: 1px solid var(--border-input);
   border-radius: 0.5rem;
@@ -77,9 +95,28 @@
   color: var(--text-primary);
 }
 
-.sku-navigation-search input:focus {
+.psi-matrix-tabs .sku-navigation-search input:focus {
   outline: 2px solid var(--border-focus);
   outline-offset: 1px;
+}
+
+@media (max-width: 960px) {
+  .psi-matrix-tabs .sku-navigation-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .psi-matrix-tabs .sku-navigation-summary {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .psi-matrix-tabs .sku-navigation-actions {
+    justify-self: start;
+  }
+
+  .psi-matrix-tabs .sku-navigation-search {
+    max-width: none;
+  }
 }
 
 .psi-matrix-filters {
