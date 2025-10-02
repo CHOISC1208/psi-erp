@@ -167,9 +167,10 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
   const skuName = skuMetadata?.name ?? rowsForSku[0]?.skuName ?? "";
   const skuNameDisplay = skuName || "—";
   const skuTitle = currentSku ? `${currentSku} – ${skuNameDisplay}` : "SKU未選択";
-  const categoryLabel = [skuMetadata?.category_1, skuMetadata?.category_2, skuMetadata?.category_3]
-    .map((value) => (value && value.trim() ? value : "—"))
-    .join(" – ");
+  const categoryParts = [skuMetadata?.category_1, skuMetadata?.category_2, skuMetadata?.category_3].filter(
+    (value): value is string => Boolean(value && value.trim()),
+  );
+  const categoryLabel = categoryParts.length > 0 ? categoryParts.join(" - ") : "—";
   const skuPositionLabel = safeSkuIndex === -1 ? "0 / 0" : `${safeSkuIndex + 1} / ${filteredSkuList.length}`;
 
   const hasRows = rowsForSku.length > 0;
@@ -229,40 +230,44 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
     <div className="psi-matrix-tabs">
       <div className="psi-matrix-toolbar">
         <div className="sku-navigation">
-          <div className="sku-navigation-header">
-            <div className="sku-navigation-title" role="status" aria-live="polite">
-              {skuTitle}
+          <div className="sku-navigation-layout">
+            <label className="sku-navigation-search">
+              <span>SKU検索</span>
+              <input
+                type="search"
+                value={skuSearch}
+                placeholder="SKUコード・名称を検索"
+                onChange={(event) => setSkuSearch(event.target.value)}
+              />
+            </label>
+            <div className="sku-navigation-summary">
+              <div className="sku-navigation-header">
+                <div className="sku-navigation-title" role="status" aria-live="polite">
+                  {skuTitle}
+                </div>
+                <span className="sku-navigation-meta">{skuPositionLabel}</span>
+              </div>
+              <div className="sku-navigation-categories">{categoryLabel}</div>
             </div>
-            <span className="sku-navigation-meta">{skuPositionLabel}</span>
+            <div className="sku-navigation-actions">
+              <button
+                type="button"
+                onClick={handlePrevSku}
+                disabled={safeSkuIndex <= 0}
+                aria-label="前のSKUを表示"
+              >
+                ‹ 前のSKU
+              </button>
+              <button
+                type="button"
+                onClick={handleNextSku}
+                disabled={safeSkuIndex === -1 || safeSkuIndex >= filteredSkuList.length - 1}
+                aria-label="次のSKUを表示"
+              >
+                次のSKU ›
+              </button>
+            </div>
           </div>
-          <div className="sku-navigation-categories">{categoryLabel}</div>
-          <div className="sku-navigation-actions">
-            <button
-              type="button"
-              onClick={handlePrevSku}
-              disabled={safeSkuIndex <= 0}
-              aria-label="前のSKUを表示"
-            >
-              ‹ 前のSKU
-            </button>
-            <button
-              type="button"
-              onClick={handleNextSku}
-              disabled={safeSkuIndex === -1 || safeSkuIndex >= filteredSkuList.length - 1}
-              aria-label="次のSKUを表示"
-            >
-              次のSKU ›
-            </button>
-          </div>
-          <label className="sku-navigation-search">
-            <span>SKU検索</span>
-            <input
-              type="search"
-              value={skuSearch}
-              placeholder="SKUコード・名称を検索"
-              onChange={(event) => setSkuSearch(event.target.value)}
-            />
-          </label>
         </div>
       </div>
       <div className="psi-matrix-tablist" role="tablist" aria-label="PSI matrix views">
