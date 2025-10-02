@@ -369,7 +369,7 @@ class TransferPlanLineBase(BaseModel):
     from_channel: str
     to_warehouse: str
     to_channel: str
-    qty: Annotated[int, Field(gt=0)]
+    qty: Annotated[Decimal, Field(gt=0)]
     is_manual: bool
     reason: str | None = None
 
@@ -380,7 +380,10 @@ class TransferPlanLineRead(TransferPlanLineBase):
     line_id: UUID
     plan_id: UUID
 
-    model_config = {"from_attributes": True}
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {Decimal: lambda value: float(value)},
+    }
 
 
 class TransferPlanLineWrite(TransferPlanLineBase):
