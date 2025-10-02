@@ -1,17 +1,26 @@
 import { useMemo } from "react";
 
 import type { MetricDefinition, PsiRow } from "../types";
-import {
-  buildColumnGroups,
-  columnKeysFromGroups,
-  formatMetricValue,
-  getMetricValue,
-  makeColumnKey,
-} from "../utils";
+import { buildColumnGroups, formatMetricValue, getMetricValue, makeColumnKey } from "../utils";
 
 interface CrossTableViewProps {
   rows: PsiRow[];
   metrics: MetricDefinition[];
+  orientation?: "warehouse-first" | "channel-first";
+}
+
+interface HeaderColumn {
+  key: string;
+  warehouse: string;
+  channel: string;
+  label: string;
+  className: string;
+}
+
+interface HeaderGroup {
+  label: string;
+  className: string;
+  columns: HeaderColumn[];
 }
 
 const getValueClassName = (value: number | null) => {
@@ -24,9 +33,52 @@ const getValueClassName = (value: number | null) => {
   return "value-negative";
 };
 
-export default function CrossTableView({ rows, metrics }: CrossTableViewProps) {
-  const columnGroups = useMemo(() => buildColumnGroups(rows), [rows]);
-  const columnKeys = useMemo(() => columnKeysFromGroups(columnGroups), [columnGroups]);
+const buildHeaderGroups = (rows: PsiRow[], orientation: Required<CrossTableViewProps>["orientation"]): HeaderGroup[] => {
+  if (orientation === "channel-first") {
+    const map = new Map<string, Set<string>>();
+    rows.forEach((row) => {
+      const channel = row.channel || "-";
+      const warehouse = row.warehouse || "-";
+      const set = map.get(channel) ?? new Set<string>();
+      set.add(warehouse);
+      map.set(channel, set);
+    });
+    return Array.from(map.entries())
+      .map(([channel, warehouses]) => ({
+        label: channel,
+        className: "channel-header",
+        columns: Array.from(warehouses)
+          .sort((a, b) => a.localeCompare(b))
+          .map<HeaderColumn>((warehouse) => ({
+            key: makeColumnKey(warehouse, channel),
+            warehouse,
+            channel,
+            label: warehouse,
+            className: "warehouse-header",
+          })),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  return buildColumnGroups(rows).map<HeaderGroup>((group) => ({
+    label: group.warehouse,
+    className: "warehouse-header",
+    columns: group.channels.map<HeaderColumn>((channel) => ({
+      key: makeColumnKey(group.warehouse, channel),
+      warehouse: group.warehouse,
+      channel,
+      label: channel,
+      className: "channel-header",
+    })),
+  }));
+};
+
+export default function CrossTableView({ rows, metrics, orientation = "warehouse-first" }: CrossTableViewProps) {
+  const headerGroups = useMemo(() => buildHeaderGroups(rows, orientation), [rows, orientation]);
+  const headerColumns = useMemo(
+    () => headerGroups.flatMap((group) => group.columns),
+    [headerGroups],
+  );
   const rowMap = useMemo(() => {
     const map = new Map<string, PsiRow>();
     rows.forEach((row) => {
@@ -35,7 +87,7 @@ export default function CrossTableView({ rows, metrics }: CrossTableViewProps) {
     return map;
   }, [rows]);
 
-  if (columnKeys.length === 0) {
+  if (headerColumns.length === 0) {
     return <p className="psi-matrix-empty">No rows match the current filters.</p>;
   }
 
@@ -47,17 +99,17 @@ export default function CrossTableView({ rows, metrics }: CrossTableViewProps) {
             <th rowSpan={2} className="metric-column">
               Metric
             </th>
-            {columnGroups.map((group) => (
-              <th key={group.warehouse} colSpan={group.channels.length} className="warehouse-header">
-                {group.warehouse}
+            {headerGroups.map((group) => (
+              <th key={group.label} colSpan={group.columns.length} className={group.className}>
+                {group.label}
               </th>
             ))}
           </tr>
           <tr>
-            {columnGroups.flatMap((group) =>
-              group.channels.map((channel) => (
-                <th key={`${group.warehouse}|${channel}`} className="channel-header">
-                  {channel}
+            {headerGroups.flatMap((group) =>
+              group.columns.map((column) => (
+                <th key={column.key} className={column.className}>
+                  {column.label}
                 </th>
               )),
             )}
@@ -69,7 +121,7 @@ export default function CrossTableView({ rows, metrics }: CrossTableViewProps) {
               <th scope="row" className="metric-label">
                 {metric.label}
               </th>
-              {columnKeys.map((column) => {
+              {headerColumns.map((column) => {
                 const value = getMetricValue(rowMap.get(column.key), metric.key);
                 return (
                   <td key={column.key} className={getValueClassName(value)}>

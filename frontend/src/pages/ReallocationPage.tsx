@@ -73,7 +73,7 @@ const draftToPayload = (draft: LineDraft): TransferPlanLineWrite => ({
   from_channel: draft.from_channel.trim(),
   to_warehouse: draft.to_warehouse.trim(),
   to_channel: draft.to_channel.trim(),
-  qty: Number.parseFloat(draft.qty),
+  qty: Number.parseInt(draft.qty, 10),
   is_manual: draft.is_manual,
   reason: draft.reason.trim() ? draft.reason.trim() : null,
 });
@@ -110,14 +110,16 @@ const buildMoveMap = (lines: LineDraft[]) => {
       !toWarehouse ||
       !toChannel ||
       !Number.isFinite(qtyValue) ||
-      qtyValue <= 0
+      qtyValue <= 0 ||
+      !Number.isInteger(qtyValue)
     ) {
       continue;
     }
+    const qty = qtyValue;
     const outgoingKey = makeMatrixKey(sku, fromWarehouse, fromChannel);
     const incomingKey = makeMatrixKey(sku, toWarehouse, toChannel);
-    map.set(outgoingKey, (map.get(outgoingKey) ?? 0) - qtyValue);
-    map.set(incomingKey, (map.get(incomingKey) ?? 0) + qtyValue);
+    map.set(outgoingKey, (map.get(outgoingKey) ?? 0) - qty);
+    map.set(incomingKey, (map.get(incomingKey) ?? 0) + qty);
   }
   return map;
 };
@@ -309,8 +311,8 @@ export default function ReallocationPage() {
         return;
       }
       const qtyValue = Number.parseFloat(line.qty);
-      if (!Number.isFinite(qtyValue) || qtyValue <= 0) {
-        setStatus({ type: "error", text: "Quantity must be a positive number." });
+      if (!Number.isFinite(qtyValue) || qtyValue <= 0 || !Number.isInteger(qtyValue)) {
+        setStatus({ type: "error", text: "Quantity must be a positive integer." });
         return;
       }
       payload.push(draftToPayload(line));
@@ -497,7 +499,7 @@ export default function ReallocationPage() {
       const inbound_qty = baseRow?.inbound_qty ?? 0;
       const outbound_qty = baseRow?.outbound_qty ?? 0;
       const stdstock = baseRow?.stdstock ?? 0;
-      const gap = baseRow?.gap ?? stock_at_anchor - stdstock;
+      const gap = stdstock - stock_closing;
       const sku_name = baseRow?.sku_name ?? skuNameMap.get(sku_code) ?? null;
       result.push({
         sku_code,
@@ -595,21 +597,25 @@ export default function ReallocationPage() {
 
   const psiRows = useMemo(
     () =>
-      simulatedMatrixRows.map((row) => ({
-        sku: row.sku_code,
-        skuName: row.sku_name ?? undefined,
-        warehouse: row.warehouse_name,
-        channel: row.channel,
-        stockStart: row.stock_at_anchor,
-        inbound: row.inbound_qty,
-        outbound: row.outbound_qty,
-        stockClosing: row.stock_closing,
-        stdStock: row.stdstock,
-        gap: row.gap,
-        move: row.move,
-        stockFinal: row.stock_fin,
-        gapAfter: row.stock_fin - row.stdstock,
-      })),
+      simulatedMatrixRows.map((row) => {
+        const gap = row.stdstock - row.stock_closing;
+        const gapAfter = gap + row.move;
+        return {
+          sku: row.sku_code,
+          skuName: row.sku_name ?? undefined,
+          warehouse: row.warehouse_name,
+          channel: row.channel,
+          stockStart: row.stock_at_anchor,
+          inbound: row.inbound_qty,
+          outbound: row.outbound_qty,
+          stockClosing: row.stock_closing,
+          stdStock: row.stdstock,
+          gap,
+          move: row.move,
+          stockFinal: row.stock_fin,
+          gapAfter,
+        };
+      }),
     [simulatedMatrixRows],
   );
 

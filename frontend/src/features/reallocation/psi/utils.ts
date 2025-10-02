@@ -5,10 +5,10 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
   { key: "inbound", label: "Inbound", shortLabel: "Inbound" },
   { key: "outbound", label: "Outbound", shortLabel: "Outbound" },
   { key: "stockClosing", label: "Stock Closing", shortLabel: "Closing" },
-  { key: "stdStock", label: "Std Stock", shortLabel: "Std" },
-  { key: "gap", label: "Gap", shortLabel: "Gap" },
   { key: "move", label: "Move", shortLabel: "Move" },
   { key: "stockFinal", label: "Stock Final", shortLabel: "Final" },
+  { key: "stdStock", label: "Std Stock", shortLabel: "Std" },
+  { key: "gap", label: "Gap", shortLabel: "Gap" },
   { key: "gapAfter", label: "Gap After", shortLabel: "Gap After" },
 ];
 
@@ -63,8 +63,23 @@ export const getMetricValue = (row: PsiRow | undefined, metric: MetricKey): numb
   if (!row) {
     return null;
   }
-  const value = row[metric];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  switch (metric) {
+    case "gap": {
+      const stdStock = safeNumber(row.stdStock);
+      const stockClosing = safeNumber(row.stockClosing);
+      return stdStock - stockClosing;
+    }
+    case "gapAfter": {
+      const stdStock = safeNumber(row.stdStock);
+      const stockClosing = safeNumber(row.stockClosing);
+      const move = safeNumber(row.move);
+      return stdStock - stockClosing + move;
+    }
+    default: {
+      const value = row[metric];
+      return typeof value === "number" && Number.isFinite(value) ? value : null;
+    }
+  }
 };
 
 export const formatMetricValue = (value: number | null | undefined): string => {
