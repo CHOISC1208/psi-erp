@@ -413,7 +413,7 @@ export default function TestAlgoPage() {
     if (!metadata || !hasMasters) {
       return;
     }
-    const confirmed = window.confirm("ダイアグラムとかで実行しますがいいですか？");
+    const confirmed = window.confirm("生成→計算→レポートまでを一括で実行しますか？");
     if (!confirmed) {
       return;
     }
