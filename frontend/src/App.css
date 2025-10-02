@@ -355,6 +355,67 @@ body {
   gap: 0.75rem;
 }
 
+.reallocation-page .reallocation-filter-form {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.reallocation-page .reallocation-filter-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.reallocation-page .reallocation-filter-panel {
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reallocation-page .reallocation-filter-panel label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.reallocation-page .reallocation-filter-panel select,
+.reallocation-page .reallocation-filter-panel input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.reallocation-page .reallocation-filter-dates {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.reallocation-page .reallocation-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.reallocation-page .reallocation-filter-status {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-subtle, #9ca3af);
+}
+
+.reallocation-page .reallocation-filter-status.error {
+  color: var(--accent-red, #dc2626);
+}
+
+.reallocation-page .plan-lines-section input:not([type="checkbox"]),
+.reallocation-page .plan-lines-section select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .reallocation-page .checkbox-cell {
   text-align: center;
 }

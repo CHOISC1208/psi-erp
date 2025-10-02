@@ -13,12 +13,8 @@ from sqlalchemy.orm import Session as DBSession
 
 from .. import models, schemas
 from ..deps import get_current_user, get_db
-from ..services.transfer_plans import (
-    QUANT,
-    fetch_main_channel_map,
-    fetch_matrix_rows,
-    recommend_plan_lines,
-)
+from ..services.transfer_logic import QUANT, recommend_plan_lines
+from ..services.transfer_plans import fetch_main_channel_map, fetch_matrix_rows
 
 
 router = APIRouter()

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from "react";
 import axios from "axios";
 
 import {
@@ -93,6 +93,47 @@ const formatDateTime = (value: string) => {
   return date.toLocaleString();
 };
 
+const MATRIX_KEY_DELIMITER = "\u0000";
+
+const makeMatrixKey = (sku: string, warehouse: string, channel: string) =>
+  [sku, warehouse, channel].join(MATRIX_KEY_DELIMITER);
+
+const buildMoveMap = (lines: LineDraft[]) => {
+  const map = new Map<string, number>();
+  for (const line of lines) {
+    const sku = line.sku_code.trim();
+    const fromWarehouse = line.from_warehouse.trim();
+    const fromChannel = line.from_channel.trim();
+    const toWarehouse = line.to_warehouse.trim();
+    const toChannel = line.to_channel.trim();
+    const qtyValue = Number.parseFloat(line.qty);
+    if (
+      !sku ||
+      !fromWarehouse ||
+      !fromChannel ||
+      !toWarehouse ||
+      !toChannel ||
+      !Number.isFinite(qtyValue) ||
+      qtyValue <= 0
+    ) {
+      continue;
+    }
+    const outgoingKey = makeMatrixKey(sku, fromWarehouse, fromChannel);
+    const incomingKey = makeMatrixKey(sku, toWarehouse, toChannel);
+    map.set(outgoingKey, (map.get(outgoingKey) ?? 0) - qtyValue);
+    map.set(incomingKey, (map.get(incomingKey) ?? 0) + qtyValue);
+  }
+  return map;
+};
+
+const ensureOption = (options: string[], value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed || options.includes(trimmed)) {
+    return options;
+  }
+  return [...options, trimmed].sort((a, b) => a.localeCompare(b));
+};
+
 export default function ReallocationPage() {
   const sessionsQuery = useSessionsQuery();
   const sessions = sessionsQuery.data ?? [];
@@ -107,11 +148,14 @@ export default function ReallocationPage() {
 
   const [plan, setPlan] = useState<TransferPlan | null>(null);
   const [lines, setLines] = useState<LineDraft[]>([]);
+  const [baselineLines, setBaselineLines] = useState<LineDraft[]>([]);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [baseFilters, setBaseFilters] = useState<Omit<MatrixQueryArgs, "planId"> | null>(null);
   const [planDirty, setPlanDirty] = useState(false);
   const [selectedSkuIndex, setSelectedSkuIndex] = useState(0);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
+  const [hasAutoLoadedPlan, setHasAutoLoadedPlan] = useState(false);
+  const skuDatalistId = useId();
 
   const summaryQuery = useSessionSummaryQuery(selectedSessionId);
   const transferPlansQuery = useTransferPlansQuery(selectedSessionId, {
@@ -142,8 +186,10 @@ export default function ReallocationPage() {
   useEffect(() => {
     setPlan(null);
     setLines([]);
+    setBaselineLines([]);
     setPlanDirty(false);
     setSelectedPlanId("");
+    setHasAutoLoadedPlan(false);
   }, [selectedSessionId]);
 
   const matrixArgs = useMemo<MatrixQueryArgs | null>(() => {
@@ -189,7 +235,9 @@ export default function ReallocationPage() {
         end: endDate,
       });
       setPlan(response.plan);
-      setLines(response.lines.map(toDraftLine));
+      const nextLines = response.lines.map(toDraftLine);
+      setLines(nextLines);
+      setBaselineLines(nextLines);
       setPlanDirty(false);
       setStatus({ type: "success", text: "Recommendation created." });
       setSelectedPlanId(response.plan.plan_id);
@@ -277,20 +325,20 @@ export default function ReallocationPage() {
       await saveLinesMutation.mutateAsync({ planId: plan.plan_id, lines: payload });
       setStatus({ type: "success", text: "Transfer plan saved." });
       setPlanDirty(false);
-      setLines(
-        payload.map((line) => ({
-          line_id: line.line_id ?? generateId(),
-          plan_id: plan.plan_id,
-          sku_code: line.sku_code,
-          from_warehouse: line.from_warehouse,
-          from_channel: line.from_channel,
-          to_warehouse: line.to_warehouse,
-          to_channel: line.to_channel,
-          qty: String(line.qty),
-          is_manual: line.is_manual,
-          reason: line.reason ?? "",
-        })),
-      );
+      const normalizedLines = payload.map((line) => ({
+        line_id: line.line_id ?? generateId(),
+        plan_id: plan.plan_id,
+        sku_code: line.sku_code,
+        from_warehouse: line.from_warehouse,
+        from_channel: line.from_channel,
+        to_warehouse: line.to_warehouse,
+        to_channel: line.to_channel,
+        qty: String(line.qty),
+        is_manual: line.is_manual,
+        reason: line.reason ?? "",
+      }));
+      setLines(normalizedLines);
+      setBaselineLines(normalizedLines);
       if (matrixArgs) {
         await matrixQuery.refetch();
       }
@@ -303,34 +351,56 @@ export default function ReallocationPage() {
     }
   };
 
+  const loadPlanById = useCallback(
+    async (planId: string, options?: { silent?: boolean }) => {
+      if (!planId) {
+        return;
+      }
+      const silent = options?.silent ?? false;
+      if (!silent) {
+        setStatus(null);
+      }
+      try {
+        const response = await loadPlanMutation.mutateAsync(planId);
+        const loadedPlan = response.plan;
+        if (loadedPlan.session_id !== selectedSessionId) {
+          setSelectedSessionId(loadedPlan.session_id);
+        }
+        setSelectedPlanId(loadedPlan.plan_id);
+        setStartDate(loadedPlan.start_date);
+        setEndDate(loadedPlan.end_date);
+        setPlan(loadedPlan);
+        const nextLines = response.lines.map(toDraftLine);
+        setLines(nextLines);
+        setBaselineLines(nextLines);
+        setPlanDirty(false);
+        setBaseFilters({
+          sessionId: loadedPlan.session_id,
+          start: loadedPlan.start_date,
+          end: loadedPlan.end_date,
+        });
+        if (!silent) {
+          setStatus({ type: "success", text: "Plan loaded." });
+        }
+      } catch (error) {
+        setStatus({
+          type: "error",
+          text: getErrorMessage(error, "Failed to load plan."),
+        });
+        throw error;
+      }
+    },
+    [loadPlanMutation, selectedSessionId],
+  );
+
   const handleLoadPlan = async () => {
     if (!selectedPlanId) {
       return;
     }
-    setStatus(null);
     try {
-      const response = await loadPlanMutation.mutateAsync(selectedPlanId);
-      const loadedPlan = response.plan;
-      if (loadedPlan.session_id !== selectedSessionId) {
-        setSelectedSessionId(loadedPlan.session_id);
-      }
-      setSelectedPlanId(loadedPlan.plan_id);
-      setStartDate(loadedPlan.start_date);
-      setEndDate(loadedPlan.end_date);
-      setPlan(loadedPlan);
-      setLines(response.lines.map(toDraftLine));
-      setPlanDirty(false);
-      setBaseFilters({
-        sessionId: loadedPlan.session_id,
-        start: loadedPlan.start_date,
-        end: loadedPlan.end_date,
-      });
-      setStatus({ type: "success", text: "Plan loaded." });
-    } catch (error) {
-      setStatus({
-        type: "error",
-        text: getErrorMessage(error, "Failed to load plan."),
-      });
+      await loadPlanById(selectedPlanId);
+    } catch {
+      // Errors are surfaced via setStatus inside loadPlanById.
     }
   };
 
@@ -349,6 +419,22 @@ export default function ReallocationPage() {
       .slice()
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   }, [transferPlansQuery.data, startDate, endDate]);
+
+  useEffect(() => {
+    if (hasAutoLoadedPlan || plan || loadPlanMutation.isPending) {
+      return;
+    }
+    if (planOptions.length === 0) {
+      return;
+    }
+    const latestPlan = planOptions[0];
+    if (!latestPlan) {
+      return;
+    }
+    setHasAutoLoadedPlan(true);
+    setSelectedPlanId(latestPlan.plan_id);
+    void loadPlanById(latestPlan.plan_id, { silent: true });
+  }, [hasAutoLoadedPlan, plan, planOptions, loadPlanById, loadPlanMutation.isPending]);
 
   const planSelectOptions = useMemo(
     () =>
@@ -377,10 +463,139 @@ export default function ReallocationPage() {
     }
   }, [planOptions, selectedPlanId]);
 
-  const matrixRows: MatrixRow[] = matrixQuery.data ?? [];
+  const baseMatrixRows: MatrixRow[] = matrixQuery.data ?? [];
+
+  const baselineMoveMap = useMemo(() => buildMoveMap(baselineLines), [baselineLines]);
+  const draftMoveMap = useMemo(() => buildMoveMap(lines), [lines]);
+
+  const skuNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of baseMatrixRows) {
+      if (row.sku_name) {
+        map.set(row.sku_code, row.sku_name);
+      }
+    }
+    return map;
+  }, [baseMatrixRows]);
+
+  const simulatedMatrixRows = useMemo(() => {
+    const baseMap = new Map<string, MatrixRow>();
+    for (const row of baseMatrixRows) {
+      baseMap.set(makeMatrixKey(row.sku_code, row.warehouse_name, row.channel), row);
+    }
+    const keys = new Set<string>([
+      ...baseMap.keys(),
+      ...baselineMoveMap.keys(),
+      ...draftMoveMap.keys(),
+    ]);
+    const result: MatrixRow[] = [];
+    keys.forEach((key) => {
+      const baseRow = baseMap.get(key);
+      const [sku_code, warehouse_name, channel] = key.split(MATRIX_KEY_DELIMITER);
+      const baseMove = baseRow?.move ?? 0;
+      const savedMove = baselineMoveMap.get(key) ?? 0;
+      const draftMove = draftMoveMap.get(key) ?? 0;
+      const move = baseMove - savedMove + draftMove;
+      const stock_closing = baseRow?.stock_closing ?? 0;
+      const stock_fin = stock_closing + move;
+      const stock_at_anchor = baseRow?.stock_at_anchor ?? 0;
+      const inbound_qty = baseRow?.inbound_qty ?? 0;
+      const outbound_qty = baseRow?.outbound_qty ?? 0;
+      const stdstock = baseRow?.stdstock ?? 0;
+      const gap = baseRow?.gap ?? stock_at_anchor - stdstock;
+      const sku_name = baseRow?.sku_name ?? skuNameMap.get(sku_code) ?? null;
+      result.push({
+        sku_code,
+        sku_name,
+        warehouse_name,
+        channel,
+        stock_at_anchor,
+        inbound_qty,
+        outbound_qty,
+        stock_closing,
+        stdstock,
+        gap,
+        move,
+        stock_fin,
+      });
+    });
+    return result.sort((a, b) => {
+      if (a.sku_code !== b.sku_code) {
+        return a.sku_code.localeCompare(b.sku_code);
+      }
+      if (a.warehouse_name !== b.warehouse_name) {
+        return a.warehouse_name.localeCompare(b.warehouse_name);
+      }
+      return a.channel.localeCompare(b.channel);
+    });
+  }, [baseMatrixRows, baselineMoveMap, draftMoveMap, skuNameMap]);
+
+  const skuOptions = useMemo(() => {
+    const optionMap = new Map<string, string | null>();
+    for (const row of baseMatrixRows) {
+      if (!optionMap.has(row.sku_code)) {
+        optionMap.set(row.sku_code, row.sku_name ?? null);
+      }
+    }
+    for (const line of [...baselineLines, ...lines]) {
+      const code = line.sku_code.trim();
+      if (!code || optionMap.has(code)) {
+        continue;
+      }
+      optionMap.set(code, skuNameMap.get(code) ?? null);
+    }
+    return Array.from(optionMap.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [baseMatrixRows, baselineLines, lines, skuNameMap]);
+
+  const skuOptionNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const option of skuOptions) {
+      if (option.name) {
+        map.set(option.code, option.name);
+      }
+    }
+    return map;
+  }, [skuOptions]);
+
+  const warehouseOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of baseMatrixRows) {
+      set.add(row.warehouse_name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [baseMatrixRows]);
+
+  const channelsByWarehouse = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const accumulator = new Map<string, Set<string>>();
+    for (const row of baseMatrixRows) {
+      const warehouse = row.warehouse_name;
+      let set = accumulator.get(warehouse);
+      if (!set) {
+        set = new Set<string>();
+        accumulator.set(warehouse, set);
+      }
+      set.add(row.channel);
+    }
+    accumulator.forEach((set, warehouse) => {
+      map.set(warehouse, Array.from(set).sort((a, b) => a.localeCompare(b)));
+    });
+    return map;
+  }, [baseMatrixRows]);
+
+  const channelOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of baseMatrixRows) {
+      set.add(row.channel);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [baseMatrixRows]);
+
   const skuList = useMemo(
-    () => Array.from(new Set(matrixRows.map((row) => row.sku_code))),
-    [matrixRows],
+    () => Array.from(new Set(simulatedMatrixRows.map((row) => row.sku_code))),
+    [simulatedMatrixRows],
   );
   const skuCount = skuList.length;
 
@@ -398,8 +613,8 @@ export default function ReallocationPage() {
 
   const selectedSku = skuList[selectedSkuIndex] ?? null;
   const displayedRows = selectedSku
-    ? matrixRows.filter((row) => row.sku_code === selectedSku)
-    : matrixRows;
+    ? simulatedMatrixRows.filter((row) => row.sku_code === selectedSku)
+    : simulatedMatrixRows;
 
   const handlePrevSku = () => {
     setSelectedSkuIndex((prev) => Math.max(0, prev - 1));
@@ -413,40 +628,70 @@ export default function ReallocationPage() {
     <div className="page reallocation-page">
       <h1>在庫再配置</h1>
 
-      <form className="filters" onSubmit={handleApplyFilters}>
-        <div className="psi-filter-grid">
-          <label>
-            Session
-            <select
-              value={selectedSessionId}
-              onChange={(event) => setSelectedSessionId(event.target.value)}
-            >
-              <option value="">Select session</option>
-              {sessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Start date
-            <input
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-            />
-          </label>
-          <label>
-            End date
-            <input
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-            />
-          </label>
+      <form className="reallocation-filter-form" onSubmit={handleApplyFilters}>
+        <div className="reallocation-filter-grid">
+          <div className="reallocation-filter-panel">
+            <label>
+              Session
+              <select
+                value={selectedSessionId}
+                onChange={(event) => setSelectedSessionId(event.target.value)}
+              >
+                <option value="">Select session</option>
+                {sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="reallocation-filter-dates">
+              <label>
+                Start date
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                />
+              </label>
+              <label>
+                End date
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+          <div className="reallocation-filter-panel">
+            <label>
+              作成済みプラン
+              <select
+                value={selectedPlanId}
+                onChange={(event) => setSelectedPlanId(event.target.value)}
+                disabled={!hasPlanOptions || isPlanListLoading}
+              >
+                <option value="">Select plan</option>
+                {planSelectOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {isPlanListLoading && (
+              <p className="reallocation-filter-status">Loading saved plans…</p>
+            )}
+            {transferPlansQuery.isError && (
+              <p className="reallocation-filter-status error">Failed to load saved plans.</p>
+            )}
+            {!isPlanListLoading && !hasPlanOptions && (
+              <p className="reallocation-filter-status">No saved plans match the selected filters.</p>
+            )}
+          </div>
         </div>
-        <div className="filter-actions">
+        <div className="reallocation-filter-actions">
           <button type="submit" disabled={matrixQuery.isFetching}>
             Apply filters
           </button>
@@ -457,28 +702,6 @@ export default function ReallocationPage() {
           >
             {recommendMutation.isPending ? "Creating…" : "Create recommendation"}
           </button>
-        </div>
-      </form>
-
-      <section className="existing-plans">
-        <h2>保存済みの再配置計画</h2>
-        <div className="existing-plans__controls">
-          <label className="existing-plans__label">
-            作成済みプラン
-            <select
-              className="existing-plans__select"
-              value={selectedPlanId}
-              onChange={(event) => setSelectedPlanId(event.target.value)}
-              disabled={!hasPlanOptions || isPlanListLoading}
-            >
-              <option value="">Select plan</option>
-              {planSelectOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <button type="button" onClick={handleLoadPlan} disabled={isLoadPlanDisabled}>
             {loadPlanMutation.isPending ? "Loading…" : "Load plan"}
           </button>
@@ -493,16 +716,7 @@ export default function ReallocationPage() {
             {transferPlansQuery.isFetching ? "Refreshing…" : "Refresh list"}
           </button>
         </div>
-        {isPlanListLoading && <p className="existing-plans__status">Loading saved plans…</p>}
-        {transferPlansQuery.isError && (
-          <p className="existing-plans__status existing-plans__status--error">
-            Failed to load saved plans.
-          </p>
-        )}
-        {!isPlanListLoading && !hasPlanOptions && (
-          <p className="existing-plans__status">No saved plans match the selected filters.</p>
-        )}
-      </section>
+      </form>
 
       {status && <div className={`status-message ${status.type}`}>{status.text}</div>}
 
@@ -512,10 +726,10 @@ export default function ReallocationPage() {
         {matrixQuery.isError && !matrixQuery.isLoading && (
           <p className="error-text">Failed to load matrix data.</p>
         )}
-        {!matrixQuery.isLoading && matrixRows.length === 0 && (
+        {!matrixQuery.isLoading && simulatedMatrixRows.length === 0 && (
           <p>No data for the selected filters.</p>
         )}
-        {matrixRows.length > 0 && (
+        {simulatedMatrixRows.length > 0 && (
           <div className="table-wrapper">
             <div className="sku-navigation">
               <button
@@ -606,6 +820,7 @@ export default function ReallocationPage() {
               <thead>
                 <tr>
                   <th>SKU</th>
+                  <th>SKU name</th>
                   <th>From warehouse</th>
                   <th>From channel</th>
                   <th>To warehouse</th>
@@ -617,85 +832,149 @@ export default function ReallocationPage() {
                 </tr>
               </thead>
               <tbody>
-                {lines.map((line) => (
-                  <tr key={line.line_id}>
-                    <td>
-                      <input
-                        value={line.sku_code}
-                        onChange={(event) =>
-                          handleLineChange(line.line_id, { sku_code: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={line.from_warehouse}
-                        onChange={(event) =>
-                          handleLineChange(line.line_id, { from_warehouse: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={line.from_channel}
-                        onChange={(event) =>
-                          handleLineChange(line.line_id, { from_channel: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={line.to_warehouse}
-                        onChange={(event) =>
-                          handleLineChange(line.line_id, { to_warehouse: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={line.to_channel}
-                        onChange={(event) =>
-                          handleLineChange(line.line_id, { to_channel: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        step="0.000001"
-                        min="0"
-                        value={line.qty}
-                        onChange={(event) =>
-                          handleLineChange(line.line_id, { qty: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td className="checkbox-cell">
-                      <input
-                        type="checkbox"
-                        checked={line.is_manual}
-                        onChange={(event) =>
-                          handleLineChange(line.line_id, { is_manual: event.target.checked })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={line.reason}
-                        onChange={(event) =>
-                          handleLineChange(line.line_id, { reason: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <button type="button" onClick={() => handleRemoveLine(line.line_id)}>
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {lines.map((line) => {
+                  const trimmedSku = line.sku_code.trim();
+                  const skuName =
+                    skuNameMap.get(trimmedSku) ?? skuOptionNameMap.get(trimmedSku) ?? "";
+                  const fromWarehouseOptions = ensureOption(
+                    warehouseOptions,
+                    line.from_warehouse,
+                  );
+                  const fromWarehouseKey = line.from_warehouse.trim();
+                  const toWarehouseOptions = ensureOption(warehouseOptions, line.to_warehouse);
+                  const toWarehouseKey = line.to_warehouse.trim();
+                  const fromChannelBase =
+                    channelsByWarehouse.get(fromWarehouseKey) ?? channelOptions;
+                  const toChannelBase =
+                    channelsByWarehouse.get(toWarehouseKey) ?? channelOptions;
+                  const fromChannelOptions = ensureOption(fromChannelBase, line.from_channel);
+                  const toChannelOptions = ensureOption(toChannelBase, line.to_channel);
+
+                  return (
+                    <tr key={line.line_id}>
+                      <td>
+                        <input
+                          list={skuDatalistId}
+                          value={line.sku_code}
+                          onChange={(event) =>
+                            handleLineChange(line.line_id, { sku_code: event.target.value })
+                          }
+                        />
+                      </td>
+                      <td>{skuName}</td>
+                      <td>
+                        <select
+                          value={line.from_warehouse}
+                          onChange={(event) =>
+                            handleLineChange(line.line_id, {
+                              from_warehouse: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Select warehouse</option>
+                          {fromWarehouseOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          value={line.from_channel}
+                          onChange={(event) =>
+                            handleLineChange(line.line_id, {
+                              from_channel: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Select channel</option>
+                          {fromChannelOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          value={line.to_warehouse}
+                          onChange={(event) =>
+                            handleLineChange(line.line_id, {
+                              to_warehouse: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Select warehouse</option>
+                          {toWarehouseOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          value={line.to_channel}
+                          onChange={(event) =>
+                            handleLineChange(line.line_id, {
+                              to_channel: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Select channel</option>
+                          {toChannelOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="0.000001"
+                          min="0"
+                          value={line.qty}
+                          onChange={(event) =>
+                            handleLineChange(line.line_id, { qty: event.target.value })
+                          }
+                        />
+                      </td>
+                      <td className="checkbox-cell">
+                        <input
+                          type="checkbox"
+                          checked={line.is_manual}
+                          onChange={(event) =>
+                            handleLineChange(line.line_id, { is_manual: event.target.checked })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={line.reason}
+                          onChange={(event) =>
+                            handleLineChange(line.line_id, { reason: event.target.value })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <button type="button" onClick={() => handleRemoveLine(line.line_id)}>
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            <datalist id={skuDatalistId}>
+              {skuOptions.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.name ? `${option.code} — ${option.name}` : option.code}
+                </option>
+              ))}
+            </datalist>
           </div>
         )}
       </section>
