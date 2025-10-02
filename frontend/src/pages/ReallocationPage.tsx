@@ -597,8 +597,11 @@ export default function ReallocationPage() {
   const psiRows = useMemo(
     () =>
       simulatedMatrixRows.map((row) => {
-        const gap = row.stdstock - row.stock_closing;
-        const gapAfter = gap + row.move;
+        const stockStart = row.stock_at_anchor ?? 0;
+        const stdStock = row.stdstock ?? 0;
+        const move = row.move ?? 0;
+        const gap = stockStart - stdStock;
+        const gapAfter = stockStart + move - stdStock;
         return {
           sku: row.sku_code,
           skuName: row.sku_name ?? undefined,

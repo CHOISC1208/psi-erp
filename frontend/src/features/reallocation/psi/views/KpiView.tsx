@@ -65,12 +65,16 @@ export default function KpiView({ rows }: { rows: PsiRow[] }) {
           <tbody>
             {columnKeys.map((column) => {
               const row = rowMap.get(column.key);
-              const gapValue = safeNumber(row?.gap);
+              const stockStartValue = safeNumber(row?.stockStart);
+              const stdStockValue = safeNumber(row?.stdStock);
               const moveValue = safeNumber(row?.move);
+              const gapValue = row?.gap ?? stockStartValue - stdStockValue;
+              const gapAfterValue =
+                row?.gapAfter ?? stockStartValue + moveValue - stdStockValue;
               const values: Record<MiniTableMetric, number> = {
                 stockFinal: safeNumber(row?.stockFinal),
                 gap: gapValue,
-                gapAfter: row?.gapAfter ?? gapValue + moveValue,
+                gapAfter: gapAfterValue,
               };
               return (
                 <tr key={column.key}>
