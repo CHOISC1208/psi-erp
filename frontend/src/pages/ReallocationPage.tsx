@@ -73,7 +73,7 @@ const draftToPayload = (draft: LineDraft): TransferPlanLineWrite => ({
   from_channel: draft.from_channel.trim(),
   to_warehouse: draft.to_warehouse.trim(),
   to_channel: draft.to_channel.trim(),
-  qty: Number.parseInt(draft.qty, 10),
+  qty: Number.parseFloat(draft.qty),
   is_manual: draft.is_manual,
   reason: draft.reason.trim() ? draft.reason.trim() : null,
 });
@@ -110,8 +110,7 @@ const buildMoveMap = (lines: LineDraft[]) => {
       !toWarehouse ||
       !toChannel ||
       !Number.isFinite(qtyValue) ||
-      qtyValue <= 0 ||
-      !Number.isInteger(qtyValue)
+      qtyValue <= 0
     ) {
       continue;
     }
