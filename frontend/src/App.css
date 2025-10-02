@@ -2609,3 +2609,89 @@ button.danger:hover {
   word-break: break-word;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
+
+.test-algo-page {
+  gap: 2rem;
+}
+
+.test-algo-page section {
+  background: var(--surface-panel);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-soft, 0 1px 3px rgba(15, 23, 42, 0.08));
+}
+
+.test-algo-page .control-panel .control-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.test-algo-page .control-panel label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.test-algo-page .control-buttons {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.test-algo-page .status-text {
+  margin-top: 0.75rem;
+  color: var(--text-secondary, var(--text-primary));
+}
+
+.matrix-section .matrix-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.matrix-section .sku-navigation {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.editable-cell {
+  padding: 0.35rem;
+}
+
+.editable-cell-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.editable-cell-inner input[type="number"] {
+  width: 7ch;
+  padding: 0.25rem 0.5rem;
+}
+
+.editable-cell.selected {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.editable-cell .swap-button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.report-section textarea {
+  width: 100%;
+  margin-top: 1rem;
+  font-family: "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-subtle, #d1d5db);
+  background: var(--surface-body, #fff);
+  color: inherit;
+  resize: vertical;
+}

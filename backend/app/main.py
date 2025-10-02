@@ -25,6 +25,7 @@ from .routers import (
     psi_edits,
     psi_metrics,
     sessions,
+    test_algo,
     transfer_plans,
     users,
     warehouses,
@@ -83,6 +84,7 @@ app.include_router(
 )
 app.include_router(warehouses.router, prefix="/warehouses", tags=["warehouses"])
 app.include_router(users.router, prefix="/users", tags=["users"])
+app.include_router(test_algo.router, prefix="/test-algo", tags=["test-algo"])
 
 # /api 配下にもミラー（フロントが /api/* を叩いてもOKに）
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
@@ -110,6 +112,7 @@ app.include_router(
 )
 app.include_router(warehouses.router, prefix="/api/warehouses", tags=["warehouses"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
+app.include_router(test_algo.router, prefix="/api/test-algo", tags=["test-algo"])
 
 @app.get("/health")
 def health() -> dict[str, bool]:
