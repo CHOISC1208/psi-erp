@@ -76,7 +76,11 @@ def create_session(
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.SessionRead:
     """新しいセッションを作成。"""
-    session = models.Session(title=payload.title, description=payload.description)
+    session = models.Session(
+        title=payload.title,
+        description=payload.description,
+        data_mode=payload.data_mode.value,
+    )
     session.created_by = current_user.id
     session.updated_by = current_user.id
     db.add(session)
@@ -152,7 +156,15 @@ def update_session(
 ) -> schemas.SessionRead:
     """セッションを更新。"""
     session = _get_session_or_404(db, session_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    payload_dict = payload.model_dump(exclude_unset=True)
+    if "data_mode" in payload_dict and payload_dict["data_mode"] is not None:
+        if payload_dict["data_mode"].value != session.data_mode:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="data_mode cannot be modified after session creation.",
+            )
+        payload_dict.pop("data_mode", None)
+    for field, value in payload_dict.items():
         setattr(session, field, value)
     session.updated_by = current_user.id
     db.add(session)
@@ -240,6 +252,7 @@ def _serialize_session(session: models.Session) -> schemas.SessionRead:
     data.updated_by_username = (
         session.updated_by_user.username if session.updated_by_user else None
     )
+    data.data_type = schemas.SessionDataType(session.data_mode)
     if not settings.audit_metadata_enabled:
         data.created_by = None
         data.updated_by = None

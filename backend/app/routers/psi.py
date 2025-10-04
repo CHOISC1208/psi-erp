@@ -29,6 +29,54 @@ from ..services.transfer_plans import fetch_matrix_rows
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+BASE_REQUIRED_COLUMNS = {
+    "category_1",
+    "category_2",
+    "category_3",
+    "channel",
+    "date",
+    "fw_rank",
+    "gap",
+    "inbound_qty",
+    "movable_stock",
+    "net_flow",
+    "outbound_qty",
+    "safety_stock",
+    "sku_code",
+    "ss_rank",
+    "stdstock",
+    "stock_at_anchor",
+    "stock_closing",
+    "warehouse_name",
+}
+
+SUMMARY_REQUIRED_COLUMNS = {
+    "sku_code",
+    "warehouse_name",
+    "channel",
+    "inbound_qty",
+    "outbound_qty",
+    "std_stock",
+    "stock",
+}
+
+SUMMARY_HEADER_ALIASES = {
+    "stdstock": "std_stock",
+}
+
+CHANNEL_ALIAS_MAP = {
+    "直営店": "retail",
+    "卸": "wholesale",
+}
+
+KNOWN_CHANNELS = {
+    "retail",
+    "wholesale",
+    "online",
+    "法人",
+    "余剰在庫",
+}
+
 
 def decode_bytes(data: bytes) -> str:
     """Decode uploaded CSV/TSV bytes using heuristic encoding detection.
@@ -164,6 +212,29 @@ def _normalise_header(header: str) -> str:
     return alias_map.get(normalised, normalised)
 
 
+def _apply_summary_header_aliases(header_map: dict[str, str]) -> dict[str, str]:
+    """Return a header map with summary-specific aliases applied."""
+
+    mapped: dict[str, str] = {}
+    for normalised, original in header_map.items():
+        canonical = SUMMARY_HEADER_ALIASES.get(normalised, normalised)
+        mapped[canonical] = original
+    return mapped
+
+
+def _normalise_channel_value(channel: str, warnings: set[str]) -> str:
+    """Normalise channel labels while collecting warnings for unknown values."""
+
+    stripped = channel.strip()
+    if not stripped:
+        return stripped
+
+    mapped = CHANNEL_ALIAS_MAP.get(stripped, stripped)
+    if mapped not in KNOWN_CHANNELS:
+        warnings.add(f"Unknown channel '{stripped}' was kept as '{mapped}'.")
+    return mapped
+
+
 def _parse_decimal(raw_value: str | None, column: str) -> Decimal | None:
     """Parse a decimal value from the CSV.
 
@@ -276,34 +347,15 @@ def _ingest_base_csv(
     reader: csv.DictReader[str],
     header_map: dict[str, str],
     db: DBSession,
+    warnings: set[str],
 ) -> schemas.PSIUploadResult:
-    required_columns = {
-        "sku_code",
-        "warehouse_name",
-        "channel",
-        "date",
-        "category_1",
-        "category_2",
-        "category_3",
-        "fw_rank",
-        "ss_rank",
-        "stock_at_anchor",
-        "inbound_qty",
-        "outbound_qty",
-        "net_flow",
-        "stock_closing",
-        "safety_stock",
-        "movable_stock",
-        "stdstock",
-        "gap",
-    }
-    missing = required_columns - set(header_map)
+    missing = BASE_REQUIRED_COLUMNS - set(header_map)
     if missing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "CSV must contain columns: "
-                + ", ".join(sorted(required_columns))
+                + ", ".join(sorted(BASE_REQUIRED_COLUMNS))
             ),
         )
 
@@ -347,7 +399,9 @@ def _ingest_base_csv(
 
         sku_code_value = raw_row.get(header_map["sku_code"], "").strip()
         warehouse_value = raw_row.get(header_map["warehouse_name"], "").strip()
-        channel_value = raw_row.get(header_map["channel"], "").strip()
+        channel_value = _normalise_channel_value(
+            raw_row.get(header_map["channel"], ""), warnings
+        )
         if not sku_code_value or not warehouse_value or not channel_value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -424,17 +478,19 @@ def _ingest_base_csv(
             .where(models.PSIBase.date.in_(affected_dates))
         )
         db.add_all(rows_to_insert)
-        session.data_type = schemas.SessionDataType.BASE.value
-        db.add(session)
         db.commit()
     except Exception:  # pragma: no cover - defensive transaction handling
         db.rollback()
         raise
 
     return schemas.PSIUploadResult(
+        ok=True,
+        mode=schemas.SessionDataType.BASE,
+        rows=len(rows_to_insert),
         rows_imported=len(rows_to_insert),
         session_id=session_id,
         dates=sorted(affected_dates),
+        warnings=sorted(warnings),
     )
 
 
@@ -445,23 +501,15 @@ def _ingest_summary_csv(
     reader: csv.DictReader[str],
     header_map: dict[str, str],
     db: DBSession,
+    warnings: set[str],
 ) -> schemas.PSIUploadResult:
-    required_columns = {
-        "sku_code",
-        "warehouse_name",
-        "channel",
-        "inbound_qty",
-        "outbound_qty",
-        "stdstock",
-        "stock",
-    }
-    missing = required_columns - set(header_map)
+    missing = SUMMARY_REQUIRED_COLUMNS - set(header_map)
     if missing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "CSV must contain columns: "
-                + ", ".join(sorted(required_columns))
+                + ", ".join(sorted(SUMMARY_REQUIRED_COLUMNS))
             ),
         )
 
@@ -469,6 +517,7 @@ def _ingest_summary_csv(
 
     zero = Decimal("0")
     rows_by_key: dict[tuple[str, str, str], models.PSISummaryBase] = {}
+    duplicates: list[dict[str, str]] = []
 
     for raw_row in reader:
         if not raw_row or not any(raw_row.values()):
@@ -476,7 +525,9 @@ def _ingest_summary_csv(
 
         sku_code_value = raw_row.get(header_map["sku_code"], "").strip()
         warehouse_value = raw_row.get(header_map["warehouse_name"], "").strip()
-        channel_value = raw_row.get(header_map["channel"], "").strip()
+        channel_value = _normalise_channel_value(
+            raw_row.get(header_map["channel"], ""), warnings
+        )
         if not sku_code_value or not warehouse_value or not channel_value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -493,10 +544,31 @@ def _ingest_summary_csv(
         outbound_value = _parse_decimal(
             raw_row.get(header_map["outbound_qty"]), "outbound_qty"
         )
-        std_stock_value = _parse_decimal(raw_row.get(header_map["stdstock"]), "stdstock")
+        std_stock_value = _parse_decimal(raw_row.get(header_map["std_stock"]), "std_stock")
         stock_value = _parse_decimal(raw_row.get(header_map["stock"]), "stock")
 
+        for column, value in (
+            ("inbound_qty", inbound_value),
+            ("outbound_qty", outbound_value),
+            ("std_stock", std_stock_value),
+            ("stock", stock_value),
+        ):
+            if value is not None and value < zero:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Column '{column}' must be greater than or equal to 0.",
+                )
+
         key = (sku_code_value, warehouse_value, channel_value)
+        if key in rows_by_key:
+            duplicates.append(
+                {
+                    "sku_code": sku_code_value,
+                    "warehouse_name": warehouse_value,
+                    "channel": channel_value,
+                }
+            )
+            continue
         rows_by_key[key] = models.PSISummaryBase(
             session_id=session_id,
             sku_code=sku_code_value,
@@ -513,33 +585,46 @@ def _ingest_summary_csv(
     if not rows_to_insert:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV contained no rows")
 
+    if duplicates:
+        unique_duplicates = {
+            (item["sku_code"], item["warehouse_name"], item["channel"]) for item in duplicates
+        }
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Duplicate sku_code, warehouse_name, channel combinations detected.",
+                "duplicates": [
+                    {
+                        "sku_code": sku,
+                        "warehouse_name": wh,
+                        "channel": ch,
+                    }
+                    for sku, wh, ch in sorted(unique_duplicates)
+                ],
+            },
+        )
+
     try:
         _ensure_summary_base_table(db)
-        db.execute(delete(models.PSIBase).where(models.PSIBase.session_id == session_id))
-        db.execute(delete(models.PSIEdit).where(models.PSIEdit.session_id == session_id))
-        db.execute(delete(models.PSIEditLog).where(models.PSIEditLog.session_id == session_id))
-        _ensure_channel_transfer_table(db)
-        if _channel_transfer_table_exists(db):
-            db.execute(
-                delete(models.ChannelTransfer).where(
-                    models.ChannelTransfer.session_id == session_id
-                )
-            )
         db.execute(
-            delete(models.PSISummaryBase).where(models.PSISummaryBase.session_id == session_id)
+            delete(models.PSISummaryBase).where(
+                models.PSISummaryBase.session_id == session_id
+            )
         )
         db.add_all(rows_to_insert)
-        session.data_type = schemas.SessionDataType.SUMMARY.value
-        db.add(session)
         db.commit()
     except Exception:  # pragma: no cover - defensive transaction handling
         db.rollback()
         raise
 
     return schemas.PSIUploadResult(
+        ok=True,
+        mode=schemas.SessionDataType.SUMMARY,
+        rows=len(rows_to_insert),
         rows_imported=len(rows_to_insert),
         session_id=session_id,
         dates=[],
+        warnings=sorted(warnings),
     )
 
 
@@ -628,7 +713,6 @@ def _daily_psi_from_summary(
 async def upload_csv_for_session(
     *,
     session_id: UUID,
-    data_type: schemas.SessionDataType = Query(schemas.SessionDataType.BASE),
     file: UploadFile = File(...),
     db: DBSession = Depends(get_db),
 ) -> schemas.PSIUploadResult:
@@ -644,6 +728,8 @@ async def upload_csv_for_session(
     """
 
     session = _get_session_or_404(db, session_id)
+    session_mode = _get_session_data_type(session)
+    warnings: set[str] = set()
 
     raw_bytes = await file.read()
     text = decode_bytes(raw_bytes)
@@ -655,22 +741,41 @@ async def upload_csv_for_session(
 
     headers = [_normalise_header(header) for header in reader.fieldnames]
     header_map = dict(zip(headers, reader.fieldnames))
-    if data_type is schemas.SessionDataType.SUMMARY:
-        summary_reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
-        return _ingest_summary_csv(
+    summary_header_map = _apply_summary_header_aliases(header_map)
+
+    if session_mode is schemas.SessionDataType.BASE:
+        missing_for_base = BASE_REQUIRED_COLUMNS - set(header_map)
+        missing_for_summary = SUMMARY_REQUIRED_COLUMNS - set(summary_header_map)
+        if missing_for_base and not missing_for_summary:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Session is configured for base mode but a summary CSV was uploaded.",
+            )
+        return _ingest_base_csv(
             session=session,
             session_id=session_id,
-            reader=summary_reader,
+            reader=reader,
             header_map=header_map,
             db=db,
+            warnings=warnings,
         )
 
-    return _ingest_base_csv(
+    missing_for_summary = SUMMARY_REQUIRED_COLUMNS - set(summary_header_map)
+    if missing_for_summary:
+        missing_for_base = BASE_REQUIRED_COLUMNS - set(header_map)
+        if not missing_for_base:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Session is configured for summary mode but a base CSV was uploaded.",
+            )
+    summary_reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
+    return _ingest_summary_csv(
         session=session,
         session_id=session_id,
-        reader=reader,
-        header_map=header_map,
+        reader=summary_reader,
+        header_map=summary_header_map,
         db=db,
+        warnings=warnings,
     )
 
 

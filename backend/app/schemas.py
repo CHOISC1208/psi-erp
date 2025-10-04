@@ -27,7 +27,7 @@ class SessionBase(BaseModel):
 class SessionCreate(SessionBase):
     """Schema for creating a session."""
 
-    pass
+    data_mode: SessionDataType = SessionDataType.BASE
 
 
 class SessionUpdate(BaseModel):
@@ -36,15 +36,17 @@ class SessionUpdate(BaseModel):
     title: Annotated[str, Field(min_length=1, max_length=255)] | None = None
     description: str | None = None
     is_leader: bool | None = None
+    data_mode: SessionDataType | None = None
 
 
 class SessionRead(SessionBase):
     """Session data returned by the API."""
 
-    #id: str
     id: UUID
     is_leader: bool
-    data_type: SessionDataType
+    data_mode: SessionDataType
+    # Backwards compatibility: expose legacy name while callers migrate
+    data_type: SessionDataType | None = None
     created_by: UUID | None = None
     updated_by: UUID | None = None
     created_at: datetime
@@ -92,9 +94,15 @@ class ChannelDailyPSI(BaseModel):
 class PSIUploadResult(BaseModel):
     """Upload summary returned after processing a PSI CSV file."""
 
+    ok: bool
+    mode: SessionDataType
+    rows: int
     rows_imported: int
     session_id: UUID
     dates: list[date]
+    warnings: list[str] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
 
 
 class PSIEditEntry(BaseModel):

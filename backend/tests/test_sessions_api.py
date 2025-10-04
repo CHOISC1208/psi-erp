@@ -219,6 +219,8 @@ def test_create_session_stamps_audit_fields_without_exposing(
     assert status == 201
     assert isinstance(body, dict)
     assert body["title"] == "Sprint 1"
+    assert body["data_mode"] == "base"
+    assert body["data_type"] == "base"
     assert "created_by" not in body
     assert "updated_by" not in body
     assert body["created_by_username"] == user.username
@@ -240,10 +242,12 @@ def test_session_responses_include_audit_fields_when_enabled(
     monkeypatch.setattr("backend.app.config.settings", new_settings, raising=False)
     monkeypatch.setattr("backend.app.routers.sessions.settings", new_settings, raising=False)
 
-    payload = {"title": "Sprint 2", "description": "Audit"}
+    payload = {"title": "Sprint 2", "description": "Audit", "data_mode": "summary"}
     status, _, created = _perform_json_request(app_env.app, "POST", "/sessions", payload)
     assert status == 201
     assert isinstance(created, dict)
+    assert created["data_mode"] == "summary"
+    assert created["data_type"] == "summary"
     assert created["created_by"] == str(user.id)
     assert created["updated_by"] == str(user.id)
     assert created["created_by_username"] == user.username
@@ -252,12 +256,13 @@ def test_session_responses_include_audit_fields_when_enabled(
     session_id = created["id"]
 
     status, _, updated = _perform_json_request(
-        app_env.app, "PUT", f"/sessions/{session_id}", {"description": "Updated"}
+        app_env.app,
+        "PUT",
+        f"/sessions/{session_id}",
+        {"description": "Updated", "data_mode": "base"},
     )
-    assert status == 200
-    assert isinstance(updated, dict)
-    assert updated["updated_by"] == str(user.id)
-    assert updated["updated_by_username"] == user.username
+    assert status == 409
+    assert updated == {"detail": "data_mode cannot be modified after session creation."}
 
     status, _, leader = _perform_json_request(
         app_env.app, "PATCH", f"/sessions/{session_id}/leader", {}
@@ -266,6 +271,7 @@ def test_session_responses_include_audit_fields_when_enabled(
     assert isinstance(leader, dict)
     assert leader["is_leader"] is True
     assert leader["updated_by"] == str(user.id)
+    assert leader["data_mode"] == "summary"
 
     status, _, listing = _perform_json_request(app_env.app, "GET", "/sessions")
     assert status == 200
@@ -273,12 +279,50 @@ def test_session_responses_include_audit_fields_when_enabled(
     assert listing
     assert listing[0]["created_by_username"] == user.username
     assert listing[0]["updated_by_username"] == user.username
+    assert listing[0]["data_mode"] == "summary"
 
     with app_env.SessionLocal() as session:
         stored = session.get(app_env.models.Session, uuid.UUID(session_id))
         assert stored is not None
         assert stored.created_by == user.id
         assert stored.updated_by == user.id
+
+
+def test_update_session_does_not_allow_data_mode_change(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    payload = {"title": "Mode locked", "data_mode": "base"}
+    status, _, created = _perform_json_request(app_env.app, "POST", "/sessions", payload)
+    assert status == 201
+    session_id = created["id"]
+
+    status, _, response = _perform_json_request(
+        app_env.app,
+        "PUT",
+        f"/sessions/{session_id}",
+        {"title": "Mode locked", "data_mode": "summary"},
+    )
+    assert status == 409
+    assert response == {"detail": "data_mode cannot be modified after session creation."}
+
+
+def test_update_session_allows_other_fields(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    payload = {"title": "Editable", "description": "initial"}
+    status, _, created = _perform_json_request(app_env.app, "POST", "/sessions", payload)
+    assert status == 201
+    session_id = created["id"]
+
+    status, _, updated = _perform_json_request(
+        app_env.app,
+        "PUT",
+        f"/sessions/{session_id}",
+        {"description": "updated"},
+    )
+    assert status == 200
+    assert updated["description"] == "updated"
+    assert updated["data_mode"] == "base"
 
 
 def test_list_sessions_supports_search(
