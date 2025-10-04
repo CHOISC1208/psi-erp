@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Literal, cast
 
 from sqlalchemy import inspect, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DBSession
 
 from .. import models
@@ -59,7 +60,10 @@ def _ensure_policy_record(db: DBSession) -> models.ReallocationPolicy | None:
     schema = table.schema if table.schema else None
 
     if not inspector.has_table(table.name, schema=schema):
-        return None
+        try:
+            table.create(bind=bind, checkfirst=True)
+        except SQLAlchemyError:  # pragma: no cover - fallback when migrations lag behind
+            return None
 
     policy = db.execute(
         select(models.ReallocationPolicy).order_by(models.ReallocationPolicy.id).limit(1)
