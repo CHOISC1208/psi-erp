@@ -8,6 +8,9 @@ import {
 } from "../../../hooks/useReallocationPolicy";
 
 const ROUNDING_OPTIONS: Array<"floor" | "round" | "ceil"> = ["floor", "round", "ceil"];
+const FAIR_SHARE_OPTIONS: Array<
+  "off" | "equalize_ratio_closing" | "equalize_ratio_start"
+> = ["off", "equalize_ratio_closing", "equalize_ratio_start"];
 
 type StatusMessage = { type: "success" | "error"; text: string } | null;
 
@@ -15,6 +18,7 @@ type FormState = {
   take_from_other_main: boolean;
   rounding_mode: "floor" | "round" | "ceil";
   allow_overfill: boolean;
+  fair_share_mode: "off" | "equalize_ratio_closing" | "equalize_ratio_start";
   updated_by: string;
 };
 
@@ -22,6 +26,7 @@ const DEFAULT_FORM: FormState = {
   take_from_other_main: false,
   rounding_mode: "floor",
   allow_overfill: false,
+  fair_share_mode: "off",
   updated_by: "",
 };
 
@@ -69,6 +74,7 @@ export default function MasterTab() {
       take_from_other_main: policyQuery.data.take_from_other_main,
       rounding_mode: policyQuery.data.rounding_mode,
       allow_overfill: policyQuery.data.allow_overfill,
+      fair_share_mode: policyQuery.data.fair_share_mode,
       updated_by: policyQuery.data.updated_by ?? "",
     };
     setFormState(nextState);
@@ -83,6 +89,7 @@ export default function MasterTab() {
       savedState.take_from_other_main !== formState.take_from_other_main ||
       savedState.rounding_mode !== formState.rounding_mode ||
       savedState.allow_overfill !== formState.allow_overfill ||
+      savedState.fair_share_mode !== formState.fair_share_mode ||
       (savedState.updated_by ?? "").trim() !== formState.updated_by.trim()
     );
   }, [formState, savedState]);
@@ -98,6 +105,7 @@ export default function MasterTab() {
         take_from_other_main: formState.take_from_other_main,
         rounding_mode: formState.rounding_mode,
         allow_overfill: formState.allow_overfill,
+        fair_share_mode: formState.fair_share_mode,
         updated_by: formState.updated_by.trim() || undefined,
       };
       const data = await updateMutation.mutateAsync(payload);
@@ -105,6 +113,7 @@ export default function MasterTab() {
         take_from_other_main: data.take_from_other_main,
         rounding_mode: data.rounding_mode,
         allow_overfill: data.allow_overfill,
+        fair_share_mode: data.fair_share_mode,
         updated_by: data.updated_by ?? "",
       };
       setSavedState(nextSaved);
@@ -171,6 +180,31 @@ export default function MasterTab() {
             </select>
             <p className="field-hint">
               Controls how fractional transfer quantities are converted to integers.
+            </p>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="fair-share-mode">Fair-share mode</label>
+            <select
+              id="fair-share-mode"
+              value={formState.fair_share_mode}
+              onChange={(event) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  fair_share_mode: event.target.value as FormState["fair_share_mode"],
+                }))
+              }
+              disabled={!isAdmin || updateMutation.isPending}
+            >
+              {FAIR_SHARE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <p className="field-hint">
+              Distributes donors to equalize main channels’ stock-to-STD ratio (closing or
+              start based).
             </p>
           </div>
 

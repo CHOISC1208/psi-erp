@@ -26,12 +26,10 @@ def upgrade() -> None:
         sa.Column("allow_overfill", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_by", sa.Text(), nullable=True),
-        schema=SCHEMA,
-    )
-    op.create_check_constraint(
-        ROUNDING_CHECK,
-        TABLE_NAME,
-        "rounding_mode IN ('floor','round','ceil')",
+        sa.CheckConstraint(
+            "rounding_mode IN ('floor','round','ceil')",
+            name=ROUNDING_CHECK,
+        ),
         schema=SCHEMA,
     )
     insert = sa.text(
@@ -44,5 +42,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(ROUNDING_CHECK, TABLE_NAME, type_="check", schema=SCHEMA)
     op.drop_table(TABLE_NAME, schema=SCHEMA)

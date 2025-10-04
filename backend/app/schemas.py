@@ -475,6 +475,7 @@ class ReallocationPolicyBase(BaseModel):
     take_from_other_main: bool
     rounding_mode: Literal["floor", "round", "ceil"]
     allow_overfill: bool
+    fair_share_mode: Literal["off", "equalize_ratio_closing", "equalize_ratio_start"]
 
 
 class ReallocationPolicyWrite(ReallocationPolicyBase):

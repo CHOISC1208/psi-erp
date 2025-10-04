@@ -133,6 +133,7 @@ def test_get_reallocation_policy_returns_defaults(app_env: SimpleNamespace) -> N
         "take_from_other_main": False,
         "rounding_mode": "floor",
         "allow_overfill": False,
+        "fair_share_mode": "off",
         "updated_at": updated_at,
         "updated_by": None,
     }
@@ -154,6 +155,7 @@ def test_put_reallocation_policy_updates_values(app_env: SimpleNamespace) -> Non
             "take_from_other_main": True,
             "rounding_mode": "ceil",
             "allow_overfill": True,
+            "fair_share_mode": "equalize_ratio_start",
             "updated_by": "  policy-bot  ",
         },
     )
@@ -162,7 +164,34 @@ def test_put_reallocation_policy_updates_values(app_env: SimpleNamespace) -> Non
     assert payload["take_from_other_main"] is True
     assert payload["rounding_mode"] == "ceil"
     assert payload["allow_overfill"] is True
+    assert payload["fair_share_mode"] == "equalize_ratio_start"
     assert payload["updated_by"] == "policy-bot"
+
+
+def test_put_reallocation_policy_rejects_invalid_fair_share_mode(
+    app_env: SimpleNamespace,
+) -> None:
+    admin = _create_user(app_env, is_admin=True, username="admin")
+
+    def override_admin_user():
+        return admin
+
+    app_env.app.dependency_overrides[app_env.get_admin_user] = override_admin_user
+
+    status, payload = _perform_json_request(
+        app_env.app,
+        "PUT",
+        "/reallocation-policy",
+        {
+            "take_from_other_main": True,
+            "rounding_mode": "ceil",
+            "allow_overfill": False,
+            "fair_share_mode": "invalid-mode",
+        },
+    )
+    assert status == 422
+    assert payload is not None
+    assert payload["detail"][0]["loc"][-1] == "fair_share_mode"
 
     viewer = _create_user(app_env, is_admin=False, username="viewer")
 
@@ -173,7 +202,8 @@ def test_put_reallocation_policy_updates_values(app_env: SimpleNamespace) -> Non
 
     status, payload = _perform_json_request(app_env.app, "GET", "/reallocation-policy")
     assert status == 200
-    assert payload["take_from_other_main"] is True
-    assert payload["rounding_mode"] == "ceil"
-    assert payload["allow_overfill"] is True
-    assert payload["updated_by"] == "policy-bot"
+    assert payload["take_from_other_main"] is False
+    assert payload["rounding_mode"] == "floor"
+    assert payload["allow_overfill"] is False
+    assert payload["fair_share_mode"] == "off"
+    assert payload["updated_by"] is None

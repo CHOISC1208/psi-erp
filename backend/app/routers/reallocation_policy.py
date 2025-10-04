@@ -34,6 +34,7 @@ def read_reallocation_policy(
         take_from_other_main=policy.take_from_other_main,
         rounding_mode=policy.rounding_mode,
         allow_overfill=policy.allow_overfill,
+        fair_share_mode=policy.fair_share_mode,
         updated_at=policy.updated_at,
         updated_by=policy.updated_by,
     )
@@ -52,12 +53,14 @@ def update_policy(
         take_from_other_main=payload.take_from_other_main,
         rounding_mode=payload.rounding_mode,
         allow_overfill=payload.allow_overfill,
+        fair_share_mode=payload.fair_share_mode,
         updated_by=updated_by,
     )
     return schemas.ReallocationPolicyRead(
         take_from_other_main=policy.take_from_other_main,
         rounding_mode=policy.rounding_mode,
         allow_overfill=policy.allow_overfill,
+        fair_share_mode=policy.fair_share_mode,
         updated_at=policy.updated_at,
         updated_by=policy.updated_by,
     )
