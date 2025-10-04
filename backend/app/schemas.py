@@ -1,12 +1,20 @@
 """Pydantic schemas for API payloads."""
 from __future__ import annotations
 
+from enum import Enum
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+
+class SessionDataType(str, Enum):
+    """Type of PSI data attached to a planning session."""
+
+    BASE = "base"
+    SUMMARY = "summary"
 
 
 class SessionBase(BaseModel):
@@ -36,6 +44,7 @@ class SessionRead(SessionBase):
     #id: str
     id: UUID
     is_leader: bool
+    data_type: SessionDataType
     created_by: UUID | None = None
     updated_by: UUID | None = None
     created_at: datetime
@@ -142,6 +151,7 @@ class PSISessionSummary(BaseModel):
     """High-level information about the available PSI data for a session."""
 
     session_id: UUID
+    data_type: SessionDataType
     start_date: date | None = None
     end_date: date | None = None
 

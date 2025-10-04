@@ -123,6 +123,24 @@ def _ensure_channel_transfer_table(db: DBSession) -> None:
         models.ensure_channel_transfers_table(bind)
 
 
+def _channel_transfer_table_exists(db: DBSession) -> bool:
+    """Return whether the channel transfer table exists on the current bind."""
+
+    bind = db.get_bind()
+    if bind is None:
+        return False
+
+    return models.channel_transfer_table_exists(bind)
+
+
+def _ensure_summary_base_table(db: DBSession) -> None:
+    """Create the PSI summary table when migrations haven't run."""
+
+    bind = db.get_bind()
+    if bind is not None:
+        models.ensure_psi_summary_base_table(bind)
+
+
 def _normalise_header(header: str) -> str:
     """Normalize CSV header names for lookups.
 
@@ -130,10 +148,20 @@ def _normalise_header(header: str) -> str:
         header: Raw header value taken from the CSV file.
 
     Returns:
-        A lower-case header where spaces are replaced with underscores.
+        A lower-case header where spaces are replaced with underscores and
+        well-known aliases normalised to the canonical column names used by the
+        importer.
     """
 
-    return header.strip().lower().replace(" ", "_")
+    normalised = header.strip().lower().replace(" ", "_")
+    alias_map = {
+        "sku名": "sku_name",
+        "sku__名": "sku_name",
+        "inbound": "inbound_qty",
+        "outbound": "outbound_qty",
+        "std_stock": "stdstock",
+    }
+    return alias_map.get(normalised, normalised)
 
 
 def _parse_decimal(raw_value: str | None, column: str) -> Decimal | None:
@@ -212,6 +240,17 @@ def _get_session_or_404(db: DBSession, session_id: UUID) -> models.Session:
     return session
 
 
+def _get_session_data_type(session: models.Session) -> schemas.SessionDataType:
+    """Return the declared data type for a session handling legacy values."""
+
+    try:
+        if session is None or session.data_type is None:
+            return schemas.SessionDataType.BASE
+        return schemas.SessionDataType(session.data_type)
+    except (AttributeError, ValueError):  # pragma: no cover - defensive fallback
+        return schemas.SessionDataType.BASE
+
+
 def _to_decimal(value: float | None) -> Decimal | None:
     """Convert optional floats to :class:`~decimal.Decimal` values."""
 
@@ -230,36 +269,14 @@ def _decimal_equal(a: Decimal | None, b: Decimal | None) -> bool:
     return a == b
 
 
-@router.post("/{session_id}/upload", response_model=schemas.PSIUploadResult)
-async def upload_csv_for_session(
+def _ingest_base_csv(
     *,
+    session: models.Session,
     session_id: UUID,
-    file: UploadFile = File(...),
-    db: DBSession = Depends(get_db),
+    reader: csv.DictReader[str],
+    header_map: dict[str, str],
+    db: DBSession,
 ) -> schemas.PSIUploadResult:
-    """Ingest a PSI base CSV file for a specific session.
-
-    Args:
-        session_id: Identifier of the session receiving the upload.
-        file: Uploaded CSV file following the schema documented in docs/database.md.
-        db: Database session injected by FastAPI.
-
-    Returns:
-        Summary of processed rows including the affected dates.
-    """
-
-    _get_session_or_404(db, session_id)
-
-    raw_bytes = await file.read()
-    text = decode_bytes(raw_bytes)
-    delimiter = detect_sep(text)
-
-    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
-    if reader.fieldnames is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing header row")
-
-    headers = [_normalise_header(header) for header in reader.fieldnames]
-    header_map = dict(zip(headers, reader.fieldnames))
     required_columns = {
         "sku_code",
         "warehouse_name",
@@ -280,20 +297,20 @@ async def upload_csv_for_session(
         "stdstock",
         "gap",
     }
-    missing = required_columns - set(headers)
+    missing = required_columns - set(header_map)
     if missing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "CSV must contain columns: " + ", ".join(sorted(required_columns))
+                "CSV must contain columns: "
+                + ", ".join(sorted(required_columns))
             ),
         )
 
     sku_name_key = header_map.get("sku_name")
 
-    rows_to_insert: list[models.PSIBase] = []
-    affected_dates: set[date] = set()
     rows_by_key: dict[tuple[str, str, str, date], models.PSIBase] = {}
+    affected_dates: set[date] = set()
 
     for raw_row in reader:
         if not raw_row or not any(raw_row.values()):
@@ -397,12 +414,18 @@ async def upload_csv_for_session(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV contained no rows")
 
     try:
+        _ensure_summary_base_table(db)
+        db.execute(
+            delete(models.PSISummaryBase).where(models.PSISummaryBase.session_id == session_id)
+        )
         db.execute(
             delete(models.PSIBase)
             .where(models.PSIBase.session_id == session_id)
             .where(models.PSIBase.date.in_(affected_dates))
         )
         db.add_all(rows_to_insert)
+        session.data_type = schemas.SessionDataType.BASE.value
+        db.add(session)
         db.commit()
     except Exception:  # pragma: no cover - defensive transaction handling
         db.rollback()
@@ -412,6 +435,242 @@ async def upload_csv_for_session(
         rows_imported=len(rows_to_insert),
         session_id=session_id,
         dates=sorted(affected_dates),
+    )
+
+
+def _ingest_summary_csv(
+    *,
+    session: models.Session,
+    session_id: UUID,
+    reader: csv.DictReader[str],
+    header_map: dict[str, str],
+    db: DBSession,
+) -> schemas.PSIUploadResult:
+    required_columns = {
+        "sku_code",
+        "warehouse_name",
+        "channel",
+        "inbound_qty",
+        "outbound_qty",
+        "stdstock",
+        "stock",
+    }
+    missing = required_columns - set(header_map)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "CSV must contain columns: "
+                + ", ".join(sorted(required_columns))
+            ),
+        )
+
+    sku_name_key = header_map.get("sku_name")
+
+    zero = Decimal("0")
+    rows_by_key: dict[tuple[str, str, str], models.PSISummaryBase] = {}
+
+    for raw_row in reader:
+        if not raw_row or not any(raw_row.values()):
+            continue
+
+        sku_code_value = raw_row.get(header_map["sku_code"], "").strip()
+        warehouse_value = raw_row.get(header_map["warehouse_name"], "").strip()
+        channel_value = raw_row.get(header_map["channel"], "").strip()
+        if not sku_code_value or not warehouse_value or not channel_value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Each row must include sku_code, warehouse_name, and channel.",
+            )
+
+        sku_name_value = (
+            raw_row.get(sku_name_key, "").strip() if sku_name_key else ""
+        ) or None
+
+        inbound_value = _parse_decimal(
+            raw_row.get(header_map["inbound_qty"]), "inbound_qty"
+        )
+        outbound_value = _parse_decimal(
+            raw_row.get(header_map["outbound_qty"]), "outbound_qty"
+        )
+        std_stock_value = _parse_decimal(raw_row.get(header_map["stdstock"]), "stdstock")
+        stock_value = _parse_decimal(raw_row.get(header_map["stock"]), "stock")
+
+        key = (sku_code_value, warehouse_value, channel_value)
+        rows_by_key[key] = models.PSISummaryBase(
+            session_id=session_id,
+            sku_code=sku_code_value,
+            sku_name=sku_name_value,
+            warehouse_name=warehouse_value,
+            channel=channel_value,
+            inbound_qty=inbound_value if inbound_value is not None else zero,
+            outbound_qty=outbound_value if outbound_value is not None else zero,
+            std_stock=std_stock_value if std_stock_value is not None else zero,
+            stock=stock_value if stock_value is not None else zero,
+        )
+
+    rows_to_insert = list(rows_by_key.values())
+    if not rows_to_insert:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV contained no rows")
+
+    try:
+        _ensure_summary_base_table(db)
+        db.execute(delete(models.PSIBase).where(models.PSIBase.session_id == session_id))
+        db.execute(delete(models.PSIEdit).where(models.PSIEdit.session_id == session_id))
+        db.execute(delete(models.PSIEditLog).where(models.PSIEditLog.session_id == session_id))
+        _ensure_channel_transfer_table(db)
+        if _channel_transfer_table_exists(db):
+            db.execute(
+                delete(models.ChannelTransfer).where(
+                    models.ChannelTransfer.session_id == session_id
+                )
+            )
+        db.execute(
+            delete(models.PSISummaryBase).where(models.PSISummaryBase.session_id == session_id)
+        )
+        db.add_all(rows_to_insert)
+        session.data_type = schemas.SessionDataType.SUMMARY.value
+        db.add(session)
+        db.commit()
+    except Exception:  # pragma: no cover - defensive transaction handling
+        db.rollback()
+        raise
+
+    return schemas.PSIUploadResult(
+        rows_imported=len(rows_to_insert),
+        session_id=session_id,
+        dates=[],
+    )
+
+
+def _daily_psi_from_summary(
+    *,
+    session: models.Session,
+    session_id: UUID,
+    sku_code: str | None,
+    warehouse_name: str | None,
+    channel: str | None,
+    db: DBSession,
+) -> list[schemas.ChannelDailyPSI]:
+    summary_alias = models.PSISummaryBase
+    query = select(summary_alias).where(summary_alias.session_id == session_id)
+
+    if sku_code:
+        lowered = sku_code.lower()
+        query = query.where(func.lower(summary_alias.sku_code).like(f"%{lowered}%"))
+    if warehouse_name:
+        lowered = warehouse_name.lower()
+        query = query.where(func.lower(summary_alias.warehouse_name).like(f"%{lowered}%"))
+    if channel:
+        lowered = channel.lower()
+        query = query.where(func.lower(summary_alias.channel).like(f"%{lowered}%"))
+
+    query = query.order_by(summary_alias.id.asc())
+
+    rows = db.scalars(query).all()
+    if not rows:
+        return []
+
+    as_of_date = session.updated_at.date() if session.updated_at else date.today()
+    zero = Decimal("0")
+    result: list[schemas.ChannelDailyPSI] = []
+
+    for row in rows:
+        inbound = row.inbound_qty or zero
+        outbound = row.outbound_qty or zero
+        stock_value = row.stock or zero
+        std_stock_value = row.std_stock or zero
+
+        net_flow = inbound - outbound
+        movable = stock_value - std_stock_value
+        gap = stock_value - std_stock_value
+        inventory_days: float | None = None
+        if outbound and outbound != zero:
+            try:
+                inventory_days = float(stock_value / outbound)
+            except (ArithmeticError, InvalidOperation):  # pragma: no cover - defensive
+                inventory_days = None
+
+        daily_entry = schemas.DailyPSI(
+            date=as_of_date,
+            stock_at_anchor=float(stock_value),
+            inbound_qty=float(inbound),
+            outbound_qty=float(outbound),
+            channel_move=None,
+            net_flow=float(net_flow),
+            stock_closing=float(stock_value),
+            safety_stock=float(std_stock_value),
+            movable_stock=float(movable),
+            stdstock=float(std_stock_value),
+            gap=float(gap),
+            inventory_days=inventory_days,
+        )
+
+        result.append(
+            schemas.ChannelDailyPSI(
+                sku_code=row.sku_code,
+                sku_name=row.sku_name,
+                category_1=None,
+                category_2=None,
+                category_3=None,
+                fw_rank=None,
+                ss_rank=None,
+                warehouse_name=row.warehouse_name,
+                channel=row.channel,
+                daily=[daily_entry],
+            )
+        )
+
+    return result
+
+
+@router.post("/{session_id}/upload", response_model=schemas.PSIUploadResult)
+async def upload_csv_for_session(
+    *,
+    session_id: UUID,
+    data_type: schemas.SessionDataType = Query(schemas.SessionDataType.BASE),
+    file: UploadFile = File(...),
+    db: DBSession = Depends(get_db),
+) -> schemas.PSIUploadResult:
+    """Ingest a PSI base CSV file for a specific session.
+
+    Args:
+        session_id: Identifier of the session receiving the upload.
+        file: Uploaded CSV file following the schema documented in docs/database.md.
+        db: Database session injected by FastAPI.
+
+    Returns:
+        Summary of processed rows including the affected dates.
+    """
+
+    session = _get_session_or_404(db, session_id)
+
+    raw_bytes = await file.read()
+    text = decode_bytes(raw_bytes)
+    delimiter = detect_sep(text)
+
+    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
+    if reader.fieldnames is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing header row")
+
+    headers = [_normalise_header(header) for header in reader.fieldnames]
+    header_map = dict(zip(headers, reader.fieldnames))
+    if data_type is schemas.SessionDataType.SUMMARY:
+        summary_reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
+        return _ingest_summary_csv(
+            session=session,
+            session_id=session_id,
+            reader=summary_reader,
+            header_map=header_map,
+            db=db,
+        )
+
+    return _ingest_base_csv(
+        session=session,
+        session_id=session_id,
+        reader=reader,
+        header_map=header_map,
+        db=db,
     )
 
 
@@ -437,7 +696,17 @@ def daily_psi(
         Aggregated PSI rows ordered by date ascending.
     """
 
-    _get_session_or_404(db, session_id)
+    session = _get_session_or_404(db, session_id)
+    if _get_session_data_type(session) is schemas.SessionDataType.SUMMARY:
+        return _daily_psi_from_summary(
+            session=session,
+            session_id=session_id,
+            sku_code=sku_code,
+            warehouse_name=warehouse_name,
+            channel=channel,
+            db=db,
+        )
+
     _ensure_channel_transfer_table(db)
 
     base_alias = models.PSIBase
@@ -705,7 +974,9 @@ def generate_psi_report(
     if not sku_code.strip():
         raise HTTPException(status_code=400, detail="sku_code is required")
 
-    _get_session_or_404(db, session_id)
+    session = _get_session_or_404(db, session_id)
+    if _get_session_data_type(session) is schemas.SessionDataType.SUMMARY:
+        raise HTTPException(status_code=400, detail="Summary sessions do not support reports")
 
     priority_list = None
     if priority_channels:
@@ -765,7 +1036,12 @@ def generate_psi_report(
 def session_summary(session_id: UUID, db: DBSession = Depends(get_db)) -> schemas.PSISessionSummary:
     """Return date range information for the specified session."""
 
-    _get_session_or_404(db, session_id)
+    session = _get_session_or_404(db, session_id)
+    if _get_session_data_type(session) is schemas.SessionDataType.SUMMARY:
+        return schemas.PSISessionSummary(
+            session_id=session_id,
+            data_type=schemas.SessionDataType.SUMMARY,
+        )
 
     min_date, max_date = db.execute(
         select(func.min(models.PSIBase.date), func.max(models.PSIBase.date))
@@ -774,6 +1050,7 @@ def session_summary(session_id: UUID, db: DBSession = Depends(get_db)) -> schema
 
     return schemas.PSISessionSummary(
         session_id=session_id,
+        data_type=schemas.SessionDataType.BASE,
         start_date=min_date,
         end_date=max_date,
     )
@@ -797,7 +1074,9 @@ def psi_matrix(
     if start > end:
         raise HTTPException(status_code=400, detail="start must be on or before end")
 
-    _get_session_or_404(db, session_id)
+    session = _get_session_or_404(db, session_id)
+    if _get_session_data_type(session) is schemas.SessionDataType.SUMMARY:
+        raise HTTPException(status_code=400, detail="Summary sessions do not support the PSI matrix")
 
     resolved_plan_id: UUID | None = None
     if plan_id is not None:
@@ -848,7 +1127,9 @@ def apply_edits(
 ) -> schemas.PSIEditApplyResult:
     """Persist manual PSI overrides and record the audit log."""
 
-    _get_session_or_404(db, session_id)
+    session = _get_session_or_404(db, session_id)
+    if _get_session_data_type(session) is schemas.SessionDataType.SUMMARY:
+        raise HTTPException(status_code=400, detail="Summary sessions do not support edits")
 
     if not payload.edits:
         return schemas.PSIEditApplyResult(applied=0, log_entries=0)
