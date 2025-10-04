@@ -21,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    inspect,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -133,6 +134,7 @@ class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_leader: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    data_type: Mapped[str] = mapped_column(String(length=16), default="base", nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
     )
@@ -141,6 +143,9 @@ class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     )
 
     psi_base_records: Mapped[list["PSIBase"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+    psi_summary_records: Mapped[list["PSISummaryBase"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
     psi_edits: Mapped[list["PSIEdit"]] = relationship(
@@ -323,6 +328,49 @@ class PSIBase(Base, SchemaMixin):
     session: Mapped[Session] = relationship(back_populates="psi_base_records")
 
 
+class PSISummaryBase(Base, SchemaMixin):
+    """Summary PSI data imported for sessions without daily records."""
+
+    __tablename__ = "psi_summary_base"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "sku_code",
+            "warehouse_name",
+            "channel",
+            name="uq_psi_summary_base_key",
+        ),
+        Index(
+            "idx_psi_summary_base_lookup",
+            "session_id",
+            "sku_code",
+            "warehouse_name",
+            "channel",
+        ),
+        SchemaMixin.__table_args__,
+    )
+
+    id: Mapped[int] = mapped_column(AUTO_INCREMENT_PK, primary_key=True, autoincrement=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(_qualified("sessions"), ondelete="CASCADE"),
+        nullable=False,
+    )
+    sku_code: Mapped[str] = mapped_column(Text, nullable=False)
+    sku_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warehouse_name: Mapped[str] = mapped_column(Text, nullable=False)
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    inbound_qty: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    outbound_qty: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    std_stock: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    stock: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    session: Mapped[Session] = relationship(back_populates="psi_summary_records")
+
+
 class PSIEdit(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     """Editable PSI overrides entered via the UI.
 
@@ -489,4 +537,23 @@ def ensure_channel_transfers_table(bind: Engine | Connection) -> None:
     """
 
     table = ChannelTransfer.__table__
+    table.create(bind=bind, checkfirst=True)
+
+
+def channel_transfer_table_exists(bind: Engine | Connection) -> bool:
+    """Return whether the channel transfer table is available on the bind."""
+
+    inspector = inspect(bind)
+    schema = settings.db_schema or "public"
+
+    if bind.dialect.name == "sqlite":
+        return inspector.has_table("channel_transfers")
+
+    return inspector.has_table("channel_transfers", schema=schema)
+
+
+def ensure_psi_summary_base_table(bind: Engine | Connection) -> None:
+    """Create the PSI summary base table when migrations haven't run."""
+
+    table = PSISummaryBase.__table__
     table.create(bind=bind, checkfirst=True)
