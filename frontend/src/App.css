@@ -342,6 +342,57 @@ body {
   gap: 0.75rem;
 }
 
+.reallocation-page .reallocation-filter-section {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border-subtle, #d1d5db);
+  border-radius: 0.75rem;
+  background: var(--surface-panel, #f9fafb);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reallocation-page .reallocation-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.reallocation-page .reallocation-filter-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.reallocation-page .reallocation-filter-toggle {
+  border: none;
+  background: transparent;
+  color: var(--accent-primary, #2563eb);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.2s ease;
+}
+
+.reallocation-page .reallocation-filter-toggle:hover {
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.reallocation-page .reallocation-filter-toggle:focus-visible {
+  outline: 2px solid var(--accent-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+.reallocation-page .reallocation-filter-section.collapsed {
+  gap: 0.5rem;
+}
+
+.reallocation-page .reallocation-filter-section.collapsed .reallocation-filter-form {
+  display: none;
+}
+
 .reallocation-page .reallocation-filter-form {
   display: grid;
   gap: 1.25rem;
@@ -385,6 +436,46 @@ body {
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
+}
+
+.reallocation-page .plan-lines-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.reallocation-page .plan-lines-count {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-secondary, var(--text-primary));
+}
+
+.reallocation-page .plan-lines-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.reallocation-page .plan-lines-pagination button {
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-default, #d1d5db);
+  background: var(--surface-panel, #f9fafb);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.reallocation-page .plan-lines-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reallocation-page .plan-lines-pagination span {
+  font-size: 0.9rem;
+  color: var(--text-subtle, #6b7280);
 }
 
 .reallocation-page .reallocation-filter-status {
@@ -626,6 +717,16 @@ body {
   padding: 0.35rem 0.5rem;
   border-radius: 0.375rem;
   border: 1px solid var(--border-subtle, #d1d5db);
+}
+
+.reallocation-page .plan-lines-section th:first-child,
+.reallocation-page .plan-lines-section td:first-child {
+  min-width: 140px;
+  white-space: nowrap;
+}
+
+.reallocation-page .plan-lines-section td:first-child input {
+  min-width: 140px;
 }
 
 .action-buttons {

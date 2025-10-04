@@ -143,6 +143,47 @@ const formatCsvValue = (value: string | number | boolean | null | undefined) => 
 const buildCsvContent = (rows: (string | number | boolean | null | undefined)[][]) =>
   rows.map((row) => row.map(formatCsvValue).join(",")).join("\r\n");
 
+const PLAN_LINES_PAGE_SIZE = 5;
+
+const compareLinesBySku = (a: LineDraft, b: LineDraft) => {
+  const skuA = a.sku_code.trim();
+  const skuB = b.sku_code.trim();
+  const hasSkuA = skuA.length > 0;
+  const hasSkuB = skuB.length > 0;
+  if (hasSkuA && !hasSkuB) {
+    return -1;
+  }
+  if (!hasSkuA && hasSkuB) {
+    return 1;
+  }
+  if (!hasSkuA && !hasSkuB) {
+    return a.line_id.localeCompare(b.line_id);
+  }
+  const skuCompare = skuA.localeCompare(skuB, undefined, { numeric: true, sensitivity: "base" });
+  if (skuCompare !== 0) {
+    return skuCompare;
+  }
+  const fromWarehouseCompare = a.from_warehouse.trim().localeCompare(b.from_warehouse.trim());
+  if (fromWarehouseCompare !== 0) {
+    return fromWarehouseCompare;
+  }
+  const fromChannelCompare = a.from_channel.trim().localeCompare(b.from_channel.trim());
+  if (fromChannelCompare !== 0) {
+    return fromChannelCompare;
+  }
+  const toWarehouseCompare = a.to_warehouse.trim().localeCompare(b.to_warehouse.trim());
+  if (toWarehouseCompare !== 0) {
+    return toWarehouseCompare;
+  }
+  const toChannelCompare = a.to_channel.trim().localeCompare(b.to_channel.trim());
+  if (toChannelCompare !== 0) {
+    return toChannelCompare;
+  }
+  return a.line_id.localeCompare(b.line_id);
+};
+
+const sortLinesBySku = (lineItems: LineDraft[]) => [...lineItems].sort(compareLinesBySku);
+
 export default function ReallocationPage() {
   const sessionsQuery = useSessionsQuery();
   const sessions = sessionsQuery.data ?? [];
@@ -163,6 +204,10 @@ export default function ReallocationPage() {
   const [planDirty, setPlanDirty] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [hasAutoLoadedPlan, setHasAutoLoadedPlan] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [skuSearch, setSkuSearch] = useState("");
+  const [planLinesPage, setPlanLinesPage] = useState(1);
+  const filterSectionId = useId();
   const skuDatalistId = useId();
 
   const summaryQuery = useSessionSummaryQuery(selectedSessionId);
@@ -211,6 +256,14 @@ export default function ReallocationPage() {
     setSelectedPlanId("");
     setHasAutoLoadedPlan(false);
   }, [selectedSessionId]);
+
+  useEffect(() => {
+    setPlanLinesPage(1);
+  }, [plan?.plan_id]);
+
+  useEffect(() => {
+    setPlanLinesPage(1);
+  }, [skuSearch]);
 
   const matrixArgs = useMemo<MatrixQueryArgs | null>(() => {
     if (!baseFilters) {
@@ -320,6 +373,7 @@ export default function ReallocationPage() {
       reason: "",
     };
     setLines((prev) => [...prev, newLine]);
+    setPlanLinesPage(Math.max(1, Math.ceil((lines.length + 1) / PLAN_LINES_PAGE_SIZE)));
     setPlanDirty(true);
   };
 
@@ -656,6 +710,42 @@ export default function ReallocationPage() {
     return map;
   }, [skuOptions]);
 
+  const filteredPlanLines = useMemo(() => {
+    const normalizedSearch = skuSearch.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return lines;
+    }
+    return lines.filter((line) => {
+      const code = line.sku_code.trim();
+      const name = skuNameMap.get(code) ?? skuOptionNameMap.get(code) ?? "";
+      return (
+        code.toLowerCase().includes(normalizedSearch) || name.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [lines, skuNameMap, skuOptionNameMap, skuSearch]);
+
+  const sortedPlanLines = useMemo(() => sortLinesBySku(filteredPlanLines), [filteredPlanLines]);
+
+  const totalPlanLinePages = Math.max(1, Math.ceil(sortedPlanLines.length / PLAN_LINES_PAGE_SIZE));
+
+  useEffect(() => {
+    setPlanLinesPage((prev) => {
+      if (prev <= totalPlanLinePages) {
+        return prev;
+      }
+      return totalPlanLinePages;
+    });
+  }, [totalPlanLinePages]);
+
+  const paginatedPlanLines = useMemo(() => {
+    const startIndex = (planLinesPage - 1) * PLAN_LINES_PAGE_SIZE;
+    return sortedPlanLines.slice(startIndex, startIndex + PLAN_LINES_PAGE_SIZE);
+  }, [planLinesPage, sortedPlanLines]);
+
+  const planLinesTotal = sortedPlanLines.length;
+  const planLinesDisplayStart = planLinesTotal === 0 ? 0 : (planLinesPage - 1) * PLAN_LINES_PAGE_SIZE + 1;
+  const planLinesDisplayEnd = Math.min(planLinesTotal, planLinesPage * PLAN_LINES_PAGE_SIZE);
+
   const handleExportLinesCsv = useCallback(() => {
     if (!lines.length || typeof window === "undefined") {
       return;
@@ -675,7 +765,7 @@ export default function ReallocationPage() {
       "Reason",
     ];
 
-    const rows = lines.map((line) => {
+    const rows = sortLinesBySku(lines).map((line) => {
       const trimmedSku = line.sku_code.trim();
       const skuName = skuNameMap.get(trimmedSku) ?? skuOptionNameMap.get(trimmedSku) ?? "";
       return [
@@ -792,103 +882,123 @@ export default function ReallocationPage() {
     <div className="page reallocation-page">
       <h1>在庫再配置</h1>
 
-      <form className="reallocation-filter-form" onSubmit={handleApplyFilters}>
-        <div className="reallocation-filter-grid">
-          <div className="reallocation-filter-panel">
-            <label>
-              Session
-              <select
-                value={selectedSessionId}
-                onChange={(event) => setSelectedSessionId(event.target.value)}
-              >
-                <option value="">Select session</option>
-                {sessions.map((session) => (
-                  <option key={session.id} value={session.id}>
-                    {session.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {isSummarySession && (
-              <p className="reallocation-filter-status">
-                Summary sessions display aggregated totals from the latest upload. Use the filters
-                below to generate or edit transfer plans against the summary snapshot.
-              </p>
-            )}
-            <div className="reallocation-filter-dates">
+      <section
+        className={`reallocation-filter-section ${filtersExpanded ? "expanded" : "collapsed"}`}
+      >
+        <div className="reallocation-filter-header">
+          <h2>Session / Plan Controls</h2>
+          <button
+            type="button"
+            className="reallocation-filter-toggle"
+            onClick={() => setFiltersExpanded((prev) => !prev)}
+            aria-expanded={filtersExpanded}
+            aria-controls={filterSectionId}
+          >
+            {filtersExpanded ? "折りたたむ" : "展開する"}
+          </button>
+        </div>
+        <form
+          id={filterSectionId}
+          className="reallocation-filter-form"
+          onSubmit={handleApplyFilters}
+        >
+          <div className="reallocation-filter-grid">
+            <div className="reallocation-filter-panel">
               <label>
-                Start date
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(event) => setStartDate(event.target.value)}
-                />
+                Session
+                <select
+                  value={selectedSessionId}
+                  onChange={(event) => setSelectedSessionId(event.target.value)}
+                >
+                  <option value="">Select session</option>
+                  {sessions.map((session) => (
+                    <option key={session.id} value={session.id}>
+                      {session.title}
+                    </option>
+                  ))}
+                </select>
               </label>
+              {isSummarySession && (
+                <p className="reallocation-filter-status">
+                  Summary sessions display aggregated totals from the latest upload. Use the
+                  filters below to generate or edit transfer plans against the summary snapshot.
+                </p>
+              )}
+              <div className="reallocation-filter-dates">
+                <label>
+                  Start date
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                  />
+                </label>
+                <label>
+                  End date
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(event) => setEndDate(event.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="reallocation-filter-panel">
               <label>
-                End date
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(event) => setEndDate(event.target.value)}
-                />
+                作成済みプラン
+                <select
+                  value={selectedPlanId}
+                  onChange={(event) => setSelectedPlanId(event.target.value)}
+                  disabled={!hasPlanOptions || isPlanListLoading}
+                >
+                  <option value="">Select plan</option>
+                  {planSelectOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
+              {isPlanListLoading && (
+                <p className="reallocation-filter-status">Loading saved plans…</p>
+              )}
+              {transferPlansQuery.isError && (
+                <p className="reallocation-filter-status error">Failed to load saved plans.</p>
+              )}
+              {!isPlanListLoading && !hasPlanOptions && (
+                <p className="reallocation-filter-status">
+                  No saved plans match the selected filters.
+                </p>
+              )}
             </div>
           </div>
-          <div className="reallocation-filter-panel">
-            <label>
-              作成済みプラン
-              <select
-                value={selectedPlanId}
-                onChange={(event) => setSelectedPlanId(event.target.value)}
-                disabled={!hasPlanOptions || isPlanListLoading}
-              >
-                <option value="">Select plan</option>
-                {planSelectOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {isPlanListLoading && (
-              <p className="reallocation-filter-status">Loading saved plans…</p>
-            )}
-            {transferPlansQuery.isError && (
-              <p className="reallocation-filter-status error">Failed to load saved plans.</p>
-            )}
-            {!isPlanListLoading && !hasPlanOptions && (
-              <p className="reallocation-filter-status">
-                No saved plans match the selected filters.
-              </p>
-            )}
+          <div className="reallocation-filter-actions">
+            <button type="submit" disabled={isMatrixFetching}>
+              Apply filters
+            </button>
+            <button
+              type="button"
+              onClick={handleRecommend}
+              disabled={recommendMutation.isPending}
+            >
+              {recommendMutation.isPending ? "Creating…" : "Create recommendation"}
+            </button>
+            <button type="button" onClick={handleLoadPlan} disabled={isLoadPlanDisabled}>
+              {loadPlanMutation.isPending ? "Loading…" : "Load plan"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                void transferPlansQuery.refetch();
+              }}
+              disabled={transferPlansQuery.isFetching}
+            >
+              {transferPlansQuery.isFetching ? "Refreshing…" : "Refresh list"}
+            </button>
           </div>
-        </div>
-        <div className="reallocation-filter-actions">
-          <button type="submit" disabled={isMatrixFetching}>
-            Apply filters
-          </button>
-          <button
-            type="button"
-            onClick={handleRecommend}
-            disabled={recommendMutation.isPending}
-          >
-            {recommendMutation.isPending ? "Creating…" : "Create recommendation"}
-          </button>
-          <button type="button" onClick={handleLoadPlan} disabled={isLoadPlanDisabled}>
-            {loadPlanMutation.isPending ? "Loading…" : "Load plan"}
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              void transferPlansQuery.refetch();
-            }}
-            disabled={transferPlansQuery.isFetching}
-          >
-            {transferPlansQuery.isFetching ? "Refreshing…" : "Refresh list"}
-          </button>
-        </div>
-      </form>
+        </form>
+      </section>
 
       {status && <div className={`status-message ${status.type}`}>{status.text}</div>}
 
@@ -906,191 +1016,236 @@ export default function ReallocationPage() {
             Showing aggregated SKU × warehouse × channel totals from the latest summary upload.
           </p>
         )}
-        {simulatedMatrixRows.length > 0 && <PSIMatrixTabs data={psiRows} skuList={skuList} />}
+        {simulatedMatrixRows.length > 0 && (
+          <PSIMatrixTabs
+            data={psiRows}
+            skuList={skuList}
+            skuSearch={skuSearch}
+            onSkuSearchChange={setSkuSearch}
+          />
+        )}
       </section>
 
       <section className="plan-lines-section">
-          <div className="plan-header">
-            <h2>Transfer Plan Lines</h2>
-            <div className="plan-actions">
-              <button type="button" onClick={handleAddLine} disabled={!plan}>
-                Add manual line
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!plan || !planDirty || saveLinesMutation.isPending}
-              >
-                {saveLinesMutation.isPending ? "Saving…" : "Save lines"}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={handleExportLinesCsv}
-                disabled={lines.length === 0}
-              >
-                CSVダウンロード
-              </button>
-            </div>
+        <div className="plan-header">
+          <h2>Transfer Plan Lines</h2>
+          <div className="plan-actions">
+            <button type="button" onClick={handleAddLine} disabled={!plan}>
+              Add manual line
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!plan || !planDirty || saveLinesMutation.isPending}
+            >
+              {saveLinesMutation.isPending ? "Saving…" : "Save lines"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleExportLinesCsv}
+              disabled={lines.length === 0}
+            >
+              CSVダウンロード
+            </button>
           </div>
-          {!plan && <p>No plan loaded. Create a recommendation to begin.</p>}
-          {plan && (
-            <div className="table-wrapper">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>SKU</th>
-                    <th>SKU name</th>
-                    <th>From warehouse</th>
-                    <th>From channel</th>
-                    <th>To warehouse</th>
-                    <th>To channel</th>
-                    <th>Qty</th>
-                    <th>Manual?</th>
-                    <th>Reason</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line) => {
-                    const trimmedSku = line.sku_code.trim();
-                    const skuName =
-                      skuNameMap.get(trimmedSku) ?? skuOptionNameMap.get(trimmedSku) ?? "";
-                    const fromWarehouseOptions = ensureOption(
-                      warehouseOptions,
-                      line.from_warehouse,
-                    );
-                    const fromWarehouseKey = line.from_warehouse.trim();
-                    const toWarehouseOptions = ensureOption(warehouseOptions, line.to_warehouse);
-                    const toWarehouseKey = line.to_warehouse.trim();
-                    const fromChannelBase =
-                      channelsByWarehouse.get(fromWarehouseKey) ?? channelOptions;
-                    const toChannelBase =
-                      channelsByWarehouse.get(toWarehouseKey) ?? channelOptions;
-                    const fromChannelOptions = ensureOption(fromChannelBase, line.from_channel);
-                    const toChannelOptions = ensureOption(toChannelBase, line.to_channel);
-
-                    return (
-                      <tr key={line.line_id}>
-                        <td>
-                          <input
-                            list={skuDatalistId}
-                            value={line.sku_code}
-                            onChange={(event) =>
-                              handleLineChange(line.line_id, { sku_code: event.target.value })
-                            }
-                          />
-                        </td>
-                        <td>{skuName}</td>
-                        <td>
-                          <select
-                            value={line.from_warehouse}
-                            onChange={(event) =>
-                              handleLineChange(line.line_id, {
-                                from_warehouse: event.target.value,
-                              })
-                            }
-                          >
-                            <option value="">Select warehouse</option>
-                            {fromWarehouseOptions.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <select
-                            value={line.from_channel}
-                            onChange={(event) =>
-                              handleLineChange(line.line_id, {
-                                from_channel: event.target.value,
-                              })
-                            }
-                          >
-                            <option value="">Select channel</option>
-                            {fromChannelOptions.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <select
-                            value={line.to_warehouse}
-                            onChange={(event) =>
-                              handleLineChange(line.line_id, {
-                                to_warehouse: event.target.value,
-                              })
-                            }
-                          >
-                            <option value="">Select warehouse</option>
-                            {toWarehouseOptions.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <select
-                            value={line.to_channel}
-                            onChange={(event) =>
-                              handleLineChange(line.line_id, {
-                                to_channel: event.target.value,
-                              })
-                            }
-                          >
-                            <option value="">Select channel</option>
-                            {toChannelOptions.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            step="0.000001"
-                            min="0"
-                            value={line.qty}
-                            onChange={(event) =>
-                              handleLineChange(line.line_id, { qty: event.target.value })
-                            }
-                          />
-                        </td>
-                        <td className="checkbox-cell">
-                          <input
-                            type="checkbox"
-                            checked={line.is_manual}
-                            onChange={(event) =>
-                              handleLineChange(line.line_id, { is_manual: event.target.checked })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={line.reason}
-                            onChange={(event) =>
-                              handleLineChange(line.line_id, { reason: event.target.value })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <button type="button" onClick={() => handleRemoveLine(line.line_id)}>
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        </div>
+        {!plan && <p>No plan loaded. Create a recommendation to begin.</p>}
+        {plan && (
+          <>
+            <div className="plan-lines-toolbar">
+              <p className="plan-lines-count">
+                {planLinesTotal === 0
+                  ? skuSearch.trim()
+                    ? "SKU検索に一致するラインがありません。"
+                    : "登録済みのラインがありません。"
+                  : `表示中 ${planLinesDisplayStart}–${planLinesDisplayEnd} 件 / 全 ${planLinesTotal} 件`}
+              </p>
+              {planLinesTotal > 0 && (
+                <div className="plan-lines-pagination">
+                  <button
+                    type="button"
+                    onClick={() => setPlanLinesPage((prev) => Math.max(1, prev - 1))}
+                    disabled={planLinesPage <= 1}
+                  >
+                    ‹ 前へ
+                  </button>
+                  <span>
+                    ページ {planLinesPage} / {Math.max(1, totalPlanLinePages)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPlanLinesPage((prev) =>
+                        prev >= totalPlanLinePages ? totalPlanLinePages : prev + 1,
+                      )
+                    }
+                    disabled={planLinesPage >= totalPlanLinePages}
+                  >
+                    次へ ›
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-          <datalist id={skuDatalistId}>
+            {paginatedPlanLines.length > 0 ? (
+              <div className="table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>SKU</th>
+                      <th>SKU name</th>
+                      <th>From warehouse</th>
+                      <th>From channel</th>
+                      <th>To warehouse</th>
+                      <th>To channel</th>
+                      <th>Qty</th>
+                      <th>Manual?</th>
+                      <th>Reason</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedPlanLines.map((line) => {
+                      const trimmedSku = line.sku_code.trim();
+                      const skuName =
+                        skuNameMap.get(trimmedSku) ?? skuOptionNameMap.get(trimmedSku) ?? "";
+                      const fromWarehouseOptions = ensureOption(
+                        warehouseOptions,
+                        line.from_warehouse,
+                      );
+                      const fromWarehouseKey = line.from_warehouse.trim();
+                      const toWarehouseOptions = ensureOption(warehouseOptions, line.to_warehouse);
+                      const toWarehouseKey = line.to_warehouse.trim();
+                      const fromChannelBase =
+                        channelsByWarehouse.get(fromWarehouseKey) ?? channelOptions;
+                      const toChannelBase =
+                        channelsByWarehouse.get(toWarehouseKey) ?? channelOptions;
+                      const fromChannelOptions = ensureOption(fromChannelBase, line.from_channel);
+                      const toChannelOptions = ensureOption(toChannelBase, line.to_channel);
+
+                      return (
+                        <tr key={line.line_id}>
+                          <td>
+                            <input
+                              list={skuDatalistId}
+                              value={line.sku_code}
+                              onChange={(event) =>
+                                handleLineChange(line.line_id, { sku_code: event.target.value })
+                              }
+                            />
+                          </td>
+                          <td>{skuName}</td>
+                          <td>
+                            <select
+                              value={line.from_warehouse}
+                              onChange={(event) =>
+                                handleLineChange(line.line_id, {
+                                  from_warehouse: event.target.value,
+                                })
+                              }
+                            >
+                              <option value="">Select warehouse</option>
+                              {fromWarehouseOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={line.from_channel}
+                              onChange={(event) =>
+                                handleLineChange(line.line_id, {
+                                  from_channel: event.target.value,
+                                })
+                              }
+                            >
+                              <option value="">Select channel</option>
+                              {fromChannelOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={line.to_warehouse}
+                              onChange={(event) =>
+                                handleLineChange(line.line_id, {
+                                  to_warehouse: event.target.value,
+                                })
+                              }
+                            >
+                              <option value="">Select warehouse</option>
+                              {toWarehouseOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={line.to_channel}
+                              onChange={(event) =>
+                                handleLineChange(line.line_id, {
+                                  to_channel: event.target.value,
+                                })
+                              }
+                            >
+                              <option value="">Select channel</option>
+                              {toChannelOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.000001"
+                              min="0"
+                              value={line.qty}
+                              onChange={(event) =>
+                                handleLineChange(line.line_id, { qty: event.target.value })
+                              }
+                            />
+                          </td>
+                          <td className="checkbox-cell">
+                            <input
+                              type="checkbox"
+                              checked={line.is_manual}
+                              onChange={(event) =>
+                                handleLineChange(line.line_id, { is_manual: event.target.checked })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={line.reason}
+                              onChange={(event) =>
+                                handleLineChange(line.line_id, { reason: event.target.value })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <button type="button" onClick={() => handleRemoveLine(line.line_id)}>
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </>
+        )}
+        <datalist id={skuDatalistId}>
             {skuOptions.map((option) => (
               <option key={option.code} value={option.code}>
                 {option.name ? `${option.code} — ${option.name}` : option.code}
