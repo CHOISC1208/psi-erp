@@ -257,12 +257,13 @@ export default function SessionsPage() {
         ? (error.response?.data as { detail?: unknown } | undefined)?.detail
         : undefined;
       if (detail && typeof detail === "object" && !Array.isArray(detail) && "duplicates" in detail) {
-        const duplicates = Array.isArray((detail as { duplicates?: unknown }).duplicates)
-          ? ((detail as { duplicates: DuplicateKey[] }).duplicates ?? [])
+        const detailRecord = detail as { duplicates?: unknown; message?: unknown };
+        const duplicates = Array.isArray(detailRecord.duplicates)
+          ? ((detailRecord.duplicates as DuplicateKey[]) ?? [])
           : [];
         const message =
-          typeof (detail as { message?: string }).message === "string"
-            ? (detail as { message: string }).message
+          typeof detailRecord.message === "string"
+            ? detailRecord.message
             : "Duplicate keys detected. Resolve the conflicts and try again.";
         setDuplicateKeys(duplicates);
         setUploadError(message);
