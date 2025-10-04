@@ -13,6 +13,7 @@ import {
 import { useSessionsQuery, useSessionSummaryQuery } from "../hooks/usePsiQueries";
 import type { MatrixRow, TransferPlan, TransferPlanLine } from "../types";
 import { PSIMatrixTabs } from "../features/reallocation/psi/PSIMatrixTabs";
+import MasterTab from "../features/reallocation/master/MasterTab";
 
 interface StatusMessage {
   type: "success" | "error";
@@ -787,6 +788,8 @@ export default function ReallocationPage() {
       </form>
 
       {status && <div className={`status-message ${status.type}`}>{status.text}</div>}
+
+      <MasterTab />
 
       <section className="matrix-section">
         <h2>PSI Matrix</h2>

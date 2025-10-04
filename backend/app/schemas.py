@@ -467,3 +467,24 @@ class UserCreateResult(BaseModel):
     is_active: bool
     is_admin: bool
     created_at: datetime
+
+
+class ReallocationPolicyBase(BaseModel):
+    """Shared fields for the reallocation policy."""
+
+    take_from_other_main: bool
+    rounding_mode: Literal["floor", "round", "ceil"]
+    allow_overfill: bool
+
+
+class ReallocationPolicyWrite(ReallocationPolicyBase):
+    """Payload used to update the reallocation policy."""
+
+    updated_by: str | None = None
+
+
+class ReallocationPolicyRead(ReallocationPolicyBase):
+    """Reallocation policy returned by the API."""
+
+    updated_at: datetime | None = None
+    updated_by: str | None = None

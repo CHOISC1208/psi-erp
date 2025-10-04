@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from .. import models, schemas
 from ..deps import get_current_user, get_db
+from ..services.reallocation_policy import get_reallocation_policy
 from ..services.transfer_logic import QUANT, recommend_plan_lines
 from ..services.transfer_plans import fetch_main_channel_map, fetch_matrix_rows
 
@@ -141,6 +142,7 @@ def create_recommended_plan(
 
     warehouses: set[str] = {row.warehouse_name for row in matrix_rows}
     warehouse_main_channels = fetch_main_channel_map(db, warehouses=warehouses)
+    policy = get_reallocation_policy(db)
 
     plan = models.TransferPlan(
         session_id=session.id,
@@ -156,6 +158,7 @@ def create_recommended_plan(
     recommended_moves = recommend_plan_lines(
         matrix_rows,
         warehouse_main_channels=warehouse_main_channels,
+        policy=policy,
     )
 
     for move in recommended_moves:
