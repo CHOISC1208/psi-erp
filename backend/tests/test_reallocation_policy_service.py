@@ -54,11 +54,9 @@ def test_get_reallocation_policy_returns_defaults_when_table_missing(isolated_ap
     with SessionLocal() as session:
         policy = get_reallocation_policy(session)
 
-    assert policy == ReallocationPolicyData(
-        take_from_other_main=False,
-        rounding_mode="floor",
-        allow_overfill=False,
-        fair_share_mode="off",
-        updated_at=None,
-        updated_by=None,
-    )
+    assert policy.take_from_other_main is False
+    assert policy.rounding_mode == "floor"
+    assert policy.allow_overfill is False
+    assert policy.fair_share_mode == "off"
+    assert policy.updated_by is None
+    assert policy.updated_at is not None

@@ -14,6 +14,12 @@ const FAIR_SHARE_OPTIONS: Array<
 
 type StatusMessage = { type: "success" | "error"; text: string } | null;
 
+type MasterTabKey = "policy";
+
+const MASTER_TABS: Array<{ key: MasterTabKey; label: string }> = [
+  { key: "policy", label: "Reallocation Policy" },
+];
+
 type FormState = {
   take_from_other_main: boolean;
   rounding_mode: "floor" | "round" | "ceil";
@@ -63,6 +69,7 @@ export default function MasterTab() {
   const [formState, setFormState] = useState<FormState>(DEFAULT_FORM);
   const [savedState, setSavedState] = useState<FormState | null>(null);
   const [status, setStatus] = useState<StatusMessage>(null);
+  const [activeTab, setActiveTab] = useState<MasterTabKey>("policy");
 
   const isAdmin = Boolean(user?.is_admin);
 
@@ -131,141 +138,224 @@ export default function MasterTab() {
 
   return (
     <section className="reallocation-master">
-      <h2>Reallocation Policy (Master)</h2>
-      {loading && <p>Loading policy…</p>}
-      {loadError && !loading && (
-        <p className="error-text">Failed to load policy. Please try again later.</p>
-      )}
-      {!loading && !loadError && (
-        <form className="master-policy-form" onSubmit={handleSubmit}>
-          <div className="form-field">
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={formState.take_from_other_main}
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    take_from_other_main: event.target.checked,
-                  }))
-                }
-                disabled={!isAdmin || updateMutation.isPending}
-              />
-              <span>Allow taking stock from other warehouses&apos; main channels</span>
-            </label>
-            <p className="field-hint">
-              When enabled, other warehouses&apos; main channels may act as donors after non-main
-              sources are exhausted.
-            </p>
-          </div>
-
-          <div className="form-field">
-            <label htmlFor="rounding-mode">Rounding mode</label>
-            <select
-              id="rounding-mode"
-              value={formState.rounding_mode}
-              onChange={(event) =>
-                setFormState((prev) => ({
-                  ...prev,
-                  rounding_mode: event.target.value as FormState["rounding_mode"],
-                }))
-              }
-              disabled={!isAdmin || updateMutation.isPending}
-            >
-              {ROUNDING_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <p className="field-hint">
-              Controls how fractional transfer quantities are converted to integers.
-            </p>
-          </div>
-
-          <div className="form-field">
-            <label htmlFor="fair-share-mode">Fair-share mode</label>
-            <select
-              id="fair-share-mode"
-              value={formState.fair_share_mode}
-              onChange={(event) =>
-                setFormState((prev) => ({
-                  ...prev,
-                  fair_share_mode: event.target.value as FormState["fair_share_mode"],
-                }))
-              }
-              disabled={!isAdmin || updateMutation.isPending}
-            >
-              {FAIR_SHARE_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <p className="field-hint">
-              Distributes donors to equalize main channels’ stock-to-STD ratio (closing or
-              start based).
-            </p>
-          </div>
-
-          <div className="form-field">
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={formState.allow_overfill}
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    allow_overfill: event.target.checked,
-                  }))
-                }
-                disabled={!isAdmin || updateMutation.isPending}
-              />
-              <span>Allow filling beyond STD stock</span>
-            </label>
-            <p className="field-hint">
-              Disable to cap moves when the receiving channel would exceed its STD stock.
-            </p>
-          </div>
-
-          <div className="form-field">
-            <label htmlFor="updated-by">Updated by (optional)</label>
-            <input
-              id="updated-by"
-              type="text"
-              value={formState.updated_by}
-              onChange={(event) =>
-                setFormState((prev) => ({ ...prev, updated_by: event.target.value }))
-              }
-              disabled={!isAdmin || updateMutation.isPending}
-            />
-          </div>
-
-          <div className="form-footer">
-            <div className="last-updated">
-              <span>
-                Last updated: <strong>{formatDate(lastUpdatedAt)}</strong>
-              </span>
-              <span>
-                Updated by: <strong>{lastUpdatedBy?.trim() || "—"}</strong>
-              </span>
-            </div>
-            <div className="form-actions">
-              {!isAdmin && (
-                <span className="field-hint">Only administrators can update the policy.</span>
-              )}
+      <h2>Master</h2>
+      <div className="master-tabs">
+        <div className="master-tab-list" role="tablist" aria-label="Master configuration">
+          {MASTER_TABS.map((tab) => {
+            const isActive = activeTab === tab.key;
+            const tabId = `master-tab-${tab.key}`;
+            const panelId = `master-panel-${tab.key}`;
+            return (
               <button
-                type="submit"
-                disabled={!isAdmin || !isDirty || updateMutation.isPending}
+                key={tab.key}
+                id={tabId}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={panelId}
+                className={`master-tab-trigger${isActive ? " active" : ""}`}
+                onClick={() => setActiveTab(tab.key)}
               >
-                {updateMutation.isPending ? "Saving…" : "Save"}
+                {tab.label}
               </button>
-            </div>
-          </div>
+            );
+          })}
+        </div>
 
-          {status && <p className={`status-message ${status.type}`}>{status.text}</p>}
-        </form>
-      )}
+        {MASTER_TABS.map((tab) => {
+          if (tab.key !== activeTab) {
+            return null;
+          }
+          const panelId = `master-panel-${tab.key}`;
+          const tabId = `master-tab-${tab.key}`;
+          return (
+            <div
+              key={tab.key}
+              id={panelId}
+              role="tabpanel"
+              aria-labelledby={tabId}
+              className="master-tab-panel"
+            >
+              {tab.key === "policy" && (
+                <>
+                  {loading && <p>Loading policy…</p>}
+                  {loadError && !loading && (
+                    <p className="error-text">Failed to load policy. Please try again later.</p>
+                  )}
+                  {!loading && !loadError && (
+                    <div className="master-policy-layout">
+                      <article className="master-policy-guidance">
+                        <h3>在庫再配置ポリシーについて</h3>
+                        <p>
+                          在庫再配置の推奨ロジックがどのように在庫を移動させるかを決める全社共通の
+                          設定です。ここで保存した内容は全ユーザーに即時反映され、推奨作成や再計算の
+                          結果に影響します。
+                        </p>
+                        <ul>
+                          <li>
+                            <strong>他倉庫メインチャネルからの引当を許可</strong>：優先ドナーを使い切った
+                            後に、他倉庫のメインチャネル在庫を追加の供給源として使用します。
+                          </li>
+                          <li>
+                            <strong>端数処理モード</strong>：計算上の小数点以下をどのように丸めて移動数量を
+                            決定するか（切り捨て／四捨五入／切り上げ）を指定します。
+                          </li>
+                          <li>
+                            <strong>フェアシェアモード</strong>：メインチャネルの在庫水準が均等になるよう、
+                            STD 比率（期末または期首）を揃える分配ロジックを有効化します。
+                          </li>
+                          <li>
+                            <strong>STD 超過の許可</strong>：受け側の在庫が STD を上回る場合でも移動を許可
+                            するかどうかを制御します。OFF にすると STD を超える手前で数量が調整されます。
+                          </li>
+                        </ul>
+                        <p className="guidance-note">
+                          ※ 保存操作は管理者のみ実行できます。内容を更新すると更新者と時刻が記録され
+                          ます。
+                        </p>
+                      </article>
+
+                      <form className="master-policy-form" onSubmit={handleSubmit}>
+                        <div className="form-field">
+                          <label className="checkbox-field">
+                            <input
+                              type="checkbox"
+                              checked={formState.take_from_other_main}
+                              onChange={(event) =>
+                                setFormState((prev) => ({
+                                  ...prev,
+                                  take_from_other_main: event.target.checked,
+                                }))
+                              }
+                              disabled={!isAdmin || updateMutation.isPending}
+                            />
+                            <span>Allow taking stock from other warehouses&apos; main channels</span>
+                          </label>
+                          <p className="field-hint">
+                            When enabled, other warehouses&apos; main channels may act as donors after
+                            non-main sources are exhausted.
+                          </p>
+                        </div>
+
+                        <div className="form-field">
+                          <label htmlFor="rounding-mode">Rounding mode</label>
+                          <select
+                            id="rounding-mode"
+                            value={formState.rounding_mode}
+                            onChange={(event) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                rounding_mode: event.target.value as FormState["rounding_mode"],
+                              }))
+                            }
+                            disabled={!isAdmin || updateMutation.isPending}
+                          >
+                            {ROUNDING_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="field-hint">
+                            Controls how fractional transfer quantities are converted to integers.
+                          </p>
+                        </div>
+
+                        <div className="form-field">
+                          <label htmlFor="fair-share-mode">Fair-share mode</label>
+                          <select
+                            id="fair-share-mode"
+                            value={formState.fair_share_mode}
+                            onChange={(event) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                fair_share_mode: event.target.value as FormState["fair_share_mode"],
+                              }))
+                            }
+                            disabled={!isAdmin || updateMutation.isPending}
+                          >
+                            {FAIR_SHARE_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="field-hint">
+                            Distributes donors to equalize main channels’ stock-to-STD ratio (closing
+                            or start based).
+                          </p>
+                        </div>
+
+                        <div className="form-field">
+                          <label className="checkbox-field">
+                            <input
+                              type="checkbox"
+                              checked={formState.allow_overfill}
+                              onChange={(event) =>
+                                setFormState((prev) => ({
+                                  ...prev,
+                                  allow_overfill: event.target.checked,
+                                }))
+                              }
+                              disabled={!isAdmin || updateMutation.isPending}
+                            />
+                            <span>Allow filling beyond STD stock</span>
+                          </label>
+                          <p className="field-hint">
+                            Disable to cap moves when the receiving channel would exceed its STD
+                            stock.
+                          </p>
+                        </div>
+
+                        <div className="form-field">
+                          <label htmlFor="updated-by">Updated by (optional)</label>
+                          <input
+                            id="updated-by"
+                            type="text"
+                            value={formState.updated_by}
+                            onChange={(event) =>
+                              setFormState((prev) => ({ ...prev, updated_by: event.target.value }))
+                            }
+                            disabled={!isAdmin || updateMutation.isPending}
+                          />
+                        </div>
+
+                        <div className="form-footer">
+                          <div className="last-updated">
+                            <span>
+                              Last updated: <strong>{formatDate(lastUpdatedAt)}</strong>
+                            </span>
+                            <span>
+                              Updated by: <strong>{lastUpdatedBy?.trim() || "—"}</strong>
+                            </span>
+                          </div>
+                          <div className="form-actions">
+                            {!isAdmin && (
+                              <span className="field-hint">
+                                Only administrators can update the policy.
+                              </span>
+                            )}
+                            <button
+                              type="submit"
+                              disabled={!isAdmin || !isDirty || updateMutation.isPending}
+                            >
+                              {updateMutation.isPending ? "Saving…" : "Save"}
+                            </button>
+                          </div>
+                        </div>
+
+                        {status && (
+                          <p className={`status-message ${status.type}`}>{status.text}</p>
+                        )}
+                      </form>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
