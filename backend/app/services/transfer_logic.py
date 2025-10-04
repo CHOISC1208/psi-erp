@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from typing import Iterable
 
 from .reallocation_policy import (
+    PolicyDeficitBasis,
     PolicyFairShareMode,
     PolicyRoundingMode,
     ReallocationPolicyData,
@@ -55,11 +56,11 @@ class _CellState:
     __slots__ = (
         "stock_at_anchor",
         "stdstock",
-        "gap",
         "stock_closing",
         "surplus_remaining",
         "allocated_out",
         "allocated_in",
+        "deficit_basis",
     )
 
     def __init__(
@@ -67,20 +68,33 @@ class _CellState:
         *,
         stock_at_anchor: Decimal,
         stdstock: Decimal,
-        gap: Decimal,
         stock_closing: Decimal,
+        deficit_basis: PolicyDeficitBasis,
     ) -> None:
+        self.deficit_basis = deficit_basis
         self.stock_at_anchor = stock_at_anchor
         self.stdstock = stdstock
-        self.gap = gap
         self.stock_closing = stock_closing
+        gap = self._gap_for_basis()
         surplus = gap if gap > ZERO else ZERO
         self.surplus_remaining = surplus
         self.allocated_out = ZERO
         self.allocated_in = ZERO
 
+    def _stock_for_basis(self) -> Decimal:
+        if self.deficit_basis == "start":
+            return self.stock_at_anchor
+        return self.stock_closing
+
+    def _gap_for_basis(self) -> Decimal:
+        return self._stock_for_basis() - self.stdstock
+
+    def shortage(self) -> Decimal:
+        gap = self._gap_for_basis()
+        return ZERO - gap if gap < ZERO else ZERO
+
     def available_surplus(self) -> Decimal:
-        stock_remaining = self.stock_at_anchor - self.allocated_out
+        stock_remaining = self._stock_for_basis() - self.allocated_out
         if stock_remaining <= ZERO:
             return ZERO
         if self.surplus_remaining <= ZERO:
@@ -96,7 +110,8 @@ class _CellState:
         self.allocated_in += qty
 
     def remaining_capacity(self) -> Decimal:
-        capacity = self.stdstock - (self.stock_closing + self.allocated_in)
+        base_stock = self._stock_for_basis() + self.allocated_in
+        capacity = self.stdstock - base_stock
         return capacity if capacity > ZERO else ZERO
 
 
@@ -139,6 +154,7 @@ def recommend_plan_lines(
 ) -> list[RecommendedMove]:
     """Create recommended transfer moves based on aggregated gaps."""
 
+    basis = policy.deficit_basis
     rows_by_sku: dict[str, dict[tuple[str, str], _CellState]] = {}
     for row in matrix_rows:
         sku_cells = rows_by_sku.setdefault(row.sku_code, {})
@@ -146,8 +162,8 @@ def recommend_plan_lines(
         sku_cells[key] = _CellState(
             stock_at_anchor=row.stock_at_anchor if row.stock_at_anchor > ZERO else ZERO,
             stdstock=row.stdstock if row.stdstock > ZERO else ZERO,
-            gap=row.gap,
             stock_closing=row.stock_closing if row.stock_closing > ZERO else ZERO,
+            deficit_basis=basis,
         )
 
     recommendations: list[RecommendedMove] = []
@@ -168,7 +184,7 @@ def recommend_plan_lines(
             cell = cells.get((warehouse, main_channel))
             if cell is None:
                 continue
-            shortage = ZERO - cell.gap if cell.gap < ZERO else ZERO
+            shortage = cell.shortage()
             if shortage > ZERO:
                 shortages.append((warehouse, main_channel, shortage, cell))
 
@@ -307,16 +323,19 @@ def recommend_plan_lines(
                 if sum(bucket_attempts.values()) == 0:
                     blocked_reasons.add("no_donor")
                 deficit_after = shortage_remaining if shortage_remaining > ZERO else ZERO
+                reasons = sorted(blocked_reasons) if blocked_reasons else []
                 logger.info(
                     "WHY_NOT_FILLED %s",
                     json.dumps(
                         {
                             "sku": sku_code,
                             "target": {"warehouse": warehouse, "channel": main_channel},
+                            "basis": policy.deficit_basis,
                             "deficit_before": str(shortage),
                             "deficit_after": str(deficit_after),
                             "tried": bucket_attempts,
-                            "blocked": sorted(blocked_reasons) if blocked_reasons else [],
+                            "blocked_reason": reasons,
+                            "blocked": reasons,
                         },
                     ),
                 )
@@ -345,7 +364,7 @@ def _recommend_fair_share(
         state = cells.get((warehouse, main_channel))
         if state is None:
             continue
-        shortage = ZERO - state.gap if state.gap < ZERO else ZERO
+        shortage = state.shortage()
         if shortage <= ZERO:
             continue
         std_value = state.stdstock if state.stdstock > ZERO else ZERO
@@ -424,6 +443,7 @@ def _recommend_fair_share(
                     {
                         "sku": sku_code,
                         "mode": "fair_share",
+                        "basis": policy.deficit_basis,
                         "target": {
                             "warehouse": receiver.warehouse,
                             "channel": receiver.channel,
@@ -431,6 +451,7 @@ def _recommend_fair_share(
                         "deficit_before": str(receiver.shortage),
                         "deficit_after": str(receiver.shortage),
                         "tried": {bucket: 0 for bucket in _BUCKET_REASON},
+                        "blocked_reason": ["no_donor"],
                         "blocked": ["no_donor"],
                     }
                 ),
@@ -723,6 +744,7 @@ def _recommend_fair_share(
                     {
                         "sku": sku_code,
                         "mode": "fair_share",
+                        "basis": policy.deficit_basis,
                         "target": {
                             "warehouse": receiver.warehouse,
                             "channel": receiver.channel,
@@ -730,6 +752,7 @@ def _recommend_fair_share(
                         "deficit_before": str(receiver.shortage),
                         "deficit_after": str(remaining),
                         "tried": bucket_attempts[key],
+                        "blocked_reason": sorted(set(blocked)),
                         "blocked": sorted(set(blocked)),
                     }
                 ),

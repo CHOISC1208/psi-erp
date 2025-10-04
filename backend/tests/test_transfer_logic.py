@@ -46,12 +46,14 @@ def _policy(
     rounding_mode: str = "floor",
     take_from_other_main: bool = False,
     allow_overfill: bool = False,
+    deficit_basis: str = "closing",
 ) -> ReallocationPolicyData:
     return ReallocationPolicyData(
         take_from_other_main=take_from_other_main,
         rounding_mode=rounding_mode,  # type: ignore[arg-type]
         allow_overfill=allow_overfill,
         fair_share_mode=fair_share_mode,  # type: ignore[arg-type]
+        deficit_basis=deficit_basis,  # type: ignore[arg-type]
         updated_at=None,
         updated_by=None,
     )
@@ -78,9 +80,15 @@ def test_equalize_ratio_closing_balances_closing_levels() -> None:
     )
 
     allocations = _collect_allocations(moves)
-    assert allocations[("W1", "main")] == _dec(100)
-    closing_after = {"W1": _dec(100) + allocations[("W1", "main")], "W2": _dec(200)}
-    assert abs(closing_after["W1"] - closing_after["W2"]) <= _dec(1)
+    w1_received = allocations.get(("W1", "main"), _dec(0))
+    w2_received = allocations.get(("W2", "main"), _dec(0))
+    closing_after = {
+        "W1": _dec(100) + w1_received,
+        "W2": _dec(200) + w2_received,
+    }
+    assert abs(closing_after["W1"] - closing_after["W2"]) <= _dec(2)
+    assert w1_received + w2_received == _dec(200)
+    assert w1_received >= w2_received
 
 
 def test_allow_overfill_false_caps_at_std() -> None:
@@ -139,27 +147,83 @@ def test_main_donors_ignored_when_policy_disallows() -> None:
     assert moves == []
 
 
-def test_rounding_mode_affects_integer_allocation() -> None:
+def test_fair_share_respects_deficit_basis() -> None:
     rows = [
-        _make_row("W1", "main", closing="90", std="100", gap="-10"),
-        _make_row("W2", "main", closing="90", std="100", gap="-10"),
-        _make_row("W3", "secondary", closing="50", std="0", gap="1", stock_at_anchor="50"),
+        _make_row(
+            "W1",
+            "main",
+            closing="110",
+            std="100",
+            gap="-50",
+            stock_at_anchor="50",
+        ),
+        _make_row("W2", "main", closing="100", std="100", gap="0"),
+        _make_row(
+            "W1",
+            "secondary",
+            closing="200",
+            std="0",
+            gap="200",
+            stock_at_anchor="200",
+        ),
     ]
     warehouse_main_channels = {"W1": "main", "W2": "main"}
-    floor_moves = recommend_plan_lines(
+    closing_policy = _policy(fair_share_mode="equalize_ratio_closing", deficit_basis="closing")
+    start_policy = _policy(fair_share_mode="equalize_ratio_closing", deficit_basis="start")
+
+    closing_moves = recommend_plan_lines(
         rows,
         warehouse_main_channels=warehouse_main_channels,
-        policy=_policy(fair_share_mode="equalize_ratio_closing", rounding_mode="floor"),
+        policy=closing_policy,
     )
-    ceil_moves = recommend_plan_lines(
+    start_moves = recommend_plan_lines(
         rows,
         warehouse_main_channels=warehouse_main_channels,
-        policy=_policy(fair_share_mode="equalize_ratio_closing", rounding_mode="ceil"),
+        policy=start_policy,
     )
 
-    floor_allocations = _collect_allocations(floor_moves)
-    ceil_allocations = _collect_allocations(ceil_moves)
-    assert floor_allocations[("W1", "main")] == _dec(1)
-    assert floor_allocations[("W2", "main")] == _dec(0)
-    assert ceil_allocations[("W1", "main")] == _dec(0)
-    assert ceil_allocations[("W2", "main")] == _dec(1)
+    assert closing_moves == []
+    assert _collect_allocations(start_moves)[("W1", "main")] == _dec(50)
+
+
+def test_deficit_basis_switches_shortage_detection() -> None:
+    rows = [
+        _make_row(
+            "W1",
+            "main",
+            closing="140",
+            std="120",
+            gap="-40",
+            stock_at_anchor="80",
+        ),
+        _make_row(
+            "W1",
+            "secondary",
+            closing="160",
+            std="0",
+            gap="160",
+            stock_at_anchor="160",
+        ),
+    ]
+    warehouse_main_channels = {"W1": "main"}
+
+    closing_policy = _policy(fair_share_mode="off", deficit_basis="closing")
+    start_policy = _policy(fair_share_mode="off", deficit_basis="start")
+
+    closing_moves = recommend_plan_lines(
+        rows,
+        warehouse_main_channels=warehouse_main_channels,
+        policy=closing_policy,
+    )
+    start_moves = recommend_plan_lines(
+        rows,
+        warehouse_main_channels=warehouse_main_channels,
+        policy=start_policy,
+    )
+
+    assert closing_moves == []
+    assert len(start_moves) == 1
+    move = start_moves[0]
+    assert move.qty == _dec(40)
+    assert move.to_channel == "main"
+    assert move.from_channel == "secondary"

@@ -225,6 +225,9 @@ class ReallocationPolicy(Base, SchemaMixin):
     fair_share_mode: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'off'"), default="off"
     )
+    deficit_basis: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'closing'"), default="closing"
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

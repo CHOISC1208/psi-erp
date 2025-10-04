@@ -11,6 +11,8 @@ const ROUNDING_OPTIONS: Array<"floor" | "round" | "ceil"> = ["floor", "round", "
 const FAIR_SHARE_OPTIONS: Array<
   "off" | "equalize_ratio_closing" | "equalize_ratio_start"
 > = ["off", "equalize_ratio_closing", "equalize_ratio_start"];
+type DeficitBasisOption = "start" | "closing";
+const DEFICIT_BASIS_OPTIONS: Array<DeficitBasisOption> = ["closing", "start"];
 
 type StatusMessage = { type: "success" | "error"; text: string } | null;
 
@@ -25,6 +27,7 @@ type FormState = {
   rounding_mode: "floor" | "round" | "ceil";
   allow_overfill: boolean;
   fair_share_mode: "off" | "equalize_ratio_closing" | "equalize_ratio_start";
+  deficit_basis: DeficitBasisOption;
   updated_by: string;
 };
 
@@ -33,6 +36,7 @@ const DEFAULT_FORM: FormState = {
   rounding_mode: "floor",
   allow_overfill: false,
   fair_share_mode: "off",
+  deficit_basis: "closing",
   updated_by: "",
 };
 
@@ -40,6 +44,11 @@ const ROUNDING_OPTION_LABELS: Record<FormState["rounding_mode"], string> = {
   floor: "切り捨て",
   round: "四捨五入",
   ceil: "切り上げ",
+};
+
+const DEFICIT_BASIS_LABELS: Record<DeficitBasisOption, string> = {
+  closing: "期末在庫（推奨）",
+  start: "期首在庫",
 };
 
 const FAIR_SHARE_OPTION_LABELS: Record<FormState["fair_share_mode"], string> = {
@@ -94,6 +103,7 @@ export default function MasterTab() {
       rounding_mode: policyQuery.data.rounding_mode,
       allow_overfill: policyQuery.data.allow_overfill,
       fair_share_mode: policyQuery.data.fair_share_mode,
+      deficit_basis: policyQuery.data.deficit_basis,
       updated_by: policyQuery.data.updated_by ?? "",
     };
     setFormState(nextState);
@@ -109,6 +119,7 @@ export default function MasterTab() {
       savedState.rounding_mode !== formState.rounding_mode ||
       savedState.allow_overfill !== formState.allow_overfill ||
       savedState.fair_share_mode !== formState.fair_share_mode ||
+      savedState.deficit_basis !== formState.deficit_basis ||
       (savedState.updated_by ?? "").trim() !== formState.updated_by.trim()
     );
   }, [formState, savedState]);
@@ -125,6 +136,7 @@ export default function MasterTab() {
         rounding_mode: formState.rounding_mode,
         allow_overfill: formState.allow_overfill,
         fair_share_mode: formState.fair_share_mode,
+        deficit_basis: formState.deficit_basis,
         updated_by: formState.updated_by.trim() || undefined,
       };
       const data = await updateMutation.mutateAsync(payload);
@@ -133,6 +145,7 @@ export default function MasterTab() {
         rounding_mode: data.rounding_mode,
         allow_overfill: data.allow_overfill,
         fair_share_mode: data.fair_share_mode,
+        deficit_basis: data.deficit_basis,
         updated_by: data.updated_by ?? "",
       };
       setSavedState(nextSaved);
@@ -213,11 +226,15 @@ export default function MasterTab() {
                             決定するか（切り捨て／四捨五入／切り上げ）を指定します。
                           </li>
                           <li>
-                            <strong>③ フェアシェアモード</strong>：メインチャネルの在庫水準が均等になるよう、
+                            <strong>③ 不足判定基準</strong>：不足検知と必要数量の算出に用いる在庫基準を
+                            期末在庫（デフォルト）か期首在庫かで切り替えます。
+                          </li>
+                          <li>
+                            <strong>④ フェアシェアモード</strong>：メインチャネルの在庫水準が均等になるよう、
                             STD 比率（期末または期首）を揃える分配ロジックを有効化します。
                           </li>
                           <li>
-                            <strong>④ STD 超過の許可</strong>：受け側の在庫が STD を上回る場合でも移動を許可
+                            <strong>⑤ STD 超過の許可</strong>：受け側の在庫が STD を上回る場合でも移動を許可
                             するかどうかを制御します。OFF にすると STD を超える手前で数量が調整されます。
                           </li>
                         </ul>
@@ -274,7 +291,32 @@ export default function MasterTab() {
                         </div>
 
                         <div className="form-field">
-                          <label htmlFor="fair-share-mode">③ フェアシェアモード</label>
+                          <label htmlFor="deficit-basis">③ 不足判定基準</label>
+                          <select
+                            id="deficit-basis"
+                            value={formState.deficit_basis}
+                            onChange={(event) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                deficit_basis: event.target.value as FormState["deficit_basis"],
+                              }))
+                            }
+                            disabled={!isAdmin || updateMutation.isPending}
+                          >
+                            {DEFICIT_BASIS_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {DEFICIT_BASIS_LABELS[option]}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="field-hint">
+                            メインチャネルの不足抽出・必要量算定・ドナー選定に使用する在庫基準を
+                            切り替えます。
+                          </p>
+                        </div>
+
+                        <div className="form-field">
+                          <label htmlFor="fair-share-mode">④ フェアシェアモード</label>
                           <select
                             id="fair-share-mode"
                             value={formState.fair_share_mode}
@@ -311,7 +353,7 @@ export default function MasterTab() {
                               }
                               disabled={!isAdmin || updateMutation.isPending}
                             />
-                            <span>④ STD 超過の許可</span>
+                            <span>⑤ STD 超過の許可</span>
                           </label>
                           <p className="field-hint">
                             OFF にすると、受け側が STD 在庫を超える手前で移動数量を自動的に調整します。

@@ -58,5 +58,6 @@ def test_get_reallocation_policy_returns_defaults_when_table_missing(isolated_ap
     assert policy.rounding_mode == "floor"
     assert policy.allow_overfill is False
     assert policy.fair_share_mode == "off"
+    assert policy.deficit_basis == "closing"
     assert policy.updated_by is None
     assert policy.updated_at is not None

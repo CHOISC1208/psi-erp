@@ -34,9 +34,10 @@
 ## 6. マスタとグローバルパラメータ
 - 倉庫マスタ `warehouse_master` の `main_channel` 列はメインチャネル優先順位を決める根拠となり、推奨生成時に `fetch_main_channel_map` で参照されます。【F:backend/app/models.py†L170-L207】【F:backend/app/services/transfer_plans.py†L200-L214】
 - チャネル一覧は `channel_master` に保持され、倉庫マスタの外部参照先になります。【F:backend/app/models.py†L162-L175】
-- 再配置ポリシー `reallocation_policy` は以下の 4 つの制御フラグを持ち、推奨アルゴリズム全体の振る舞いを切り替えます。【F:backend/app/models.py†L208-L236】【F:backend/app/services/reallocation_policy.py†L12-L64】
+- 再配置ポリシー `reallocation_policy` は以下の 5 つの制御フラグを持ち、推奨アルゴリズム全体の振る舞いを切り替えます。【F:backend/app/models.py†L210-L234】【F:backend/app/services/reallocation_policy.py†L14-L118】
   - `take_from_other_main`：他倉庫メインチャネルからの移動を許可。
   - `rounding_mode`：数量丸め方法（floor/round/ceil）。
+  - `deficit_basis`：不足判定と必要量算定、ドナー抽出で使用する在庫基準（closing/start）。
   - `allow_overfill`：標準在庫超過を許容。
   - `fair_share_mode`：公平分配モード（off/equalize_ratio_closing/equalize_ratio_start）。
 - ポリシー API は `GET /api/reallocation-policy` で取得、`PUT /api/reallocation-policy` で更新します。更新時は管理者認証が必須です。【F:backend/app/routers/reallocation_policy.py†L20-L55】

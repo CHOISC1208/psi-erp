@@ -134,6 +134,7 @@ def test_get_reallocation_policy_returns_defaults(app_env: SimpleNamespace) -> N
         "rounding_mode": "floor",
         "allow_overfill": False,
         "fair_share_mode": "off",
+        "deficit_basis": "closing",
         "updated_at": updated_at,
         "updated_by": None,
     }
@@ -156,6 +157,7 @@ def test_put_reallocation_policy_updates_values(app_env: SimpleNamespace) -> Non
             "rounding_mode": "ceil",
             "allow_overfill": True,
             "fair_share_mode": "equalize_ratio_start",
+            "deficit_basis": "start",
             "updated_by": "  policy-bot  ",
         },
     )
@@ -165,6 +167,7 @@ def test_put_reallocation_policy_updates_values(app_env: SimpleNamespace) -> Non
     assert payload["rounding_mode"] == "ceil"
     assert payload["allow_overfill"] is True
     assert payload["fair_share_mode"] == "equalize_ratio_start"
+    assert payload["deficit_basis"] == "start"
     assert payload["updated_by"] == "policy-bot"
 
 
@@ -187,11 +190,28 @@ def test_put_reallocation_policy_rejects_invalid_fair_share_mode(
             "rounding_mode": "ceil",
             "allow_overfill": False,
             "fair_share_mode": "invalid-mode",
+            "deficit_basis": "closing",
         },
     )
     assert status == 422
     assert payload is not None
     assert payload["detail"][0]["loc"][-1] == "fair_share_mode"
+
+    status, payload = _perform_json_request(
+        app_env.app,
+        "PUT",
+        "/reallocation-policy",
+        {
+            "take_from_other_main": True,
+            "rounding_mode": "ceil",
+            "allow_overfill": False,
+            "fair_share_mode": "off",
+            "deficit_basis": "invalid",
+        },
+    )
+    assert status == 422
+    assert payload is not None
+    assert payload["detail"][0]["loc"][-1] == "deficit_basis"
 
     viewer = _create_user(app_env, is_admin=False, username="viewer")
 
@@ -206,4 +226,5 @@ def test_put_reallocation_policy_rejects_invalid_fair_share_mode(
     assert payload["rounding_mode"] == "floor"
     assert payload["allow_overfill"] is False
     assert payload["fair_share_mode"] == "off"
+    assert payload["deficit_basis"] == "closing"
     assert payload["updated_by"] is None
