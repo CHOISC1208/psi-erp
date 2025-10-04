@@ -586,7 +586,7 @@ export default function ReallocationPage() {
       const baseMove = baseRow?.move ?? 0;
       const savedMove = baselineMoveMap.get(key) ?? 0;
       const draftMove = draftMoveMap.get(key) ?? 0;
-      const move = baseMove - savedMove + draftMove;
+      const move = usingSummaryMatrix ? baseMove + draftMove : baseMove - savedMove + draftMove;
       const stock_closing = baseRow?.stock_closing ?? 0;
       const stock_fin = stock_closing + move;
       const stock_at_anchor = baseRow?.stock_at_anchor ?? 0;
@@ -625,7 +625,7 @@ export default function ReallocationPage() {
       }
       return a.channel.localeCompare(b.channel);
     });
-  }, [baseMatrixRows, baselineMoveMap, draftMoveMap, skuNameMap]);
+  }, [baseMatrixRows, baselineMoveMap, draftMoveMap, skuNameMap, usingSummaryMatrix]);
 
   const skuOptions = useMemo(() => {
     const optionMap = new Map<string, string | null>();
