@@ -26,7 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.engine import Connection, Engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, synonym
 
 from .config import settings
 
@@ -134,7 +134,13 @@ class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_leader: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    data_type: Mapped[str] = mapped_column(String(length=16), default="base", nullable=False)
+    _data_mode: Mapped[str] = mapped_column(
+        "data_mode",
+        String(length=16),
+        default="base",
+        nullable=False,
+        server_default=text("'base'"),
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey(_qualified("users")), nullable=True
     )
@@ -157,6 +163,8 @@ class Session(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
     transfer_plans: Mapped[list["TransferPlan"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
+    data_mode = synonym("_data_mode")
+    data_type = synonym("_data_mode")
     created_by_user: Mapped[User | None] = relationship(
         "User",
         foreign_keys="Session.created_by",
