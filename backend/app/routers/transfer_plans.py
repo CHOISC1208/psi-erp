@@ -15,7 +15,11 @@ from .. import models, schemas
 from ..deps import get_current_user, get_db
 from ..services.reallocation_policy import get_reallocation_policy
 from ..services.transfer_logic import QUANT, recommend_plan_lines
-from ..services.transfer_plans import fetch_main_channel_map, fetch_matrix_rows
+from ..services.transfer_plans import (
+    fetch_main_channel_map,
+    fetch_matrix_rows,
+    fetch_summary_matrix_rows,
+)
 
 
 router = APIRouter()
@@ -123,22 +127,48 @@ def create_recommended_plan(
 ):
     """Generate a draft transfer plan covering the requested scope."""
 
-    if payload.start > payload.end:
-        raise HTTPException(status_code=400, detail="start must be on or before end")
-
     session = db.get(models.Session, payload.session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    matrix_rows = fetch_matrix_rows(
-        db,
-        session_id=payload.session_id,
-        start_date=payload.start,
-        end_date=payload.end,
-        sku_codes=payload.sku_codes,
-        warehouses=payload.warehouses,
-        channels=payload.channels,
-    )
+    session_mode = _get_session_data_type(session)
+
+    if session_mode is schemas.SessionDataType.BASE:
+        if payload.start is None or payload.end is None:
+            raise HTTPException(
+                status_code=400, detail="start and end are required for base sessions"
+            )
+        if payload.start > payload.end:
+            raise HTTPException(status_code=400, detail="start must be on or before end")
+
+        matrix_rows = fetch_matrix_rows(
+            db,
+            session_id=payload.session_id,
+            start_date=payload.start,
+            end_date=payload.end,
+            sku_codes=payload.sku_codes,
+            warehouses=payload.warehouses,
+            channels=payload.channels,
+        )
+        plan_start = payload.start
+        plan_end = payload.end
+    else:
+        if payload.start and payload.end and payload.start > payload.end:
+            raise HTTPException(status_code=400, detail="start must be on or before end")
+
+        matrix_rows = fetch_summary_matrix_rows(
+            db,
+            session_id=payload.session_id,
+            sku_codes=payload.sku_codes,
+            warehouses=payload.warehouses,
+            channels=payload.channels,
+        )
+
+        fallback_date = (
+            session.updated_at.date() if session.updated_at is not None else date.today()
+        )
+        plan_start = payload.start or payload.end or fallback_date
+        plan_end = payload.end or payload.start or fallback_date
 
     warehouses: set[str] = {row.warehouse_name for row in matrix_rows}
     warehouse_main_channels = fetch_main_channel_map(db, warehouses=warehouses)
@@ -146,8 +176,8 @@ def create_recommended_plan(
 
     plan = models.TransferPlan(
         session_id=session.id,
-        start_date=payload.start,
-        end_date=payload.end,
+        start_date=plan_start,
+        end_date=plan_end,
         status="draft",
         created_by=current_user.id,
         updated_by=current_user.id,
@@ -283,3 +313,14 @@ def replace_plan_lines(
     db.commit()
 
     return schemas.TransferPlanLineUpsertResponse(ok=True)
+
+
+def _get_session_data_type(session: models.Session) -> schemas.SessionDataType:
+    """Return the declared data type for a session handling legacy values."""
+
+    try:
+        if session is None or session.data_type is None:
+            return schemas.SessionDataType.BASE
+        return schemas.SessionDataType(session.data_type)
+    except (AttributeError, ValueError):  # pragma: no cover - defensive fallback
+        return schemas.SessionDataType.BASE

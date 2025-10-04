@@ -230,8 +230,16 @@ export default function ReallocationPage() {
   const handleApplyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setStatus(null);
-    if (!selectedSessionId || !startDate || !endDate) {
-      setStatus({ type: "error", text: "Please select session, start, and end dates." });
+    if (!selectedSessionId) {
+      setStatus({ type: "error", text: "Please select a session." });
+      return;
+    }
+    if (isSummarySession) {
+      setBaseFilters(null);
+      return;
+    }
+    if (!startDate || !endDate) {
+      setStatus({ type: "error", text: "Please select start and end dates." });
       return;
     }
     const nextFilters: Omit<MatrixQueryArgs, "planId"> = {
@@ -244,15 +252,19 @@ export default function ReallocationPage() {
 
   const handleRecommend = async () => {
     setStatus(null);
-    if (!selectedSessionId || !startDate || !endDate) {
-      setStatus({ type: "error", text: "Please select session, start, and end dates." });
+    if (!selectedSessionId) {
+      setStatus({ type: "error", text: "Please select a session." });
+      return;
+    }
+    if (!isSummarySession && (!startDate || !endDate)) {
+      setStatus({ type: "error", text: "Please select start and end dates." });
       return;
     }
     try {
       const response = await recommendMutation.mutateAsync({
         sessionId: selectedSessionId,
-        start: startDate,
-        end: endDate,
+        start: startDate || undefined,
+        end: endDate || undefined,
       });
       setPlan(response.plan);
       const nextLines = response.lines.map(toDraftLine);
@@ -261,11 +273,15 @@ export default function ReallocationPage() {
       setPlanDirty(false);
       setStatus({ type: "success", text: "Recommendation created." });
       setSelectedPlanId(response.plan.plan_id);
-      setBaseFilters({
-        sessionId: selectedSessionId,
-        start: startDate,
-        end: endDate,
-      });
+      if (!isSummarySession && startDate && endDate) {
+        setBaseFilters({
+          sessionId: selectedSessionId,
+          start: startDate,
+          end: endDate,
+        });
+      } else {
+        setBaseFilters(null);
+      }
       await transferPlansQuery.refetch();
     } catch (error) {
       setStatus({
@@ -394,11 +410,17 @@ export default function ReallocationPage() {
         setLines(nextLines);
         setBaselineLines(nextLines);
         setPlanDirty(false);
-        setBaseFilters({
-          sessionId: loadedPlan.session_id,
-          start: loadedPlan.start_date,
-          end: loadedPlan.end_date,
-        });
+        const planSession = sessions.find((session) => session.id === loadedPlan.session_id);
+        const planIsSummary = planSession?.data_mode === "summary";
+        if (planIsSummary) {
+          setBaseFilters(null);
+        } else {
+          setBaseFilters({
+            sessionId: loadedPlan.session_id,
+            start: loadedPlan.start_date,
+            end: loadedPlan.end_date,
+          });
+        }
         if (!silent) {
           setStatus({ type: "success", text: "Plan loaded." });
         }
@@ -410,7 +432,7 @@ export default function ReallocationPage() {
         throw error;
       }
     },
-    [loadPlanMutation, selectedSessionId],
+    [loadPlanMutation, selectedSessionId, sessions],
   );
 
   const handleLoadPlan = async () => {
