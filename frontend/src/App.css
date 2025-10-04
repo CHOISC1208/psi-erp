@@ -397,7 +397,7 @@ body {
   color: var(--accent-red, #dc2626);
 }
 
-.reallocation-page .reallocation-master {
+:where(.reallocation-page, .reallocation-policy-page) .reallocation-master {
   margin-top: 2rem;
   padding: 1.5rem;
   border: 1px solid var(--border-subtle, #d1d5db);
@@ -408,18 +408,18 @@ body {
   gap: 1.25rem;
 }
 
-.reallocation-page .reallocation-master h2 {
+:where(.reallocation-page, .reallocation-policy-page) .reallocation-master h2 {
   margin: 0;
   font-size: 1.4rem;
 }
 
-.reallocation-page .master-tabs {
+:where(.reallocation-page, .reallocation-policy-page) .master-tabs {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
 }
 
-.reallocation-page .master-tab-list {
+:where(.reallocation-page, .reallocation-policy-page) .master-tab-list {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -427,7 +427,7 @@ body {
   padding-bottom: 0.5rem;
 }
 
-.reallocation-page .master-tab-trigger {
+:where(.reallocation-page, .reallocation-policy-page) .master-tab-trigger {
   border: none;
   background: transparent;
   padding: 0.5rem 0.85rem;
@@ -439,34 +439,34 @@ body {
   transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.reallocation-page .master-tab-trigger:hover {
+:where(.reallocation-page, .reallocation-policy-page) .master-tab-trigger:hover {
   color: var(--text-primary);
   background-color: rgba(59, 130, 246, 0.08);
 }
 
-.reallocation-page .master-tab-trigger.active {
+:where(.reallocation-page, .reallocation-policy-page) .master-tab-trigger.active {
   color: var(--text-primary);
   border-bottom-color: var(--button-primary-bg);
   background-color: rgba(59, 130, 246, 0.12);
 }
 
-.reallocation-page .master-tab-trigger:focus-visible {
+:where(.reallocation-page, .reallocation-policy-page) .master-tab-trigger:focus-visible {
   outline: 2px solid var(--button-primary-bg);
   outline-offset: 2px;
 }
 
-.reallocation-page .master-tab-panel {
+:where(.reallocation-page, .reallocation-policy-page) .master-tab-panel {
   display: block;
 }
 
-.reallocation-page .master-policy-layout {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-layout {
   display: flex;
   flex-wrap: wrap;
   gap: 1.5rem;
   align-items: flex-start;
 }
 
-.reallocation-page .master-policy-guidance {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-guidance {
   flex: 1 1 320px;
   background: var(--surface-panel-soft, #eef2ff);
   border: 1px solid var(--border-subtle, #d1d5db);
@@ -475,32 +475,32 @@ body {
   line-height: 1.6;
 }
 
-.reallocation-page .master-policy-guidance h3 {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-guidance h3 {
   margin-top: 0;
   margin-bottom: 0.75rem;
   font-size: 1.15rem;
 }
 
-.reallocation-page .master-policy-guidance ul {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-guidance ul {
   margin: 0.75rem 0;
   padding-left: 1.25rem;
   display: grid;
   gap: 0.75rem;
 }
 
-.reallocation-page .master-policy-guidance li strong {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-guidance li strong {
   display: block;
   font-weight: 700;
   margin-bottom: 0.25rem;
 }
 
-.reallocation-page .master-policy-guidance .guidance-note {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-guidance .guidance-note {
   margin-top: 1rem;
   font-size: 0.9rem;
   color: var(--text-subtle, #6b7280);
 }
 
-.reallocation-page .master-policy-form {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form {
   flex: 1 1 340px;
   display: flex;
   flex-direction: column;
@@ -511,29 +511,29 @@ body {
   padding: 1.25rem;
 }
 
-.reallocation-page .master-policy-form .form-field {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form .form-field {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.reallocation-page .master-policy-form label {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form label {
   font-weight: 600;
 }
 
-.reallocation-page .master-policy-form .checkbox-field {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form .checkbox-field {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
   font-weight: 600;
 }
 
-.reallocation-page .master-policy-form .checkbox-field input {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form .checkbox-field input {
   margin-top: 0.25rem;
 }
 
-.reallocation-page .master-policy-form input[type="text"],
-.reallocation-page .master-policy-form select {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form input[type="text"],
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form select {
   width: 100%;
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
@@ -543,25 +543,25 @@ body {
   box-sizing: border-box;
 }
 
-.reallocation-page .master-policy-form input[type="text"]:disabled,
-.reallocation-page .master-policy-form select:disabled {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form input[type="text"]:disabled,
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form select:disabled {
   background: rgba(148, 163, 184, 0.15);
   cursor: not-allowed;
 }
 
-.reallocation-page .master-policy-form .field-hint {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form .field-hint {
   margin: 0;
   font-size: 0.9rem;
   color: var(--text-subtle, #6b7280);
 }
 
-.reallocation-page .master-policy-form .form-footer {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form .form-footer {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.reallocation-page .master-policy-form .last-updated {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form .last-updated {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -569,14 +569,14 @@ body {
   color: var(--text-subtle, #6b7280);
 }
 
-.reallocation-page .master-policy-form .form-actions {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form .form-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
 }
 
-.reallocation-page .master-policy-form button {
+:where(.reallocation-page, .reallocation-policy-page) .master-policy-form button {
   align-self: flex-start;
 }
 
