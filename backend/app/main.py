@@ -24,6 +24,7 @@ from .routers import (
     psi,
     psi_edits,
     psi_metrics,
+    reallocation_policy,
     sessions,
     test_algo,
     transfer_plans,
@@ -82,6 +83,11 @@ app.include_router(
     prefix="/transfer-plans",
     tags=["transfer-plans"],
 )
+app.include_router(
+    reallocation_policy.router,
+    prefix="/reallocation-policy",
+    tags=["reallocation-policy"],
+)
 app.include_router(warehouses.router, prefix="/warehouses", tags=["warehouses"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(test_algo.router, prefix="/test-algo", tags=["test-algo"])
@@ -109,6 +115,11 @@ app.include_router(
     transfer_plans.router,
     prefix="/api/transfer-plans",
     tags=["transfer-plans"],
+)
+app.include_router(
+    reallocation_policy.router,
+    prefix="/api/reallocation-policy",
+    tags=["reallocation-policy"],
 )
 app.include_router(warehouses.router, prefix="/api/warehouses", tags=["warehouses"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])

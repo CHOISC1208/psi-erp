@@ -207,6 +207,27 @@ class WarehouseMaster(Base, SchemaMixin):
     )
 
 
+class ReallocationPolicy(Base, SchemaMixin):
+    """Global configuration controlling the reallocation algorithm."""
+
+    __tablename__ = "reallocation_policy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    take_from_other_main: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    rounding_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'floor'")
+    )
+    allow_overfill: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class CategoryRankParameter(Base, SchemaMixin):
     """Threshold configuration used to derive rank classifications per category."""
 

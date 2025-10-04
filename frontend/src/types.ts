@@ -235,3 +235,11 @@ export interface UserAccount {
   is_admin: boolean;
   created_at: string;
 }
+
+export interface ReallocationPolicy {
+  take_from_other_main: boolean;
+  rounding_mode: "floor" | "round" | "ceil";
+  allow_overfill: boolean;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from .. import models
 from ..deps import get_db
+from ..services.reallocation_policy import get_reallocation_policy
 from ..services.transfer_logic import MatrixRowData, recommend_plan_lines
 from ..services.transfer_plans import fetch_main_channel_map
 
@@ -160,7 +161,12 @@ def run_test_algo(payload: TestAlgoRunRequest, db: DBSession = Depends(get_db)) 
 
     warehouse_names = {row.warehouse_name for row in prepared_rows}
     warehouse_main_channels = fetch_main_channel_map(db, warehouses=warehouse_names)
-    recommended = recommend_plan_lines(matrix_rows, warehouse_main_channels=warehouse_main_channels)
+    policy = get_reallocation_policy(db)
+    recommended = recommend_plan_lines(
+        matrix_rows,
+        warehouse_main_channels=warehouse_main_channels,
+        policy=policy,
+    )
 
     return TestAlgoRunResponse(
         matrix_rows=[
