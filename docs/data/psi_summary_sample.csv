@@ -1,0 +1,4 @@
+sku_code,sku_name,warehouse_name,channel,inbound_qty,outbound_qty,std_stock,stock
+SKU-001,Sample Item A,Tokyo,直営店,50,20,35,80
+SKU-002,Sample Item B,Osaka,online,10,5,12,20
+SKU-003,Sample Item C,Nagoya,法人,0,0,8,9

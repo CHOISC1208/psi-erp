@@ -1,0 +1,4 @@
+sku_code,sku_name,warehouse_name,channel,date,category_1,category_2,category_3,fw_rank,ss_rank,stock_at_anchor,inbound_qty,outbound_qty,net_flow,stock_closing,safety_stock,movable_stock,stdstock,gap
+SKU-001,Sample Item A,Tokyo,直営店,2024-04-01,Men,Outer,Coat,A,B,120,30,10,20,140,90,50,95,45
+SKU-001,Sample Item A,Tokyo,直営店,2024-04-02,Men,Outer,Coat,A,B,140,20,25,-5,135,90,45,95,40
+SKU-010,Sample Item B,Osaka,online,2024-04-01,Women,Tops,Blouse,B,C,80,15,12,3,83,55,28,60,23

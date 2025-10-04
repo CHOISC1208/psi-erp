@@ -13,8 +13,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from starlette.datastructures import UploadFile
+
+from backend.app import schemas
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -103,7 +106,7 @@ def _create_user(env: SimpleNamespace, username: str = "auditor"):
         return user
 
 
-def _create_session(env: SimpleNamespace, user) -> object:
+def _create_session(env: SimpleNamespace, user, *, data_mode: str = "base") -> object:
     with env.SessionLocal() as session:
         record = env.models.Session(
             title="Forecast",
@@ -111,6 +114,7 @@ def _create_session(env: SimpleNamespace, user) -> object:
             is_leader=False,
             created_by=user.id,
             updated_by=user.id,
+            data_mode=data_mode,
         )
         session.add(record)
         session.commit()
@@ -356,7 +360,7 @@ def test_upload_persists_stdstock_and_gap(
             "CatC",
             "Sample Item",
             "Tokyo",
-            "online",
+            "直営店",
             "A",
             "B",
             "2025/10/02",
@@ -402,7 +406,11 @@ def test_upload_persists_stdstock_and_gap(
                 session_id=session.id, file=upload_file, db=db
             )
         )
+        assert result.ok is True
+        assert result.mode == schemas.SessionDataType.BASE
+        assert result.rows == 2
         assert result.rows_imported == 2
+        assert result.warnings == []
 
         stored_rows = db.scalars(
             select(app_env.models.PSIBase).order_by(app_env.models.PSIBase.date.asc())
@@ -410,6 +418,7 @@ def test_upload_persists_stdstock_and_gap(
 
     assert len(stored_rows) == 2
     first_row, second_row = stored_rows
+    assert first_row.channel == "retail"
     assert first_row.stdstock == Decimal("110")
     assert first_row.gap == Decimal("5")
     assert second_row.stdstock == Decimal("90")
@@ -417,6 +426,196 @@ def test_upload_persists_stdstock_and_gap(
 
     # Gap values should reflect the stored decimals after upload.
     assert first_row.gap == Decimal("5")
+
+
+def test_upload_summary_mode_persists_rows_with_warnings(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    from backend.app.routers import psi as psi_router
+
+    user = auth_user
+    session = _create_session(app_env, user, data_mode="summary")
+
+    rows = [
+        [
+            "sku_code",
+            "sku_name",
+            "warehouse_name",
+            "channel",
+            "inbound_qty",
+            "outbound_qty",
+            "std_stock",
+            "stock",
+        ],
+        ["SKU-001", "Item A", "Tokyo", "直営店", "5", "2", "3", "10"],
+        ["SKU-002", "", "Osaka", "未知チャネル", "0", "0", "1", "2"],
+    ]
+    csv_text = "\n".join(",".join(str(value) for value in row) for row in rows)
+    upload_file = UploadFile(
+        filename="summary.csv", file=io.BytesIO(csv_text.encode("utf-8"))
+    )
+
+    with app_env.SessionLocal() as db:
+        result = asyncio.run(
+            psi_router.upload_csv_for_session(
+                session_id=session.id, file=upload_file, db=db
+            )
+        )
+        assert result.ok is True
+        assert result.mode == schemas.SessionDataType.SUMMARY
+        assert result.rows == 2
+        assert result.rows_imported == 2
+        assert any("未知チャネル" in warning for warning in result.warnings)
+
+        stored_rows = db.scalars(
+            select(app_env.models.PSISummaryBase).order_by(
+                app_env.models.PSISummaryBase.id.asc()
+            )
+        ).all()
+
+    assert len(stored_rows) == 2
+    first_row, second_row = stored_rows
+    assert first_row.channel == "retail"
+    assert second_row.channel == "未知チャネル"
+    assert first_row.inbound_qty == Decimal("5")
+    assert second_row.std_stock == Decimal("1")
+
+
+def test_upload_summary_rejects_duplicates(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    from backend.app.routers import psi as psi_router
+
+    user = auth_user
+    session = _create_session(app_env, user, data_mode="summary")
+
+    rows = [
+        [
+            "sku_code",
+            "warehouse_name",
+            "channel",
+            "inbound_qty",
+            "outbound_qty",
+            "std_stock",
+            "stock",
+        ],
+        ["SKU-001", "Tokyo", "online", "1", "0", "0", "5"],
+        ["SKU-001", "Tokyo", "online", "2", "0", "0", "6"],
+    ]
+    csv_text = "\n".join(",".join(str(value) for value in row) for row in rows)
+    upload_file = UploadFile(
+        filename="summary_dup.csv", file=io.BytesIO(csv_text.encode("utf-8"))
+    )
+
+    with app_env.SessionLocal() as db:
+        with pytest.raises(HTTPException) as excinfo:
+            asyncio.run(
+                psi_router.upload_csv_for_session(
+                    session_id=session.id, file=upload_file, db=db
+                )
+            )
+
+    assert excinfo.value.status_code == 409
+    detail = excinfo.value.detail
+    assert isinstance(detail, dict)
+    assert detail["duplicates"] == [
+        {"sku_code": "SKU-001", "warehouse_name": "Tokyo", "channel": "online"}
+    ]
+
+
+def test_upload_conflict_when_mode_mismatch(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    from backend.app.routers import psi as psi_router
+
+    user = auth_user
+    base_session = _create_session(app_env, user, data_mode="base")
+    summary_session = _create_session(app_env, user, data_mode="summary")
+
+    summary_rows = [
+        [
+            "sku_code",
+            "warehouse_name",
+            "channel",
+            "inbound_qty",
+            "outbound_qty",
+            "std_stock",
+            "stock",
+        ],
+        ["SKU-001", "Tokyo", "online", "1", "0", "0", "5"],
+    ]
+    summary_text = "\n".join(",".join(str(value) for value in row) for row in summary_rows)
+
+    base_rows = [
+        [
+            "sku_code",
+            "warehouse_name",
+            "channel",
+            "date",
+            "category_1",
+            "category_2",
+            "category_3",
+            "fw_rank",
+            "ss_rank",
+            "stock_at_anchor",
+            "inbound_qty",
+            "outbound_qty",
+            "net_flow",
+            "stock_closing",
+            "safety_stock",
+            "movable_stock",
+            "stdstock",
+            "gap",
+        ],
+        [
+            "SKU-100",
+            "Nagoya",
+            "online",
+            "2024-01-01",
+            "A",
+            "B",
+            "C",
+            "A",
+            "B",
+            "10",
+            "5",
+            "2",
+            "3",
+            "12",
+            "4",
+            "6",
+            "8",
+            "1",
+        ],
+    ]
+    base_text = "\n".join(",".join(str(value) for value in row) for row in base_rows)
+
+    summary_file = UploadFile(
+        filename="summary.csv", file=io.BytesIO(summary_text.encode("utf-8"))
+    )
+    base_file = UploadFile(
+        filename="base.csv", file=io.BytesIO(base_text.encode("utf-8"))
+    )
+
+    with app_env.SessionLocal() as db:
+        with pytest.raises(HTTPException) as base_error:
+            asyncio.run(
+                psi_router.upload_csv_for_session(
+                    session_id=base_session.id, file=summary_file, db=db
+                )
+            )
+
+    assert base_error.value.status_code == 409
+
+    with app_env.SessionLocal() as db:
+        with pytest.raises(HTTPException) as summary_error:
+            asyncio.run(
+                psi_router.upload_csv_for_session(
+                    session_id=summary_session.id, file=base_file, db=db
+                )
+            )
+
+    assert summary_error.value.status_code == 409
 
 
 def test_daily_psi_computes_gap_from_stock_start(

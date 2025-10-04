@@ -3,6 +3,8 @@ export interface Session {
   title: string;
   description?: string | null;
   is_leader: boolean;
+  data_mode: "base" | "summary";
+  data_type?: "base" | "summary";
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -199,6 +201,16 @@ export interface TransferPlanLine {
 export interface TransferPlanWithLines {
   plan: TransferPlan;
   lines: TransferPlanLine[];
+}
+
+export interface UploadResponse {
+  ok: boolean;
+  mode: "base" | "summary";
+  rows: number;
+  rows_imported: number;
+  session_id: string;
+  dates: string[];
+  warnings: string[];
 }
 
 export interface PSIMetricDefinition {
