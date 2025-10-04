@@ -415,8 +415,8 @@ class TransferPlanRecommendRequest(BaseModel):
     """Payload describing the scope of a recommendation run."""
 
     session_id: UUID
-    start: date
-    end: date
+    start: date | None = None
+    end: date | None = None
     sku_codes: list[str] | None = None
     warehouses: list[str] | None = None
     channels: list[str] | None = None

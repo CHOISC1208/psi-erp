@@ -199,6 +199,68 @@ def fetch_matrix_rows(
     return result
 
 
+def fetch_summary_matrix_rows(
+    db: DBSession,
+    *,
+    session_id: UUID,
+    sku_codes: Sequence[str] | None = None,
+    warehouses: Sequence[str] | None = None,
+    channels: Sequence[str] | None = None,
+) -> list[MatrixRowData]:
+    """Return matrix-style rows derived from summary snapshot data."""
+
+    summary = models.PSISummaryBase
+
+    query = (
+        select(
+            summary.sku_code,
+            summary.sku_name,
+            summary.warehouse_name,
+            summary.channel,
+            summary.inbound_qty,
+            summary.outbound_qty,
+            summary.stock,
+            summary.std_stock,
+        )
+        .where(summary.session_id == session_id)
+        .order_by(summary.sku_code, summary.warehouse_name, summary.channel)
+    )
+
+    if sku_codes:
+        query = query.where(summary.sku_code.in_(list({*sku_codes})))
+    if warehouses:
+        query = query.where(summary.warehouse_name.in_(list({*warehouses})))
+    if channels:
+        query = query.where(summary.channel.in_(list({*channels})))
+
+    rows = db.execute(query).all()
+
+    result: list[MatrixRowData] = []
+    for row in rows:
+        stock_value = _to_decimal(row.stock)
+        std_stock = _to_decimal(row.std_stock)
+        inbound_value = _to_decimal(row.inbound_qty)
+        outbound_value = _to_decimal(row.outbound_qty)
+        gap = stock_value - std_stock
+        result.append(
+            MatrixRowData(
+                sku_code=row.sku_code,
+                sku_name=row.sku_name,
+                warehouse_name=row.warehouse_name,
+                channel=row.channel,
+                stock_at_anchor=stock_value,
+                inbound_qty=inbound_value,
+                outbound_qty=outbound_value,
+                stock_closing=stock_value,
+                stdstock=std_stock,
+                gap=gap,
+                move=ZERO,
+                stock_fin=stock_value,
+            )
+        )
+    return result
+
+
 def fetch_main_channel_map(
     db: DBSession, *, warehouses: Iterable[str] | None = None
 ) -> dict[str, str]:

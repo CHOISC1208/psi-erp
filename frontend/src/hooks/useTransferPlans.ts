@@ -16,6 +16,13 @@ export interface MatrixQueryArgs {
   skuCodes?: string[];
 }
 
+export interface RecommendPlanArgs {
+  sessionId: string;
+  start?: string;
+  end?: string;
+  skuCodes?: string[];
+}
+
 export interface TransferPlanLineWrite {
   line_id?: string;
   plan_id?: string;
@@ -69,17 +76,22 @@ export const useMatrixQuery = (args: MatrixQueryArgs | null) =>
     enabled: Boolean(args?.sessionId && args?.start && args?.end),
   });
 
-const recommendPlan = async (
-  payload: Omit<MatrixQueryArgs, "planId"> & {
-    skuCodes?: string[];
-  },
-): Promise<TransferPlanRecommendResponse> => {
-  const body = {
+const recommendPlan = async (payload: RecommendPlanArgs): Promise<TransferPlanRecommendResponse> => {
+  const body: {
+    session_id: string;
+    start?: string;
+    end?: string;
+    sku_codes?: string[];
+  } = {
     session_id: payload.sessionId,
-    start: payload.start,
-    end: payload.end,
     sku_codes: payload.skuCodes,
   };
+  if (payload.start) {
+    body.start = payload.start;
+  }
+  if (payload.end) {
+    body.end = payload.end;
+  }
   const { data } = await api.post<TransferPlanRecommendResponse>(
     "/api/transfer-plans/recommend",
     body,
