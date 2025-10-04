@@ -241,6 +241,7 @@ export interface ReallocationPolicy {
   rounding_mode: "floor" | "round" | "ceil";
   allow_overfill: boolean;
   fair_share_mode: "off" | "equalize_ratio_closing" | "equalize_ratio_start";
+  deficit_basis: "start" | "closing";
   updated_at?: string | null;
   updated_by?: string | null;
 }

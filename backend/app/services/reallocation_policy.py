@@ -13,6 +13,7 @@ from .. import models
 
 PolicyRoundingMode = Literal["floor", "round", "ceil"]
 PolicyFairShareMode = Literal["off", "equalize_ratio_closing", "equalize_ratio_start"]
+PolicyDeficitBasis = Literal["start", "closing"]
 
 
 @dataclass(slots=True)
@@ -23,6 +24,7 @@ class ReallocationPolicyData:
     rounding_mode: PolicyRoundingMode
     allow_overfill: bool
     fair_share_mode: PolicyFairShareMode
+    deficit_basis: PolicyDeficitBasis
     updated_at: datetime | None
     updated_by: str | None
 
@@ -33,6 +35,7 @@ def _record_to_data(record: models.ReallocationPolicy) -> ReallocationPolicyData
         rounding_mode=cast(PolicyRoundingMode, record.rounding_mode),
         allow_overfill=bool(record.allow_overfill),
         fair_share_mode=cast(PolicyFairShareMode, record.fair_share_mode),
+        deficit_basis=cast(PolicyDeficitBasis, record.deficit_basis),
         updated_at=record.updated_at,
         updated_by=record.updated_by,
     )
@@ -43,6 +46,7 @@ _DEFAULT_POLICY = ReallocationPolicyData(
     rounding_mode="floor",
     allow_overfill=False,
     fair_share_mode="off",
+    deficit_basis="closing",
     updated_at=None,
     updated_by=None,
 )
@@ -94,6 +98,7 @@ def update_reallocation_policy(
     rounding_mode: PolicyRoundingMode,
     allow_overfill: bool,
     fair_share_mode: PolicyFairShareMode,
+    deficit_basis: PolicyDeficitBasis,
     updated_by: str | None,
 ) -> ReallocationPolicyData:
     """Persist the reallocation policy and return the updated snapshot."""
@@ -105,6 +110,7 @@ def update_reallocation_policy(
     policy.rounding_mode = rounding_mode
     policy.allow_overfill = allow_overfill
     policy.fair_share_mode = fair_share_mode
+    policy.deficit_basis = deficit_basis
     policy.updated_by = updated_by
     db.add(policy)
     db.commit()
@@ -115,6 +121,7 @@ def update_reallocation_policy(
 __all__ = [
     "PolicyRoundingMode",
     "PolicyFairShareMode",
+    "PolicyDeficitBasis",
     "ReallocationPolicyData",
     "get_reallocation_policy",
     "update_reallocation_policy",
