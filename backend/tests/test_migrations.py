@@ -38,7 +38,7 @@ def test_upgrade_adds_audit_columns(tmp_path, monkeypatch):
     inspector = sa.inspect(engine)
 
     expected_columns = {
-        "sessions": {"created_by", "updated_by"},
+        "sessions": {"created_by", "updated_by", "data_mode"},
         "psi_edits": {"created_by", "updated_by"},
         "channel_transfers": {"created_by", "updated_by"},
         "psi_edit_log": {"created_at", "updated_at", "created_by", "updated_by", "edited_by"},
