@@ -43,6 +43,7 @@ export interface PSIChannel {
 
 export interface PSISessionSummary {
   session_id: string;
+  data_type: "base" | "summary";
   start_date?: string | null;
   end_date?: string | null;
 }

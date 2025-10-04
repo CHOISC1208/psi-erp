@@ -10,7 +10,7 @@ import {
   type MatrixQueryArgs,
   type TransferPlanLineWrite,
 } from "../hooks/useTransferPlans";
-import { useSessionsQuery, useSessionSummaryQuery } from "../hooks/usePsiQueries";
+import { useSessionsQuery, useSessionSummaryQuery, useDailyPsiQuery } from "../hooks/usePsiQueries";
 import type { MatrixRow, TransferPlan, TransferPlanLine } from "../types";
 import { PSIMatrixTabs } from "../features/reallocation/psi/PSIMatrixTabs";
 
@@ -166,9 +166,24 @@ export default function ReallocationPage() {
   const skuDatalistId = useId();
 
   const summaryQuery = useSessionSummaryQuery(selectedSessionId);
-  const transferPlansQuery = useTransferPlansQuery(selectedSessionId, {
-    limit: 50,
-  });
+  const selectedSession = useMemo(
+    () => sessions.find((session) => session.id === selectedSessionId) ?? null,
+    [sessions, selectedSessionId],
+  );
+  const sessionDataType = summaryQuery.data?.data_type ?? selectedSession?.data_mode ?? null;
+  const isSummarySession = sessionDataType === "summary";
+  const emptySummaryFilters = useMemo(
+    () => ({}) as { sku_code?: string; warehouse_name?: string; channel?: string },
+    [],
+  );
+  const summaryDailyQuery = useDailyPsiQuery(
+    isSummarySession ? selectedSessionId : "",
+    emptySummaryFilters,
+  );
+  const transferPlansQuery = useTransferPlansQuery(
+    isSummarySession ? null : selectedSessionId,
+    isSummarySession ? undefined : { limit: 50 },
+  );
   const loadPlanMutation = useTransferPlanDetailMutation();
 
   useEffect(() => {
@@ -218,6 +233,9 @@ export default function ReallocationPage() {
   const handleApplyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setStatus(null);
+    if (isSummarySession) {
+      return;
+    }
     if (!selectedSessionId || !startDate || !endDate) {
       setStatus({ type: "error", text: "Please select session, start, and end dates." });
       return;
@@ -232,6 +250,10 @@ export default function ReallocationPage() {
 
   const handleRecommend = async () => {
     setStatus(null);
+    if (isSummarySession) {
+      setStatus({ type: "error", text: "Recommendations are unavailable for summary sessions." });
+      return;
+    }
     if (!selectedSessionId || !startDate || !endDate) {
       setStatus({ type: "error", text: "Please select session, start, and end dates." });
       return;
@@ -276,7 +298,7 @@ export default function ReallocationPage() {
   };
 
   const handleAddLine = () => {
-    if (!plan) {
+    if (isSummarySession || !plan) {
       return;
     }
     const newLine: LineDraft = {
@@ -296,7 +318,7 @@ export default function ReallocationPage() {
   };
 
   const handleSave = async () => {
-    if (!plan) {
+    if (isSummarySession || !plan) {
       return;
     }
     setStatus(null);
@@ -413,6 +435,9 @@ export default function ReallocationPage() {
   };
 
   const planOptions = useMemo(() => {
+    if (isSummarySession) {
+      return [];
+    }
     const data = transferPlansQuery.data ?? [];
     const filtered = data.filter((item) => {
       if (startDate && item.start_date !== startDate) {
@@ -426,9 +451,12 @@ export default function ReallocationPage() {
     return filtered
       .slice()
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-  }, [transferPlansQuery.data, startDate, endDate]);
+  }, [endDate, isSummarySession, startDate, transferPlansQuery.data]);
 
   useEffect(() => {
+    if (isSummarySession) {
+      return;
+    }
     if (hasAutoLoadedPlan || plan || loadPlanMutation.isPending) {
       return;
     }
@@ -442,7 +470,14 @@ export default function ReallocationPage() {
     setHasAutoLoadedPlan(true);
     setSelectedPlanId(latestPlan.plan_id);
     void loadPlanById(latestPlan.plan_id, { silent: true });
-  }, [hasAutoLoadedPlan, plan, planOptions, loadPlanById, loadPlanMutation.isPending]);
+  }, [
+    hasAutoLoadedPlan,
+    isSummarySession,
+    loadPlanById,
+    loadPlanMutation.isPending,
+    plan,
+    planOptions,
+  ]);
 
   const planSelectOptions = useMemo(
     () =>
@@ -458,20 +493,65 @@ export default function ReallocationPage() {
     [planOptions],
   );
 
-  const isPlanListLoading = transferPlansQuery.isLoading || transferPlansQuery.isFetching;
+  const isPlanListLoading =
+    !isSummarySession && (transferPlansQuery.isLoading || transferPlansQuery.isFetching);
   const hasPlanOptions = planOptions.length > 0;
-  const isLoadPlanDisabled = !selectedPlanId || loadPlanMutation.isPending;
+  const isLoadPlanDisabled = isSummarySession || !selectedPlanId || loadPlanMutation.isPending;
 
   useEffect(() => {
+    if (isSummarySession) {
+      return;
+    }
     if (!selectedPlanId) {
       return;
     }
     if (!planOptions.some((plan) => plan.plan_id === selectedPlanId)) {
       setSelectedPlanId("");
     }
-  }, [planOptions, selectedPlanId]);
+  }, [isSummarySession, planOptions, selectedPlanId]);
 
-  const baseMatrixRows: MatrixRow[] = matrixQuery.data ?? [];
+  const summaryMatrixRows = useMemo<MatrixRow[]>(() => {
+    if (!isSummarySession) {
+      return [];
+    }
+    const channels = summaryDailyQuery.data ?? [];
+    const rows: MatrixRow[] = [];
+    channels.forEach((channel) => {
+      const latestEntry = channel.daily[channel.daily.length - 1];
+      if (!latestEntry) {
+        return;
+      }
+      const stockClosing = Number(latestEntry.stock_closing ?? 0);
+      const stdStock = Number(latestEntry.stdstock ?? 0);
+      const stockAtAnchor = Number(latestEntry.stock_at_anchor ?? stockClosing);
+      const inboundQty = Number(latestEntry.inbound_qty ?? 0);
+      const outboundQty = Number(latestEntry.outbound_qty ?? 0);
+      const gapValue =
+        typeof latestEntry.gap === "number" ? Number(latestEntry.gap) : stockClosing - stdStock;
+      rows.push({
+        sku_code: channel.sku_code,
+        sku_name: channel.sku_name ?? null,
+        warehouse_name: channel.warehouse_name,
+        channel: channel.channel,
+        category_1: channel.category_1 ?? null,
+        category_2: channel.category_2 ?? null,
+        category_3: channel.category_3 ?? null,
+        stock_at_anchor: stockAtAnchor,
+        inbound_qty: inboundQty,
+        outbound_qty: outboundQty,
+        stock_closing: stockClosing,
+        stdstock: stdStock,
+        gap: gapValue,
+        move: 0,
+        stock_fin: stockClosing,
+      });
+    });
+    return rows;
+  }, [isSummarySession, summaryDailyQuery.data]);
+
+  const baseMatrixRows: MatrixRow[] = isSummarySession
+    ? summaryMatrixRows
+    : matrixQuery.data ?? [];
 
   const baselineMoveMap = useMemo(() => buildMoveMap(baselineLines), [baselineLines]);
   const draftMoveMap = useMemo(() => buildMoveMap(lines), [lines]);
@@ -574,7 +654,7 @@ export default function ReallocationPage() {
   }, [skuOptions]);
 
   const handleExportLinesCsv = useCallback(() => {
-    if (!lines.length || typeof window === "undefined") {
+    if (isSummarySession || !lines.length || typeof window === "undefined") {
       return;
     }
 
@@ -621,7 +701,7 @@ export default function ReallocationPage() {
     anchor.click();
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
-  }, [lines, plan?.plan_id, skuNameMap, skuOptionNameMap]);
+  }, [isSummarySession, lines, plan?.plan_id, skuNameMap, skuOptionNameMap]);
 
   const warehouseOptions = useMemo(() => {
     const set = new Set<string>();
@@ -692,6 +772,13 @@ export default function ReallocationPage() {
     [simulatedMatrixRows],
   );
 
+  const isMatrixLoading = isSummarySession ? summaryDailyQuery.isLoading : matrixQuery.isLoading;
+  const isMatrixFetching = isSummarySession ? summaryDailyQuery.isFetching : matrixQuery.isFetching;
+  const isMatrixError = isSummarySession ? summaryDailyQuery.isError : matrixQuery.isError;
+  const matrixErrorText = isSummarySession
+    ? "Failed to load summary data."
+    : "Failed to load matrix data.";
+
   return (
     <div className="page reallocation-page">
       <h1>在庫再配置</h1>
@@ -713,76 +800,97 @@ export default function ReallocationPage() {
                 ))}
               </select>
             </label>
-            <div className="reallocation-filter-dates">
+            {isSummarySession && (
+              <p className="reallocation-filter-status">
+                Summary sessions display aggregated totals from the latest upload. Date filters and
+                planning tools are disabled.
+              </p>
+            )}
+            {!isSummarySession && (
+              <div className="reallocation-filter-dates">
+                <label>
+                  Start date
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                  />
+                </label>
+                <label>
+                  End date
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(event) => setEndDate(event.target.value)}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+          {!isSummarySession && (
+            <div className="reallocation-filter-panel">
               <label>
-                Start date
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(event) => setStartDate(event.target.value)}
-                />
+                作成済みプラン
+                <select
+                  value={selectedPlanId}
+                  onChange={(event) => setSelectedPlanId(event.target.value)}
+                  disabled={!hasPlanOptions || isPlanListLoading}
+                >
+                  <option value="">Select plan</option>
+                  {planSelectOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label>
-                End date
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(event) => setEndDate(event.target.value)}
-                />
-              </label>
+              {isPlanListLoading && (
+                <p className="reallocation-filter-status">Loading saved plans…</p>
+              )}
+              {transferPlansQuery.isError && (
+                <p className="reallocation-filter-status error">Failed to load saved plans.</p>
+              )}
+              {!isPlanListLoading && !hasPlanOptions && (
+                <p className="reallocation-filter-status">
+                  No saved plans match the selected filters.
+                </p>
+              )}
             </div>
-          </div>
-          <div className="reallocation-filter-panel">
-            <label>
-              作成済みプラン
-              <select
-                value={selectedPlanId}
-                onChange={(event) => setSelectedPlanId(event.target.value)}
-                disabled={!hasPlanOptions || isPlanListLoading}
-              >
-                <option value="">Select plan</option>
-                {planSelectOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {isPlanListLoading && (
-              <p className="reallocation-filter-status">Loading saved plans…</p>
-            )}
-            {transferPlansQuery.isError && (
-              <p className="reallocation-filter-status error">Failed to load saved plans.</p>
-            )}
-            {!isPlanListLoading && !hasPlanOptions && (
-              <p className="reallocation-filter-status">No saved plans match the selected filters.</p>
-            )}
-          </div>
+          )}
         </div>
         <div className="reallocation-filter-actions">
-          <button type="submit" disabled={matrixQuery.isFetching}>
-            Apply filters
-          </button>
-          <button
-            type="button"
-            onClick={handleRecommend}
-            disabled={recommendMutation.isPending}
-          >
-            {recommendMutation.isPending ? "Creating…" : "Create recommendation"}
-          </button>
-          <button type="button" onClick={handleLoadPlan} disabled={isLoadPlanDisabled}>
-            {loadPlanMutation.isPending ? "Loading…" : "Load plan"}
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              void transferPlansQuery.refetch();
-            }}
-            disabled={transferPlansQuery.isFetching}
-          >
-            {transferPlansQuery.isFetching ? "Refreshing…" : "Refresh list"}
-          </button>
+          {isSummarySession ? (
+            <p className="reallocation-filter-status">
+              Planning actions are unavailable for summary sessions. Review the aggregated PSI data
+              below.
+            </p>
+          ) : (
+            <>
+              <button type="submit" disabled={isMatrixFetching}>
+                Apply filters
+              </button>
+              <button
+                type="button"
+                onClick={handleRecommend}
+                disabled={recommendMutation.isPending}
+              >
+                {recommendMutation.isPending ? "Creating…" : "Create recommendation"}
+              </button>
+              <button type="button" onClick={handleLoadPlan} disabled={isLoadPlanDisabled}>
+                {loadPlanMutation.isPending ? "Loading…" : "Load plan"}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  void transferPlansQuery.refetch();
+                }}
+                disabled={transferPlansQuery.isFetching}
+              >
+                {transferPlansQuery.isFetching ? "Refreshing…" : "Refresh list"}
+              </button>
+            </>
+          )}
         </div>
       </form>
 
@@ -790,205 +898,212 @@ export default function ReallocationPage() {
 
       <section className="matrix-section">
         <h2>PSI Matrix</h2>
-        {matrixQuery.isLoading && <p>Loading matrix…</p>}
-        {matrixQuery.isError && !matrixQuery.isLoading && (
-          <p className="error-text">Failed to load matrix data.</p>
+        {isMatrixLoading && <p>Loading matrix…</p>}
+        {isMatrixError && !isMatrixLoading && (
+          <p className="error-text">{matrixErrorText}</p>
         )}
-        {!matrixQuery.isLoading && simulatedMatrixRows.length === 0 && (
+        {!isMatrixLoading && !isMatrixError && simulatedMatrixRows.length === 0 && (
           <p>No data for the selected filters.</p>
+        )}
+        {isSummarySession && !isMatrixLoading && !isMatrixError && simulatedMatrixRows.length > 0 && (
+          <p className="reallocation-filter-status">
+            Showing aggregated SKU × warehouse × channel totals from the latest summary upload.
+          </p>
         )}
         {simulatedMatrixRows.length > 0 && <PSIMatrixTabs data={psiRows} skuList={skuList} />}
       </section>
 
-      <section className="plan-lines-section">
-        <div className="plan-header">
-          <h2>Transfer Plan Lines</h2>
-          <div className="plan-actions">
-            <button type="button" onClick={handleAddLine} disabled={!plan}>
-              Add manual line
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={!plan || !planDirty || saveLinesMutation.isPending}
-            >
-              {saveLinesMutation.isPending ? "Saving…" : "Save lines"}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={handleExportLinesCsv}
-              disabled={lines.length === 0}
-            >
-              CSVダウンロード
-            </button>
+      {!isSummarySession && (
+        <section className="plan-lines-section">
+          <div className="plan-header">
+            <h2>Transfer Plan Lines</h2>
+            <div className="plan-actions">
+              <button type="button" onClick={handleAddLine} disabled={!plan}>
+                Add manual line
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!plan || !planDirty || saveLinesMutation.isPending}
+              >
+                {saveLinesMutation.isPending ? "Saving…" : "Save lines"}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={handleExportLinesCsv}
+                disabled={lines.length === 0}
+              >
+                CSVダウンロード
+              </button>
+            </div>
           </div>
-        </div>
-        {!plan && <p>No plan loaded. Create a recommendation to begin.</p>}
-        {plan && (
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>SKU</th>
-                  <th>SKU name</th>
-                  <th>From warehouse</th>
-                  <th>From channel</th>
-                  <th>To warehouse</th>
-                  <th>To channel</th>
-                  <th>Qty</th>
-                  <th>Manual?</th>
-                  <th>Reason</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line) => {
-                  const trimmedSku = line.sku_code.trim();
-                  const skuName =
-                    skuNameMap.get(trimmedSku) ?? skuOptionNameMap.get(trimmedSku) ?? "";
-                  const fromWarehouseOptions = ensureOption(
-                    warehouseOptions,
-                    line.from_warehouse,
-                  );
-                  const fromWarehouseKey = line.from_warehouse.trim();
-                  const toWarehouseOptions = ensureOption(warehouseOptions, line.to_warehouse);
-                  const toWarehouseKey = line.to_warehouse.trim();
-                  const fromChannelBase =
-                    channelsByWarehouse.get(fromWarehouseKey) ?? channelOptions;
-                  const toChannelBase =
-                    channelsByWarehouse.get(toWarehouseKey) ?? channelOptions;
-                  const fromChannelOptions = ensureOption(fromChannelBase, line.from_channel);
-                  const toChannelOptions = ensureOption(toChannelBase, line.to_channel);
+          {!plan && <p>No plan loaded. Create a recommendation to begin.</p>}
+          {plan && (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>SKU name</th>
+                    <th>From warehouse</th>
+                    <th>From channel</th>
+                    <th>To warehouse</th>
+                    <th>To channel</th>
+                    <th>Qty</th>
+                    <th>Manual?</th>
+                    <th>Reason</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => {
+                    const trimmedSku = line.sku_code.trim();
+                    const skuName =
+                      skuNameMap.get(trimmedSku) ?? skuOptionNameMap.get(trimmedSku) ?? "";
+                    const fromWarehouseOptions = ensureOption(
+                      warehouseOptions,
+                      line.from_warehouse,
+                    );
+                    const fromWarehouseKey = line.from_warehouse.trim();
+                    const toWarehouseOptions = ensureOption(warehouseOptions, line.to_warehouse);
+                    const toWarehouseKey = line.to_warehouse.trim();
+                    const fromChannelBase =
+                      channelsByWarehouse.get(fromWarehouseKey) ?? channelOptions;
+                    const toChannelBase =
+                      channelsByWarehouse.get(toWarehouseKey) ?? channelOptions;
+                    const fromChannelOptions = ensureOption(fromChannelBase, line.from_channel);
+                    const toChannelOptions = ensureOption(toChannelBase, line.to_channel);
 
-                  return (
-                    <tr key={line.line_id}>
-                      <td>
-                        <input
-                          list={skuDatalistId}
-                          value={line.sku_code}
-                          onChange={(event) =>
-                            handleLineChange(line.line_id, { sku_code: event.target.value })
-                          }
-                        />
-                      </td>
-                      <td>{skuName}</td>
-                      <td>
-                        <select
-                          value={line.from_warehouse}
-                          onChange={(event) =>
-                            handleLineChange(line.line_id, {
-                              from_warehouse: event.target.value,
-                            })
-                          }
-                        >
-                          <option value="">Select warehouse</option>
-                          {fromWarehouseOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          value={line.from_channel}
-                          onChange={(event) =>
-                            handleLineChange(line.line_id, {
-                              from_channel: event.target.value,
-                            })
-                          }
-                        >
-                          <option value="">Select channel</option>
-                          {fromChannelOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          value={line.to_warehouse}
-                          onChange={(event) =>
-                            handleLineChange(line.line_id, {
-                              to_warehouse: event.target.value,
-                            })
-                          }
-                        >
-                          <option value="">Select warehouse</option>
-                          {toWarehouseOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          value={line.to_channel}
-                          onChange={(event) =>
-                            handleLineChange(line.line_id, {
-                              to_channel: event.target.value,
-                            })
-                          }
-                        >
-                          <option value="">Select channel</option>
-                          {toChannelOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.000001"
-                          min="0"
-                          value={line.qty}
-                          onChange={(event) =>
-                            handleLineChange(line.line_id, { qty: event.target.value })
-                          }
-                        />
-                      </td>
-                      <td className="checkbox-cell">
-                        <input
-                          type="checkbox"
-                          checked={line.is_manual}
-                          onChange={(event) =>
-                            handleLineChange(line.line_id, { is_manual: event.target.checked })
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={line.reason}
-                          onChange={(event) =>
-                            handleLineChange(line.line_id, { reason: event.target.value })
-                          }
-                        />
-                      </td>
-                      <td>
-                        <button type="button" onClick={() => handleRemoveLine(line.line_id)}>
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <datalist id={skuDatalistId}>
-              {skuOptions.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.name ? `${option.code} — ${option.name}` : option.code}
-                </option>
-              ))}
-            </datalist>
-          </div>
-        )}
-      </section>
+                    return (
+                      <tr key={line.line_id}>
+                        <td>
+                          <input
+                            list={skuDatalistId}
+                            value={line.sku_code}
+                            onChange={(event) =>
+                              handleLineChange(line.line_id, { sku_code: event.target.value })
+                            }
+                          />
+                        </td>
+                        <td>{skuName}</td>
+                        <td>
+                          <select
+                            value={line.from_warehouse}
+                            onChange={(event) =>
+                              handleLineChange(line.line_id, {
+                                from_warehouse: event.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Select warehouse</option>
+                            {fromWarehouseOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={line.from_channel}
+                            onChange={(event) =>
+                              handleLineChange(line.line_id, {
+                                from_channel: event.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Select channel</option>
+                            {fromChannelOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={line.to_warehouse}
+                            onChange={(event) =>
+                              handleLineChange(line.line_id, {
+                                to_warehouse: event.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Select warehouse</option>
+                            {toWarehouseOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={line.to_channel}
+                            onChange={(event) =>
+                              handleLineChange(line.line_id, {
+                                to_channel: event.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Select channel</option>
+                            {toChannelOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            step="0.000001"
+                            min="0"
+                            value={line.qty}
+                            onChange={(event) =>
+                              handleLineChange(line.line_id, { qty: event.target.value })
+                            }
+                          />
+                        </td>
+                        <td className="checkbox-cell">
+                          <input
+                            type="checkbox"
+                            checked={line.is_manual}
+                            onChange={(event) =>
+                              handleLineChange(line.line_id, { is_manual: event.target.checked })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={line.reason}
+                            onChange={(event) =>
+                              handleLineChange(line.line_id, { reason: event.target.value })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <button type="button" onClick={() => handleRemoveLine(line.line_id)}>
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <datalist id={skuDatalistId}>
+            {skuOptions.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.name ? `${option.code} — ${option.name}` : option.code}
+              </option>
+            ))}
+          </datalist>
+        </section>
+      )}
     </div>
   );
 }
