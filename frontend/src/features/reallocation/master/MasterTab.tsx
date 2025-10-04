@@ -17,7 +17,7 @@ type StatusMessage = { type: "success" | "error"; text: string } | null;
 type MasterTabKey = "policy";
 
 const MASTER_TABS: Array<{ key: MasterTabKey; label: string }> = [
-  { key: "policy", label: "Reallocation Policy" },
+  { key: "policy", label: "在庫再配置ポリシー" },
 ];
 
 type FormState = {
@@ -36,6 +36,18 @@ const DEFAULT_FORM: FormState = {
   updated_by: "",
 };
 
+const ROUNDING_OPTION_LABELS: Record<FormState["rounding_mode"], string> = {
+  floor: "切り捨て",
+  round: "四捨五入",
+  ceil: "切り上げ",
+};
+
+const FAIR_SHARE_OPTION_LABELS: Record<FormState["fair_share_mode"], string> = {
+  off: "OFF",
+  equalize_ratio_closing: "STD 比率揃え（期末）",
+  equalize_ratio_start: "STD 比率揃え（期首）",
+};
+
 const getErrorMessage = (error: unknown) => {
   if (axios.isAxiosError(error)) {
     const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
@@ -48,7 +60,7 @@ const getErrorMessage = (error: unknown) => {
   } else if (error instanceof Error && error.message) {
     return error.message;
   }
-  return "Failed to save policy";
+  return "ポリシーの保存に失敗しました";
 };
 
 function formatDate(value: string | null | undefined) {
@@ -125,7 +137,7 @@ export default function MasterTab() {
       };
       setSavedState(nextSaved);
       setFormState((prev) => ({ ...prev, updated_by: nextSaved.updated_by }));
-      setStatus({ type: "success", text: "Policy saved successfully" });
+      setStatus({ type: "success", text: "ポリシーを保存しました" });
     } catch (error) {
       setStatus({ type: "error", text: getErrorMessage(error) });
     }
@@ -138,9 +150,9 @@ export default function MasterTab() {
 
   return (
     <section className="reallocation-master">
-      <h2>Master</h2>
+      <h2>マスター</h2>
       <div className="master-tabs">
-        <div className="master-tab-list" role="tablist" aria-label="Master configuration">
+        <div className="master-tab-list" role="tablist" aria-label="マスター設定">
           {MASTER_TABS.map((tab) => {
             const isActive = activeTab === tab.key;
             const tabId = `master-tab-${tab.key}`;
@@ -178,9 +190,9 @@ export default function MasterTab() {
             >
               {tab.key === "policy" && (
                 <>
-                  {loading && <p>Loading policy…</p>}
+                  {loading && <p>ポリシーを読み込んでいます…</p>}
                   {loadError && !loading && (
-                    <p className="error-text">Failed to load policy. Please try again later.</p>
+                    <p className="error-text">ポリシーの読み込みに失敗しました。しばらくしてから再度お試しください。</p>
                   )}
                   {!loading && !loadError && (
                     <div className="master-policy-layout">
@@ -193,19 +205,19 @@ export default function MasterTab() {
                         </p>
                         <ul>
                           <li>
-                            <strong>他倉庫メインチャネルからの引当を許可</strong>：優先ドナーを使い切った
+                            <strong>① 他倉庫メインチャネルからの引当を許可</strong>：優先ドナーを使い切った
                             後に、他倉庫のメインチャネル在庫を追加の供給源として使用します。
                           </li>
                           <li>
-                            <strong>端数処理モード</strong>：計算上の小数点以下をどのように丸めて移動数量を
+                            <strong>② 端数処理モード</strong>：計算上の小数点以下をどのように丸めて移動数量を
                             決定するか（切り捨て／四捨五入／切り上げ）を指定します。
                           </li>
                           <li>
-                            <strong>フェアシェアモード</strong>：メインチャネルの在庫水準が均等になるよう、
+                            <strong>③ フェアシェアモード</strong>：メインチャネルの在庫水準が均等になるよう、
                             STD 比率（期末または期首）を揃える分配ロジックを有効化します。
                           </li>
                           <li>
-                            <strong>STD 超過の許可</strong>：受け側の在庫が STD を上回る場合でも移動を許可
+                            <strong>④ STD 超過の許可</strong>：受け側の在庫が STD を上回る場合でも移動を許可
                             するかどうかを制御します。OFF にすると STD を超える手前で数量が調整されます。
                           </li>
                         </ul>
@@ -229,16 +241,16 @@ export default function MasterTab() {
                               }
                               disabled={!isAdmin || updateMutation.isPending}
                             />
-                            <span>Allow taking stock from other warehouses&apos; main channels</span>
+                            <span>① 他倉庫メインチャネルからの引当を許可</span>
                           </label>
                           <p className="field-hint">
-                            When enabled, other warehouses&apos; main channels may act as donors after
-                            non-main sources are exhausted.
+                            ON にすると、非メインチャネルの供給源を使い切った後に他倉庫のメイン
+                            チャネル在庫を追加のドナーとして利用します。
                           </p>
                         </div>
 
                         <div className="form-field">
-                          <label htmlFor="rounding-mode">Rounding mode</label>
+                          <label htmlFor="rounding-mode">② 端数処理モード</label>
                           <select
                             id="rounding-mode"
                             value={formState.rounding_mode}
@@ -252,17 +264,17 @@ export default function MasterTab() {
                           >
                             {ROUNDING_OPTIONS.map((option) => (
                               <option key={option} value={option}>
-                                {option}
+                                {ROUNDING_OPTION_LABELS[option]}
                               </option>
                             ))}
                           </select>
                           <p className="field-hint">
-                            Controls how fractional transfer quantities are converted to integers.
+                            在庫移動数量の小数点以下をどのように丸めて整数化するかを制御します。
                           </p>
                         </div>
 
                         <div className="form-field">
-                          <label htmlFor="fair-share-mode">Fair-share mode</label>
+                          <label htmlFor="fair-share-mode">③ フェアシェアモード</label>
                           <select
                             id="fair-share-mode"
                             value={formState.fair_share_mode}
@@ -276,13 +288,13 @@ export default function MasterTab() {
                           >
                             {FAIR_SHARE_OPTIONS.map((option) => (
                               <option key={option} value={option}>
-                                {option}
+                                {FAIR_SHARE_OPTION_LABELS[option]}
                               </option>
                             ))}
                           </select>
                           <p className="field-hint">
-                            Distributes donors to equalize main channels’ stock-to-STD ratio (closing
-                            or start based).
+                            メインチャネルの在庫／STD 比率（期末または期首ベース）を揃えるようにドナー
+                            を分配します。
                           </p>
                         </div>
 
@@ -299,16 +311,15 @@ export default function MasterTab() {
                               }
                               disabled={!isAdmin || updateMutation.isPending}
                             />
-                            <span>Allow filling beyond STD stock</span>
+                            <span>④ STD 超過の許可</span>
                           </label>
                           <p className="field-hint">
-                            Disable to cap moves when the receiving channel would exceed its STD
-                            stock.
+                            OFF にすると、受け側が STD 在庫を超える手前で移動数量を自動的に調整します。
                           </p>
                         </div>
 
                         <div className="form-field">
-                          <label htmlFor="updated-by">Updated by (optional)</label>
+                          <label htmlFor="updated-by">更新者（任意）</label>
                           <input
                             id="updated-by"
                             type="text"
@@ -323,23 +334,23 @@ export default function MasterTab() {
                         <div className="form-footer">
                           <div className="last-updated">
                             <span>
-                              Last updated: <strong>{formatDate(lastUpdatedAt)}</strong>
+                              最終更新日時：<strong>{formatDate(lastUpdatedAt)}</strong>
                             </span>
                             <span>
-                              Updated by: <strong>{lastUpdatedBy?.trim() || "—"}</strong>
+                              更新者：<strong>{lastUpdatedBy?.trim() || "—"}</strong>
                             </span>
                           </div>
                           <div className="form-actions">
                             {!isAdmin && (
                               <span className="field-hint">
-                                Only administrators can update the policy.
+                                ポリシーを更新できるのは管理者のみです。
                               </span>
                             )}
                             <button
                               type="submit"
                               disabled={!isAdmin || !isDirty || updateMutation.isPending}
                             >
-                              {updateMutation.isPending ? "Saving…" : "Save"}
+                              {updateMutation.isPending ? "保存中…" : "保存"}
                             </button>
                           </div>
                         </div>
