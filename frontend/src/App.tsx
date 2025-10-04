@@ -11,6 +11,7 @@ import {
 import SessionsPage from "./pages/SessionsPage";
 import PSITablePage from "./pages/PSITablePage";
 import MasterPage from "./pages/MasterPage";
+import ReallocationPolicyMasterPage from "./pages/ReallocationPolicyMasterPage";
 import TransferPage from "./pages/TransferPage";
 import ReallocationPage from "./pages/ReallocationPage";
 import EditsPage from "./pages/EditsPage";
@@ -38,6 +39,7 @@ function ProtectedLayout() {
 
   const masters = useMemo(() => {
     const items = [
+      { path: "/masters/reallocation-policy", label: "Reallocation Policy", icon: "⚙️" },
       { path: "/masters/metrics", label: "Metrics", icon: "🧮" },
       { path: "/masters/warehouses", label: "Warehouse", icon: "🏭" },
     ];
@@ -147,6 +149,7 @@ function ProtectedLayout() {
         <Routes>
           <Route path="/" element={<Navigate to="/sessions" replace />} />
           <Route path="/sessions" element={<SessionsPage />} />
+          <Route path="/masters/reallocation-policy" element={<ReallocationPolicyMasterPage />} />
           <Route path="/masters/:masterId" element={<MasterPage />} />
           <Route path="/psi" element={<PSITablePage />} />
           <Route path="/docs" element={<DocsPage />} />
