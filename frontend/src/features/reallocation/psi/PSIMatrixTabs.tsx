@@ -37,9 +37,18 @@ interface PSIMatrixTabsProps {
   skuList: string[];
   initialSkuIndex?: number;
   onSkuChange?: (index: number) => void;
+  skuSearch?: string;
+  onSkuSearchChange?: (value: string) => void;
 }
 
-export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: PSIMatrixTabsProps) {
+export function PSIMatrixTabs({
+  data,
+  skuList,
+  initialSkuIndex,
+  onSkuChange,
+  skuSearch,
+  onSkuSearchChange,
+}: PSIMatrixTabsProps) {
   const normalizedSkuList = useMemo(() => {
     if (skuList.length > 0) {
       return skuList;
@@ -64,7 +73,18 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
     const nextIndex = initialSkuIndex ?? 0;
     return Math.min(Math.max(nextIndex, 0), normalizedSkuList.length - 1);
   });
-  const [skuSearch, setSkuSearch] = useState("");
+  const [internalSkuSearch, setInternalSkuSearch] = useState("");
+  const isSkuSearchControlled = typeof skuSearch === "string";
+  const skuSearchValue = isSkuSearchControlled ? skuSearch : internalSkuSearch;
+
+  const handleSkuSearchChange = (value: string) => {
+    if (onSkuSearchChange) {
+      onSkuSearchChange(value);
+    }
+    if (!isSkuSearchControlled) {
+      setInternalSkuSearch(value);
+    }
+  };
 
   const skuMetadataMap = useMemo(() => {
     const map = new Map<string, SkuMetadata>();
@@ -99,7 +119,7 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
     return map;
   }, [data]);
 
-  const normalizedSkuSearch = skuSearch.trim().toLowerCase();
+  const normalizedSkuSearch = skuSearchValue.trim().toLowerCase();
 
   const filteredSkuList = useMemo(() => {
     if (!normalizedSkuSearch) {
@@ -235,9 +255,9 @@ export function PSIMatrixTabs({ data, skuList, initialSkuIndex, onSkuChange }: P
               <span>SKU検索</span>
               <input
                 type="search"
-                value={skuSearch}
+                value={skuSearchValue}
                 placeholder="SKUコード・名称を検索"
-                onChange={(event) => setSkuSearch(event.target.value)}
+                onChange={(event) => handleSkuSearchChange(event.target.value)}
               />
             </label>
             <div className="sku-navigation-summary">
