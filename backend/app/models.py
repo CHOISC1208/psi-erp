@@ -222,6 +222,9 @@ class ReallocationPolicy(Base, SchemaMixin):
     allow_overfill: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    fair_share_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'off'"), default="off"
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

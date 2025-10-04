@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session as DBSession
 from .. import models
 
 PolicyRoundingMode = Literal["floor", "round", "ceil"]
+PolicyFairShareMode = Literal["off", "equalize_ratio_closing", "equalize_ratio_start"]
 
 
 @dataclass(slots=True)
@@ -20,6 +21,7 @@ class ReallocationPolicyData:
     take_from_other_main: bool
     rounding_mode: PolicyRoundingMode
     allow_overfill: bool
+    fair_share_mode: PolicyFairShareMode
     updated_at: datetime | None
     updated_by: str | None
 
@@ -29,6 +31,7 @@ def _record_to_data(record: models.ReallocationPolicy) -> ReallocationPolicyData
         take_from_other_main=bool(record.take_from_other_main),
         rounding_mode=cast(PolicyRoundingMode, record.rounding_mode),
         allow_overfill=bool(record.allow_overfill),
+        fair_share_mode=cast(PolicyFairShareMode, record.fair_share_mode),
         updated_at=record.updated_at,
         updated_by=record.updated_by,
     )
@@ -38,6 +41,7 @@ _DEFAULT_POLICY = ReallocationPolicyData(
     take_from_other_main=False,
     rounding_mode="floor",
     allow_overfill=False,
+    fair_share_mode="off",
     updated_at=None,
     updated_by=None,
 )
@@ -85,6 +89,7 @@ def update_reallocation_policy(
     take_from_other_main: bool,
     rounding_mode: PolicyRoundingMode,
     allow_overfill: bool,
+    fair_share_mode: PolicyFairShareMode,
     updated_by: str | None,
 ) -> ReallocationPolicyData:
     """Persist the reallocation policy and return the updated snapshot."""
@@ -95,6 +100,7 @@ def update_reallocation_policy(
     policy.take_from_other_main = take_from_other_main
     policy.rounding_mode = rounding_mode
     policy.allow_overfill = allow_overfill
+    policy.fair_share_mode = fair_share_mode
     policy.updated_by = updated_by
     db.add(policy)
     db.commit()
@@ -104,6 +110,7 @@ def update_reallocation_policy(
 
 __all__ = [
     "PolicyRoundingMode",
+    "PolicyFairShareMode",
     "ReallocationPolicyData",
     "get_reallocation_policy",
     "update_reallocation_policy",

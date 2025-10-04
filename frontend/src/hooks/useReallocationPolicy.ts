@@ -10,6 +10,7 @@ type UpdatePayload = {
   take_from_other_main: boolean;
   rounding_mode: "floor" | "round" | "ceil";
   allow_overfill: boolean;
+  fair_share_mode: "off" | "equalize_ratio_closing" | "equalize_ratio_start";
   updated_by?: string | null;
 };
 

@@ -58,6 +58,7 @@ def test_get_reallocation_policy_returns_defaults_when_table_missing(isolated_ap
         take_from_other_main=False,
         rounding_mode="floor",
         allow_overfill=False,
+        fair_share_mode="off",
         updated_at=None,
         updated_by=None,
     )
