@@ -180,10 +180,7 @@ export default function ReallocationPage() {
     isSummarySession ? selectedSessionId : "",
     emptySummaryFilters,
   );
-  const transferPlansQuery = useTransferPlansQuery(
-    isSummarySession ? null : selectedSessionId,
-    isSummarySession ? undefined : { limit: 50 },
-  );
+  const transferPlansQuery = useTransferPlansQuery(selectedSessionId || null, { limit: 50 });
   const loadPlanMutation = useTransferPlanDetailMutation();
 
   useEffect(() => {
@@ -233,9 +230,6 @@ export default function ReallocationPage() {
   const handleApplyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setStatus(null);
-    if (isSummarySession) {
-      return;
-    }
     if (!selectedSessionId || !startDate || !endDate) {
       setStatus({ type: "error", text: "Please select session, start, and end dates." });
       return;
@@ -250,10 +244,6 @@ export default function ReallocationPage() {
 
   const handleRecommend = async () => {
     setStatus(null);
-    if (isSummarySession) {
-      setStatus({ type: "error", text: "Recommendations are unavailable for summary sessions." });
-      return;
-    }
     if (!selectedSessionId || !startDate || !endDate) {
       setStatus({ type: "error", text: "Please select session, start, and end dates." });
       return;
@@ -298,7 +288,7 @@ export default function ReallocationPage() {
   };
 
   const handleAddLine = () => {
-    if (isSummarySession || !plan) {
+    if (!plan) {
       return;
     }
     const newLine: LineDraft = {
@@ -318,7 +308,7 @@ export default function ReallocationPage() {
   };
 
   const handleSave = async () => {
-    if (isSummarySession || !plan) {
+    if (!plan) {
       return;
     }
     setStatus(null);
@@ -435,9 +425,6 @@ export default function ReallocationPage() {
   };
 
   const planOptions = useMemo(() => {
-    if (isSummarySession) {
-      return [];
-    }
     const data = transferPlansQuery.data ?? [];
     const filtered = data.filter((item) => {
       if (startDate && item.start_date !== startDate) {
@@ -451,12 +438,9 @@ export default function ReallocationPage() {
     return filtered
       .slice()
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-  }, [endDate, isSummarySession, startDate, transferPlansQuery.data]);
+  }, [endDate, startDate, transferPlansQuery.data]);
 
   useEffect(() => {
-    if (isSummarySession) {
-      return;
-    }
     if (hasAutoLoadedPlan || plan || loadPlanMutation.isPending) {
       return;
     }
@@ -472,7 +456,6 @@ export default function ReallocationPage() {
     void loadPlanById(latestPlan.plan_id, { silent: true });
   }, [
     hasAutoLoadedPlan,
-    isSummarySession,
     loadPlanById,
     loadPlanMutation.isPending,
     plan,
@@ -493,22 +476,18 @@ export default function ReallocationPage() {
     [planOptions],
   );
 
-  const isPlanListLoading =
-    !isSummarySession && (transferPlansQuery.isLoading || transferPlansQuery.isFetching);
+  const isPlanListLoading = transferPlansQuery.isLoading || transferPlansQuery.isFetching;
   const hasPlanOptions = planOptions.length > 0;
-  const isLoadPlanDisabled = isSummarySession || !selectedPlanId || loadPlanMutation.isPending;
+  const isLoadPlanDisabled = !selectedPlanId || loadPlanMutation.isPending;
 
   useEffect(() => {
-    if (isSummarySession) {
-      return;
-    }
     if (!selectedPlanId) {
       return;
     }
     if (!planOptions.some((plan) => plan.plan_id === selectedPlanId)) {
       setSelectedPlanId("");
     }
-  }, [isSummarySession, planOptions, selectedPlanId]);
+  }, [planOptions, selectedPlanId]);
 
   const summaryMatrixRows = useMemo<MatrixRow[]>(() => {
     if (!isSummarySession) {
@@ -549,7 +528,9 @@ export default function ReallocationPage() {
     return rows;
   }, [isSummarySession, summaryDailyQuery.data]);
 
-  const baseMatrixRows: MatrixRow[] = isSummarySession
+  const usingSummaryMatrix = isSummarySession && !baseFilters;
+
+  const baseMatrixRows: MatrixRow[] = usingSummaryMatrix
     ? summaryMatrixRows
     : matrixQuery.data ?? [];
 
@@ -654,7 +635,7 @@ export default function ReallocationPage() {
   }, [skuOptions]);
 
   const handleExportLinesCsv = useCallback(() => {
-    if (isSummarySession || !lines.length || typeof window === "undefined") {
+    if (!lines.length || typeof window === "undefined") {
       return;
     }
 
@@ -701,7 +682,7 @@ export default function ReallocationPage() {
     anchor.click();
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
-  }, [isSummarySession, lines, plan?.plan_id, skuNameMap, skuOptionNameMap]);
+  }, [lines, plan?.plan_id, skuNameMap, skuOptionNameMap]);
 
   const warehouseOptions = useMemo(() => {
     const set = new Set<string>();
@@ -772,10 +753,16 @@ export default function ReallocationPage() {
     [simulatedMatrixRows],
   );
 
-  const isMatrixLoading = isSummarySession ? summaryDailyQuery.isLoading : matrixQuery.isLoading;
-  const isMatrixFetching = isSummarySession ? summaryDailyQuery.isFetching : matrixQuery.isFetching;
-  const isMatrixError = isSummarySession ? summaryDailyQuery.isError : matrixQuery.isError;
-  const matrixErrorText = isSummarySession
+  const isMatrixLoading = usingSummaryMatrix
+    ? summaryDailyQuery.isLoading
+    : matrixQuery.isLoading;
+  const isMatrixFetching = usingSummaryMatrix
+    ? summaryDailyQuery.isFetching
+    : matrixQuery.isFetching;
+  const isMatrixError = usingSummaryMatrix
+    ? summaryDailyQuery.isError
+    : matrixQuery.isError;
+  const matrixErrorText = usingSummaryMatrix
     ? "Failed to load summary data."
     : "Failed to load matrix data.";
 
@@ -802,95 +789,82 @@ export default function ReallocationPage() {
             </label>
             {isSummarySession && (
               <p className="reallocation-filter-status">
-                Summary sessions display aggregated totals from the latest upload. Date filters and
-                planning tools are disabled.
+                Summary sessions display aggregated totals from the latest upload. Use the filters
+                below to generate or edit transfer plans against the summary snapshot.
               </p>
             )}
-            {!isSummarySession && (
-              <div className="reallocation-filter-dates">
-                <label>
-                  Start date
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(event) => setStartDate(event.target.value)}
-                  />
-                </label>
-                <label>
-                  End date
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(event) => setEndDate(event.target.value)}
-                  />
-                </label>
-              </div>
+            <div className="reallocation-filter-dates">
+              <label>
+                Start date
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                />
+              </label>
+              <label>
+                End date
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+          <div className="reallocation-filter-panel">
+            <label>
+              作成済みプラン
+              <select
+                value={selectedPlanId}
+                onChange={(event) => setSelectedPlanId(event.target.value)}
+                disabled={!hasPlanOptions || isPlanListLoading}
+              >
+                <option value="">Select plan</option>
+                {planSelectOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {isPlanListLoading && (
+              <p className="reallocation-filter-status">Loading saved plans…</p>
+            )}
+            {transferPlansQuery.isError && (
+              <p className="reallocation-filter-status error">Failed to load saved plans.</p>
+            )}
+            {!isPlanListLoading && !hasPlanOptions && (
+              <p className="reallocation-filter-status">
+                No saved plans match the selected filters.
+              </p>
             )}
           </div>
-          {!isSummarySession && (
-            <div className="reallocation-filter-panel">
-              <label>
-                作成済みプラン
-                <select
-                  value={selectedPlanId}
-                  onChange={(event) => setSelectedPlanId(event.target.value)}
-                  disabled={!hasPlanOptions || isPlanListLoading}
-                >
-                  <option value="">Select plan</option>
-                  {planSelectOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {isPlanListLoading && (
-                <p className="reallocation-filter-status">Loading saved plans…</p>
-              )}
-              {transferPlansQuery.isError && (
-                <p className="reallocation-filter-status error">Failed to load saved plans.</p>
-              )}
-              {!isPlanListLoading && !hasPlanOptions && (
-                <p className="reallocation-filter-status">
-                  No saved plans match the selected filters.
-                </p>
-              )}
-            </div>
-          )}
         </div>
         <div className="reallocation-filter-actions">
-          {isSummarySession ? (
-            <p className="reallocation-filter-status">
-              Planning actions are unavailable for summary sessions. Review the aggregated PSI data
-              below.
-            </p>
-          ) : (
-            <>
-              <button type="submit" disabled={isMatrixFetching}>
-                Apply filters
-              </button>
-              <button
-                type="button"
-                onClick={handleRecommend}
-                disabled={recommendMutation.isPending}
-              >
-                {recommendMutation.isPending ? "Creating…" : "Create recommendation"}
-              </button>
-              <button type="button" onClick={handleLoadPlan} disabled={isLoadPlanDisabled}>
-                {loadPlanMutation.isPending ? "Loading…" : "Load plan"}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  void transferPlansQuery.refetch();
-                }}
-                disabled={transferPlansQuery.isFetching}
-              >
-                {transferPlansQuery.isFetching ? "Refreshing…" : "Refresh list"}
-              </button>
-            </>
-          )}
+          <button type="submit" disabled={isMatrixFetching}>
+            Apply filters
+          </button>
+          <button
+            type="button"
+            onClick={handleRecommend}
+            disabled={recommendMutation.isPending}
+          >
+            {recommendMutation.isPending ? "Creating…" : "Create recommendation"}
+          </button>
+          <button type="button" onClick={handleLoadPlan} disabled={isLoadPlanDisabled}>
+            {loadPlanMutation.isPending ? "Loading…" : "Load plan"}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              void transferPlansQuery.refetch();
+            }}
+            disabled={transferPlansQuery.isFetching}
+          >
+            {transferPlansQuery.isFetching ? "Refreshing…" : "Refresh list"}
+          </button>
         </div>
       </form>
 
@@ -905,7 +879,7 @@ export default function ReallocationPage() {
         {!isMatrixLoading && !isMatrixError && simulatedMatrixRows.length === 0 && (
           <p>No data for the selected filters.</p>
         )}
-        {isSummarySession && !isMatrixLoading && !isMatrixError && simulatedMatrixRows.length > 0 && (
+        {usingSummaryMatrix && !isMatrixLoading && !isMatrixError && simulatedMatrixRows.length > 0 && (
           <p className="reallocation-filter-status">
             Showing aggregated SKU × warehouse × channel totals from the latest summary upload.
           </p>
@@ -913,8 +887,7 @@ export default function ReallocationPage() {
         {simulatedMatrixRows.length > 0 && <PSIMatrixTabs data={psiRows} skuList={skuList} />}
       </section>
 
-      {!isSummarySession && (
-        <section className="plan-lines-section">
+      <section className="plan-lines-section">
           <div className="plan-header">
             <h2>Transfer Plan Lines</h2>
             <div className="plan-actions">
@@ -1103,7 +1076,6 @@ export default function ReallocationPage() {
             ))}
           </datalist>
         </section>
-      )}
     </div>
   );
 }
