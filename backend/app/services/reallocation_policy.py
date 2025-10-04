@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, cast
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session as DBSession
 
 from .. import models
@@ -34,7 +34,29 @@ def _record_to_data(record: models.ReallocationPolicy) -> ReallocationPolicyData
     )
 
 
-def _ensure_policy_record(db: DBSession) -> models.ReallocationPolicy:
+_DEFAULT_POLICY = ReallocationPolicyData(
+    take_from_other_main=False,
+    rounding_mode="floor",
+    allow_overfill=False,
+    updated_at=None,
+    updated_by=None,
+)
+
+
+def _ensure_policy_record(db: DBSession) -> models.ReallocationPolicy | None:
+    """Return an existing policy row creating it when the table is available."""
+
+    bind = db.get_bind()
+    if bind is None:  # pragma: no cover - defensive, sessions should always be bound
+        return None
+
+    inspector = inspect(bind)
+    table = models.ReallocationPolicy.__table__
+    schema = table.schema if table.schema else None
+
+    if not inspector.has_table(table.name, schema=schema):
+        return None
+
     policy = db.execute(
         select(models.ReallocationPolicy).order_by(models.ReallocationPolicy.id).limit(1)
     ).scalar_one_or_none()
@@ -52,6 +74,8 @@ def get_reallocation_policy(db: DBSession) -> ReallocationPolicyData:
     """Return the current reallocation policy creating it if missing."""
 
     policy = _ensure_policy_record(db)
+    if policy is None:
+        return _DEFAULT_POLICY
     return _record_to_data(policy)
 
 
@@ -66,6 +90,8 @@ def update_reallocation_policy(
     """Persist the reallocation policy and return the updated snapshot."""
 
     policy = _ensure_policy_record(db)
+    if policy is None:
+        raise RuntimeError("reallocation policy table is not available")
     policy.take_from_other_main = take_from_other_main
     policy.rounding_mode = rounding_mode
     policy.allow_overfill = allow_overfill
