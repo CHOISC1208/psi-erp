@@ -133,27 +133,34 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
     return label;
   };
 
-  const renderValue = (metricKey: MetricDefinition["key"], columnKey: string) => {
-    const value = getMetricValue(rowMap.get(columnKey), metricKey);
+  const renderNumberCell = (value: number | null) => {
     if (value === null) {
       return <span className="psi-matrix-value value-neutral">-</span>;
     }
     const className = `psi-matrix-value ${getValueClassName(value)}`;
+    const isNegative = value < 0;
+    const formatted = formatMetricValue(Math.abs(value));
     return (
       <span className={className}>
-        <span className="value-number">{formatMetricValue(Math.abs(value))}</span>
+        {isNegative ? (
+          <>
+            <span className="visually-hidden">マイナス</span>
+            <span aria-hidden="true" className="value-prefix">
+              ➖
+            </span>
+          </>
+        ) : null}
+        <span className="value-number">{formatted}</span>
       </span>
     );
   };
 
-  const renderTotalValue = (value: number) => {
-    const className = `psi-matrix-value ${getValueClassName(value)}`;
-    return (
-      <span className={className}>
-        <span className="value-number">{formatMetricValue(Math.abs(value))}</span>
-      </span>
-    );
+  const renderValue = (metricKey: MetricDefinition["key"], columnKey: string) => {
+    const value = getMetricValue(rowMap.get(columnKey), metricKey);
+    return renderNumberCell(value);
   };
+
+  const renderTotalValue = (value: number) => renderNumberCell(value);
 
   return (
     <div className="psi-matrix-scroll">

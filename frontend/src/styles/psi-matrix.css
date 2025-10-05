@@ -350,6 +350,12 @@
   font-weight: 600;
 }
 
+.psi-matrix-value .value-prefix {
+  margin-right: 0.2rem;
+  font-size: 0.85em;
+  line-height: 1;
+}
+
 .psi-matrix-value.value-positive {
   color: var(--accent-green, #16a34a);
 }
