@@ -337,9 +337,39 @@ body {
   margin-bottom: 0.75rem;
 }
 
+.reallocation-page .plan-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.reallocation-page .save-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.reallocation-page .save-indicator.saved {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--accent-green, #16a34a);
+}
+
+.reallocation-page .save-indicator.unsaved {
+  background: rgba(234, 179, 8, 0.16);
+  color: var(--accent-amber, #f59e0b);
+}
+
 .reallocation-page .plan-actions {
   display: flex;
   gap: 0.75rem;
+}
+
+.reallocation-page .plan-actions button {
+  min-width: 140px;
 }
 
 .reallocation-page .reallocation-filter-section {
@@ -425,6 +455,56 @@ body {
   box-sizing: border-box;
 }
 
+.reallocation-page .plan-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.reallocation-page .plan-latest-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--accent-blue, #2563eb);
+}
+
+.reallocation-page .badge-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.15);
+  color: var(--accent-blue, #2563eb);
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.reallocation-page .plan-select-controls {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.reallocation-page .plan-select-controls input[type="search"] {
+  border: 1px solid var(--border-input, #cbd5f5);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.95rem;
+}
+
+.reallocation-page .plan-select-controls input[type="search"]:focus {
+  outline: 2px solid var(--accent-blue, #2563eb);
+  outline-offset: 1px;
+}
+
+.reallocation-page .plan-select-controls select {
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.7rem;
+}
+
 .reallocation-page .reallocation-filter-dates {
   display: grid;
   gap: 0.75rem;
@@ -445,6 +525,34 @@ body {
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+.reallocation-page .plan-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.reallocation-page .plan-bulk-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.reallocation-page .plan-bulk-actions button {
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-default, #d1d5db);
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent-blue, #1d4ed8);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reallocation-page .plan-bulk-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .reallocation-page .plan-lines-count {
@@ -675,10 +783,37 @@ body {
 .reallocation-page .plan-lines-section select {
   width: 100%;
   box-sizing: border-box;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-default, #d1d5db);
 }
 
 .reallocation-page .checkbox-cell {
+  display: flex;
+  justify-content: center;
+}
+
+.reallocation-page .plan-lines-section .select-column {
+  width: 3rem;
   text-align: center;
+}
+
+.reallocation-page .plan-lines-section .select-column input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.reallocation-page .plan-lines-section .line-selected {
+  background: var(--psi-row-selected-bg, rgba(34, 197, 94, 0.12));
+}
+
+.reallocation-page .plan-lines-section .input-invalid {
+  border-color: var(--accent-red, #dc2626);
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+}
+
+.reallocation-page .plan-lines-section .input-invalid:focus {
+  outline: 2px solid var(--accent-red, #dc2626);
+  outline-offset: 1px;
 }
 
 .table-container {

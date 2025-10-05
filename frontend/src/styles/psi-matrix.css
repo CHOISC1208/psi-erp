@@ -11,39 +11,172 @@
 .psi-matrix-toolbar {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .psi-matrix-tabs .sku-navigation {
   display: block;
 }
 
-.psi-matrix-tabs .sku-navigation-layout {
+.psi-matrix-tabs .sku-navigation-card {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
-  align-items: start;
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel-soft, rgba(226, 232, 240, 0.35));
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.15);
+}
+
+.psi-matrix-tabs .sku-navigation-search-area {
+  position: relative;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.psi-matrix-tabs .sku-navigation-search {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.psi-matrix-tabs .sku-navigation-search input {
+  background: var(--surface-input);
+  border: 1px solid var(--border-input);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  color: var(--text-primary);
+  min-width: min(100%, 32rem);
+  max-width: 100%;
+  font-size: 0.95rem;
+}
+
+.psi-matrix-tabs .sku-navigation-search input:focus {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.psi-matrix-tabs .sku-recent-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.psi-matrix-tabs .sku-recent-pill {
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--accent-blue, #2563eb);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.psi-matrix-tabs .sku-recent-pill:focus-visible {
+  outline: 2px solid var(--accent-blue, #2563eb);
+  outline-offset: 2px;
+}
+
+.psi-matrix-tabs .sku-search-suggestions {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 0.25rem;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0.35rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+}
+
+.psi-matrix-tabs .sku-search-suggestion {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  border: none;
+  background: transparent;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.6rem;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.psi-matrix-tabs .sku-search-suggestion:hover,
+.psi-matrix-tabs .sku-search-suggestion:focus-visible {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.psi-matrix-tabs .sku-search-suggestion .suggestion-code {
+  font-family: "Roboto Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.psi-matrix-tabs .sku-search-suggestion .suggestion-label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
 }
 
 .psi-matrix-tabs .sku-navigation-summary {
   display: grid;
-  gap: 0.35rem;
-  text-align: center;
+  gap: 0.5rem;
   justify-items: center;
+  text-align: center;
 }
 
 .psi-matrix-tabs .sku-navigation-header {
   display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 0.5rem;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
 }
 
 .psi-matrix-tabs .sku-navigation-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   font-weight: 600;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   color: var(--text-primary);
+}
+
+.psi-matrix-tabs .sku-title-text {
+  font-weight: 600;
+}
+
+.psi-matrix-tabs .sku-code-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(30, 64, 175, 0.12);
+  color: var(--accent-blue, #2563eb);
+  font-family: "Roboto Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 0.95rem;
+}
+
+.psi-matrix-tabs .sku-code-badge code {
+  font-family: inherit;
+}
+
+.psi-matrix-tabs .sku-copy-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
 }
 
 .psi-matrix-tabs .sku-navigation-meta {
@@ -58,19 +191,24 @@
 
 .psi-matrix-tabs .sku-navigation-actions {
   display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  justify-self: end;
-  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
 }
 
 .psi-matrix-tabs .sku-navigation-actions button {
-  background: var(--surface-input);
-  border: 1px solid var(--border-input);
-  border-radius: 0.5rem;
-  padding: 0.4rem 0.75rem;
-  color: var(--text-primary);
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.16), rgba(59, 130, 246, 0.05));
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  color: var(--accent-blue, #1d4ed8);
   cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.psi-matrix-tabs .sku-navigation-actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.18);
 }
 
 .psi-matrix-tabs .sku-navigation-actions button:disabled {
@@ -78,44 +216,18 @@
   cursor: not-allowed;
 }
 
-.psi-matrix-tabs .sku-navigation-search {
-  display: grid;
-  gap: 0.25rem;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  justify-self: start;
-  max-width: 18rem;
-}
-
-.psi-matrix-tabs .sku-navigation-search input {
-  background: var(--surface-input);
-  border: 1px solid var(--border-input);
-  border-radius: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  color: var(--text-primary);
-}
-
-.psi-matrix-tabs .sku-navigation-search input:focus {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 1px;
-}
-
 @media (max-width: 960px) {
-  .psi-matrix-tabs .sku-navigation-layout {
-    grid-template-columns: 1fr;
+  .psi-matrix-tabs .sku-navigation-card {
+    padding: 1rem;
+  }
+
+  .psi-matrix-tabs .sku-navigation-search input {
+    min-width: min(100%, 20rem);
   }
 
   .psi-matrix-tabs .sku-navigation-summary {
     justify-items: start;
     text-align: left;
-  }
-
-  .psi-matrix-tabs .sku-navigation-actions {
-    justify-self: start;
-  }
-
-  .psi-matrix-tabs .sku-navigation-search {
-    max-width: none;
   }
 }
 
@@ -197,6 +309,9 @@
 }
 
 .psi-matrix-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: var(--surface-table-header);
   text-align: center;
   font-weight: 600;
@@ -207,31 +322,92 @@
   text-align: left;
 }
 
+.psi-matrix-table .metric-column {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--surface-table-header);
+  min-width: 200px;
+  width: 200px;
+}
+
+.psi-matrix-table .metric-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-table);
+}
+
 .psi-matrix-table .total-column {
+  position: sticky;
+  left: 200px;
+  z-index: 3;
   background: var(--surface-table-header-highlight, var(--surface-table-header));
   font-weight: 700;
   text-align: right;
+  min-width: 120px;
 }
 
 .psi-matrix-table .total-cell {
+  position: sticky;
+  left: 200px;
+  z-index: 1;
   font-weight: 600;
   background: var(--surface-table-total, rgba(59, 130, 246, 0.08));
+}
+
+.psi-matrix-table tbody th {
+  background: var(--surface-table-row-header, var(--surface-table));
 }
 
 .psi-matrix-table tbody tr:nth-child(even) {
   background: var(--surface-table-zebra);
 }
 
-.value-positive {
-  color: var(--accent-green);
+.psi-matrix-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
 }
 
-.value-negative {
-  color: var(--accent-red);
+.psi-matrix-value .value-icon {
+  font-size: 0.85rem;
 }
 
-.value-neutral {
+.psi-matrix-value.value-positive {
+  color: var(--accent-green, #16a34a);
+}
+
+.psi-matrix-value.value-negative {
+  color: var(--accent-red, #dc2626);
+}
+
+.psi-matrix-value.value-neutral {
   color: var(--text-secondary);
+}
+
+.psi-matrix-value .value-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.psi-matrix-table .metric-label .metric-label-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.psi-matrix-table .metric-label .metric-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.18);
+  color: var(--accent-blue, #2563eb);
+  font-size: 0.75rem;
+  cursor: help;
 }
 
 .psi-matrix-empty {

@@ -109,6 +109,58 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
     return totals;
   }, [headerColumns, metrics, rowMap]);
 
+  const getMetricLabelContent = (metricKey: MetricDefinition["key"], label: string) => {
+    if (metricKey === "gap") {
+      return (
+        <span className="metric-label-text" title="Gap = Std Stock − Stock Closing">
+          {label}
+          <span className="metric-info" aria-hidden="true">
+            i
+          </span>
+        </span>
+      );
+    }
+    if (metricKey === "gapAfter") {
+      return (
+        <span className="metric-label-text" title="Gap After = Gap + Move">
+          {label}
+          <span className="metric-info" aria-hidden="true">
+            i
+          </span>
+        </span>
+      );
+    }
+    return label;
+  };
+
+  const renderValue = (metricKey: MetricDefinition["key"], columnKey: string) => {
+    const value = getMetricValue(rowMap.get(columnKey), metricKey);
+    if (value === null) {
+      return <span className="psi-matrix-value value-neutral">-</span>;
+    }
+    const className = `psi-matrix-value ${getValueClassName(value)}`;
+    const icon = value > 0 ? "▲" : value < 0 ? "▼" : "◆";
+    return (
+      <span className={className}>
+        <span aria-hidden className="value-icon">
+          {icon}
+        </span>
+        <span className="value-number">{formatMetricValue(value)}</span>
+      </span>
+    );
+  };
+
+  const renderTotalValue = (value: number) => {
+    const className = `psi-matrix-value ${getValueClassName(value)}`;
+    const icon = value > 0 ? "▲" : value < 0 ? "▼" : "◆";
+    return (
+      <span className={className}>
+        <span aria-hidden className="value-icon">{icon}</span>
+        <span className="value-number">{formatMetricValue(value)}</span>
+      </span>
+    );
+  };
+
   return (
     <div className="psi-matrix-scroll">
       <table className="psi-matrix-table">
@@ -117,14 +169,14 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
             <th rowSpan={2} className="metric-column">
               Metric
             </th>
+            <th rowSpan={2} className="total-column">
+              Total
+            </th>
             {headerGroups.map((group) => (
               <th key={group.label} colSpan={group.columns.length} className={group.className}>
                 {group.label}
               </th>
             ))}
-            <th rowSpan={2} className="total-column">
-              Total
-            </th>
           </tr>
           <tr>
             {headerGroups.flatMap((group) =>
@@ -137,22 +189,20 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
           </tr>
         </thead>
         <tbody>
-          {metrics.map((metric) => (
-            <tr key={metric.key}>
-              <th scope="row" className="metric-label">
-                {metric.label}
-              </th>
-              {headerColumns.map((column) => {
-                const value = getMetricValue(rowMap.get(column.key), metric.key);
-                return (
-                  <td key={column.key} className={getValueClassName(value)}>
-                    {formatMetricValue(value)}
-                  </td>
-                );
-              })}
-              <td className="total-cell">{formatMetricValue(totalsByMetric.get(metric.key) ?? 0)}</td>
-            </tr>
-          ))}
+          {metrics.map((metric) => {
+            const totalValue = totalsByMetric.get(metric.key) ?? 0;
+            return (
+              <tr key={metric.key}>
+                <th scope="row" className="metric-label">
+                  {getMetricLabelContent(metric.key, metric.label)}
+                </th>
+                <td className="total-cell">{renderTotalValue(totalValue)}</td>
+                {headerColumns.map((column) => (
+                  <td key={column.key}>{renderValue(metric.key, column.key)}</td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

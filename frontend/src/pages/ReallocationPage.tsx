@@ -184,6 +184,73 @@ const compareLinesBySku = (a: LineDraft, b: LineDraft) => {
 
 const sortLinesBySku = (lineItems: LineDraft[]) => [...lineItems].sort(compareLinesBySku);
 
+type LineFieldErrors = Partial<{
+  sku_code: string;
+  from_warehouse: string;
+  from_channel: string;
+  to_warehouse: string;
+  to_channel: string;
+  qty: string;
+}>;
+
+const getLineErrors = (line: LineDraft): LineFieldErrors => {
+  const errors: LineFieldErrors = {};
+  if (!line.sku_code.trim()) {
+    errors.sku_code = "SKU code is required.";
+  }
+  if (!line.from_warehouse.trim()) {
+    errors.from_warehouse = "From warehouse is required.";
+  }
+  if (!line.from_channel.trim()) {
+    errors.from_channel = "From channel is required.";
+  }
+  if (!line.to_warehouse.trim()) {
+    errors.to_warehouse = "To warehouse is required.";
+  }
+  if (!line.to_channel.trim()) {
+    errors.to_channel = "To channel is required.";
+  }
+  const qtyValue = Number.parseFloat(line.qty);
+  if (!Number.isFinite(qtyValue) || qtyValue <= 0 || !Number.isInteger(qtyValue)) {
+    errors.qty = "Quantity must be a positive integer.";
+  }
+  return errors;
+};
+
+const BASE_REASON_OPTIONS = [
+  "Manual adjustment",
+  "Demand spike",
+  "Inventory balancing",
+  "Seasonal allocation",
+  "fill main channel (intra)",
+  "fill main channel (inter non-main)",
+  "fill main channel (inter main)",
+];
+
+const formatRelativeTimeFromNow = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const diffMs = Date.now() - date.getTime();
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < minute) {
+    return "たった今";
+  }
+  if (diffMs < hour) {
+    const minutes = Math.floor(diffMs / minute);
+    return `${minutes}分前`;
+  }
+  if (diffMs < day) {
+    const hours = Math.floor(diffMs / hour);
+    return `${hours}時間前`;
+  }
+  const days = Math.floor(diffMs / day);
+  return `${days}日前`;
+};
+
 export default function ReallocationPage() {
   const sessionsQuery = useSessionsQuery();
   const sessions = sessionsQuery.data ?? [];
@@ -207,6 +274,8 @@ export default function ReallocationPage() {
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [skuSearch, setSkuSearch] = useState("");
   const [planLinesPage, setPlanLinesPage] = useState(1);
+  const [planSearchTerm, setPlanSearchTerm] = useState("");
+  const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
   const filterSectionId = useId();
   const skuDatalistId = useId();
 
@@ -264,6 +333,10 @@ export default function ReallocationPage() {
   useEffect(() => {
     setPlanLinesPage(1);
   }, [skuSearch]);
+
+  useEffect(() => {
+    setSelectedLineIds((prev) => prev.filter((id) => lines.some((line) => line.line_id === id)));
+  }, [lines]);
 
   const matrixArgs = useMemo<MatrixQueryArgs | null>(() => {
     if (!baseFilters) {
@@ -377,7 +450,46 @@ export default function ReallocationPage() {
     setPlanDirty(true);
   };
 
-  const handleSave = async () => {
+  const handleSelectLine = (lineId: string, selected: boolean) => {
+    setSelectedLineIds((prev) => {
+      if (selected) {
+        if (prev.includes(lineId)) {
+          return prev;
+        }
+        return [...prev, lineId];
+      }
+      return prev.filter((id) => id !== lineId);
+    });
+  };
+
+  const handleSelectAllVisible = useCallback((selected: boolean, visibleLines: LineDraft[]) => {
+    setSelectedLineIds((prev) => {
+      if (selected) {
+        const set = new Set(prev);
+        visibleLines.forEach((line) => set.add(line.line_id));
+        return Array.from(set);
+      }
+      const visibleIds = new Set(visibleLines.map((line) => line.line_id));
+      return prev.filter((id) => !visibleIds.has(id));
+    });
+  }, []);
+
+  const handleBulkManualChange = useCallback(
+    (isManual: boolean) => {
+      if (!selectedLineIds.length) {
+        return;
+      }
+      setLines((prev) =>
+        prev.map((line) =>
+          selectedLineIds.includes(line.line_id) ? { ...line, is_manual: isManual } : line,
+        ),
+      );
+      setPlanDirty(true);
+    },
+    [selectedLineIds],
+  );
+
+  const handleSave = useCallback(async () => {
     if (!plan) {
       return;
     }
@@ -385,27 +497,10 @@ export default function ReallocationPage() {
 
     const payload: TransferPlanLineWrite[] = [];
     for (const line of lines) {
-      if (!line.sku_code.trim()) {
-        setStatus({ type: "error", text: "SKU code is required for all lines." });
-        return;
-      }
-      if (!line.from_warehouse.trim() || !line.from_channel.trim()) {
-        setStatus({
-          type: "error",
-          text: "From warehouse and channel are required for all lines.",
-        });
-        return;
-      }
-      if (!line.to_warehouse.trim() || !line.to_channel.trim()) {
-        setStatus({
-          type: "error",
-          text: "To warehouse and channel are required for all lines.",
-        });
-        return;
-      }
-      const qtyValue = Number.parseFloat(line.qty);
-      if (!Number.isFinite(qtyValue) || qtyValue <= 0 || !Number.isInteger(qtyValue)) {
-        setStatus({ type: "error", text: "Quantity must be a positive integer." });
+      const errors = getLineErrors(line);
+      if (Object.keys(errors).length > 0) {
+        const message = Object.values(errors)[0] ?? "Line validation failed.";
+        setStatus({ type: "error", text: message });
         return;
       }
       payload.push(draftToPayload(line));
@@ -429,17 +524,25 @@ export default function ReallocationPage() {
       }));
       setLines(normalizedLines);
       setBaselineLines(normalizedLines);
-      if (matrixArgs) {
-        await matrixQuery.refetch();
-      }
-      await transferPlansQuery.refetch();
+      setSelectedLineIds([]);
+      await Promise.all([
+        matrixArgs ? matrixQuery.refetch() : Promise.resolve(),
+        transferPlansQuery.refetch(),
+      ]);
     } catch (error) {
       setStatus({
         type: "error",
         text: getErrorMessage(error, "Failed to save plan lines."),
       });
     }
-  };
+  }, [
+    lines,
+    matrixArgs,
+    matrixQuery,
+    plan,
+    saveLinesMutation,
+    transferPlansQuery,
+  ]);
 
   const loadPlanById = useCallback(
     async (planId: string, options?: { silent?: boolean }) => {
@@ -500,6 +603,24 @@ export default function ReallocationPage() {
     }
   };
 
+  useEffect(() => {
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+      if (event.key.toLowerCase() !== "s") {
+        return;
+      }
+      event.preventDefault();
+      if (!planDirty || saveLinesMutation.isPending) {
+        return;
+      }
+      void handleSave();
+    };
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, [handleSave, planDirty, saveLinesMutation.isPending]);
+
   const planOptions = useMemo(() => {
     const data = transferPlansQuery.data ?? [];
     const filtered = data.filter((item) => {
@@ -538,22 +659,53 @@ export default function ReallocationPage() {
     planOptions,
   ]);
 
+  const latestPlan = planOptions[0] ?? null;
+  const latestPlanRelative = latestPlan
+    ? formatRelativeTimeFromNow(latestPlan.updated_at || latestPlan.created_at)
+    : null;
+
+  const filteredPlanOptions = useMemo(() => {
+    const normalized = planSearchTerm.trim().toLowerCase();
+    let filtered = !normalized
+      ? planOptions
+      : planOptions.filter((item) => {
+          const text = [
+            item.plan_id,
+            item.start_date,
+            item.end_date,
+            item.created_by ?? "",
+            item.updated_by ?? "",
+          ]
+            .join(" ")
+            .toLowerCase();
+          return text.includes(normalized);
+        });
+    if (selectedPlanId) {
+      const selectedPlan = planOptions.find((planItem) => planItem.plan_id === selectedPlanId);
+      if (selectedPlan && !filtered.some((planItem) => planItem.plan_id === selectedPlan.plan_id)) {
+        filtered = [selectedPlan, ...filtered];
+      }
+    }
+    return filtered;
+  }, [planOptions, planSearchTerm, selectedPlanId]);
+
   const planSelectOptions = useMemo(
     () =>
-      planOptions.map((item) => {
+      filteredPlanOptions.map((item) => {
         const rangeLabel = formatDateRange(item.start_date, item.end_date);
-        const createdLabel = formatDateTime(item.created_at);
+        const updatedLabel = formatDateTime(item.updated_at || item.created_at);
         const prefix = rangeLabel ? `${rangeLabel} • ` : "";
         return {
           value: item.plan_id,
-          label: `${prefix}作成 ${createdLabel}`,
+          label: `${prefix}更新 ${updatedLabel}`,
         };
       }),
-    [planOptions],
+    [filteredPlanOptions],
   );
 
   const isPlanListLoading = transferPlansQuery.isLoading || transferPlansQuery.isFetching;
   const hasPlanOptions = planOptions.length > 0;
+  const hasFilteredPlanOptions = planSelectOptions.length > 0;
   const isLoadPlanDisabled = !selectedPlanId || loadPlanMutation.isPending;
 
   useEffect(() => {
@@ -582,7 +734,7 @@ export default function ReallocationPage() {
       const inboundQty = Number(latestEntry.inbound_qty ?? 0);
       const outboundQty = Number(latestEntry.outbound_qty ?? 0);
       const gapValue =
-        typeof latestEntry.gap === "number" ? Number(latestEntry.gap) : stockClosing - stdStock;
+        typeof latestEntry.gap === "number" ? Number(latestEntry.gap) : stdStock - stockClosing;
       rows.push({
         sku_code: channel.sku_code,
         sku_name: channel.sku_name ?? null,
@@ -745,6 +897,20 @@ export default function ReallocationPage() {
   const planLinesTotal = sortedPlanLines.length;
   const planLinesDisplayStart = planLinesTotal === 0 ? 0 : (planLinesPage - 1) * PLAN_LINES_PAGE_SIZE + 1;
   const planLinesDisplayEnd = Math.min(planLinesTotal, planLinesPage * PLAN_LINES_PAGE_SIZE);
+  const allVisibleSelected =
+    paginatedPlanLines.length > 0 &&
+    paginatedPlanLines.every((line) => selectedLineIds.includes(line.line_id));
+
+  const lineErrorMap = useMemo(() => {
+    const map = new Map<string, LineFieldErrors>();
+    for (const line of lines) {
+      const errors = getLineErrors(line);
+      if (Object.keys(errors).length > 0) {
+        map.set(line.line_id, errors);
+      }
+    }
+    return map;
+  }, [lines]);
 
   const handleExportLinesCsv = useCallback(() => {
     if (!lines.length || typeof window === "undefined") {
@@ -830,6 +996,20 @@ export default function ReallocationPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [baseMatrixRows]);
 
+  const reasonOptions = useMemo(() => {
+    const extras = new Set<string>();
+    for (const line of [...baselineLines, ...lines]) {
+      const trimmed = line.reason.trim();
+      if (!trimmed) {
+        continue;
+      }
+      if (!BASE_REASON_OPTIONS.includes(trimmed)) {
+        extras.add(trimmed);
+      }
+    }
+    return [...BASE_REASON_OPTIONS, ...Array.from(extras).sort((a, b) => a.localeCompare(b))];
+  }, [baselineLines, lines]);
+
   const skuList = useMemo(
     () => Array.from(new Set(simulatedMatrixRows.map((row) => row.sku_code))),
     [simulatedMatrixRows],
@@ -840,9 +1020,10 @@ export default function ReallocationPage() {
       simulatedMatrixRows.map((row) => {
         const stockStart = row.stock_at_anchor ?? 0;
         const stdStock = row.stdstock ?? 0;
+        const stockClosing = row.stock_closing ?? 0;
         const move = row.move ?? 0;
-        const gap = stockStart - stdStock;
-        const gapAfter = stockStart + move - stdStock;
+        const gap = stdStock - stockClosing;
+        const gapAfter = gap + move;
         return {
           sku: row.sku_code,
           skuName: row.sku_name ?? undefined,
@@ -944,12 +1125,31 @@ export default function ReallocationPage() {
               </div>
             </div>
             <div className="reallocation-filter-panel">
-              <label>
-                作成済みプラン
+              <div className="plan-select-header">
+                <label htmlFor="plan-search-input">作成済みプラン</label>
+                {latestPlan && latestPlanRelative && (
+                  <div className="plan-latest-indicator" aria-live="polite">
+                    <span className="badge-new">NEW</span>
+                    <span className="plan-latest-text">
+                      {latestPlan.plan_id} • 最終更新 {latestPlanRelative}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="plan-select-controls">
+                <input
+                  id="plan-search-input"
+                  type="search"
+                  placeholder="プランID・日付・作成者で検索"
+                  value={planSearchTerm}
+                  onChange={(event) => setPlanSearchTerm(event.target.value)}
+                  aria-label="保存済みプランを検索"
+                />
                 <select
                   value={selectedPlanId}
                   onChange={(event) => setSelectedPlanId(event.target.value)}
                   disabled={!hasPlanOptions || isPlanListLoading}
+                  aria-label="保存済みプランを選択"
                 >
                   <option value="">Select plan</option>
                   {planSelectOptions.map((option) => (
@@ -958,7 +1158,7 @@ export default function ReallocationPage() {
                     </option>
                   ))}
                 </select>
-              </label>
+              </div>
               {isPlanListLoading && (
                 <p className="reallocation-filter-status">Loading saved plans…</p>
               )}
@@ -969,6 +1169,9 @@ export default function ReallocationPage() {
                 <p className="reallocation-filter-status">
                   No saved plans match the selected filters.
                 </p>
+              )}
+              {!isPlanListLoading && hasPlanOptions && !hasFilteredPlanOptions && (
+                <p className="reallocation-filter-status">検索条件に一致するプランがありません。</p>
               )}
             </div>
           </div>
@@ -1028,15 +1231,30 @@ export default function ReallocationPage() {
 
       <section className="plan-lines-section">
         <div className="plan-header">
-          <h2>Transfer Plan Lines</h2>
+          <div className="plan-header-left">
+            <h2>Transfer Plan Lines</h2>
+            <span
+              className={`save-indicator ${planDirty ? "unsaved" : "saved"}`}
+              role="status"
+              aria-live="polite"
+            >
+              {planDirty ? "Unsaved changes" : "Saved"}
+            </span>
+          </div>
           <div className="plan-actions">
-            <button type="button" onClick={handleAddLine} disabled={!plan}>
+            <button
+              type="button"
+              onClick={handleAddLine}
+              disabled={!plan}
+              aria-label="手動ラインを追加"
+            >
               Add manual line
             </button>
             <button
               type="button"
               onClick={handleSave}
               disabled={!plan || !planDirty || saveLinesMutation.isPending}
+              aria-label="プランラインを保存"
             >
               {saveLinesMutation.isPending ? "Saving…" : "Save lines"}
             </button>
@@ -1045,6 +1263,7 @@ export default function ReallocationPage() {
               className="secondary"
               onClick={handleExportLinesCsv}
               disabled={lines.length === 0}
+              aria-label="CSVをダウンロード"
             >
               CSVダウンロード
             </button>
@@ -1062,28 +1281,48 @@ export default function ReallocationPage() {
                   : `表示中 ${planLinesDisplayStart}–${planLinesDisplayEnd} 件 / 全 ${planLinesTotal} 件`}
               </p>
               {planLinesTotal > 0 && (
-                <div className="plan-lines-pagination">
-                  <button
-                    type="button"
-                    onClick={() => setPlanLinesPage((prev) => Math.max(1, prev - 1))}
-                    disabled={planLinesPage <= 1}
-                  >
-                    ‹ 前へ
-                  </button>
-                  <span>
-                    ページ {planLinesPage} / {Math.max(1, totalPlanLinePages)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPlanLinesPage((prev) =>
-                        prev >= totalPlanLinePages ? totalPlanLinePages : prev + 1,
-                      )
-                    }
-                    disabled={planLinesPage >= totalPlanLinePages}
-                  >
-                    次へ ›
-                  </button>
+                <div className="plan-toolbar-actions">
+                  <div className="plan-bulk-actions">
+                    <button
+                      type="button"
+                      onClick={() => handleBulkManualChange(true)}
+                      disabled={selectedLineIds.length === 0}
+                      aria-label="選択行をManualに設定"
+                    >
+                      ManualをON
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkManualChange(false)}
+                      disabled={selectedLineIds.length === 0}
+                      aria-label="選択行のManualを解除"
+                    >
+                      ManualをOFF
+                    </button>
+                  </div>
+                  <div className="plan-lines-pagination">
+                    <button
+                      type="button"
+                      onClick={() => setPlanLinesPage((prev) => Math.max(1, prev - 1))}
+                      disabled={planLinesPage <= 1}
+                    >
+                      ‹ 前へ
+                    </button>
+                    <span>
+                      ページ {planLinesPage} / {Math.max(1, totalPlanLinePages)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPlanLinesPage((prev) =>
+                          prev >= totalPlanLinePages ? totalPlanLinePages : prev + 1,
+                        )
+                      }
+                      disabled={planLinesPage >= totalPlanLinePages}
+                    >
+                      次へ ›
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1092,6 +1331,17 @@ export default function ReallocationPage() {
                 <table className="data-table">
                   <thead>
                     <tr>
+                      <th className="select-column">
+                        <input
+                          type="checkbox"
+                          checked={allVisibleSelected}
+                          onChange={(event) =>
+                            handleSelectAllVisible(event.target.checked, paginatedPlanLines)
+                          }
+                          aria-label="表示中のラインをすべて選択"
+                          disabled={paginatedPlanLines.length === 0}
+                        />
+                      </th>
                       <th>SKU</th>
                       <th>SKU name</th>
                       <th>From warehouse</th>
@@ -1122,9 +1372,21 @@ export default function ReallocationPage() {
                         channelsByWarehouse.get(toWarehouseKey) ?? channelOptions;
                       const fromChannelOptions = ensureOption(fromChannelBase, line.from_channel);
                       const toChannelOptions = ensureOption(toChannelBase, line.to_channel);
+                      const errors = lineErrorMap.get(line.line_id) ?? {};
+                      const isSelected = selectedLineIds.includes(line.line_id);
 
                       return (
-                        <tr key={line.line_id}>
+                        <tr key={line.line_id} className={isSelected ? "line-selected" : undefined}>
+                          <td className="select-column">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(event) =>
+                                handleSelectLine(line.line_id, event.target.checked)
+                              }
+                              aria-label={`ライン ${trimmedSku || line.line_id} を選択`}
+                            />
+                          </td>
                           <td>
                             <input
                               list={skuDatalistId}
@@ -1132,6 +1394,9 @@ export default function ReallocationPage() {
                               onChange={(event) =>
                                 handleLineChange(line.line_id, { sku_code: event.target.value })
                               }
+                              className={errors.sku_code ? "input-invalid" : undefined}
+                              aria-invalid={Boolean(errors.sku_code)}
+                              title={errors.sku_code}
                             />
                           </td>
                           <td>{skuName}</td>
@@ -1143,6 +1408,9 @@ export default function ReallocationPage() {
                                   from_warehouse: event.target.value,
                                 })
                               }
+                              className={errors.from_warehouse ? "input-invalid" : undefined}
+                              aria-invalid={Boolean(errors.from_warehouse)}
+                              title={errors.from_warehouse}
                             >
                               <option value="">Select warehouse</option>
                               {fromWarehouseOptions.map((option) => (
@@ -1160,6 +1428,9 @@ export default function ReallocationPage() {
                                   from_channel: event.target.value,
                                 })
                               }
+                              className={errors.from_channel ? "input-invalid" : undefined}
+                              aria-invalid={Boolean(errors.from_channel)}
+                              title={errors.from_channel}
                             >
                               <option value="">Select channel</option>
                               {fromChannelOptions.map((option) => (
@@ -1177,6 +1448,9 @@ export default function ReallocationPage() {
                                   to_warehouse: event.target.value,
                                 })
                               }
+                              className={errors.to_warehouse ? "input-invalid" : undefined}
+                              aria-invalid={Boolean(errors.to_warehouse)}
+                              title={errors.to_warehouse}
                             >
                               <option value="">Select warehouse</option>
                               {toWarehouseOptions.map((option) => (
@@ -1194,6 +1468,9 @@ export default function ReallocationPage() {
                                   to_channel: event.target.value,
                                 })
                               }
+                              className={errors.to_channel ? "input-invalid" : undefined}
+                              aria-invalid={Boolean(errors.to_channel)}
+                              title={errors.to_channel}
                             >
                               <option value="">Select channel</option>
                               {toChannelOptions.map((option) => (
@@ -1206,12 +1483,15 @@ export default function ReallocationPage() {
                           <td>
                             <input
                               type="number"
-                              step="0.000001"
+                              step={1}
                               min="0"
                               value={line.qty}
                               onChange={(event) =>
                                 handleLineChange(line.line_id, { qty: event.target.value })
                               }
+                              className={errors.qty ? "input-invalid" : undefined}
+                              aria-invalid={Boolean(errors.qty)}
+                              title={errors.qty}
                             />
                           </td>
                           <td className="checkbox-cell">
@@ -1221,18 +1501,30 @@ export default function ReallocationPage() {
                               onChange={(event) =>
                                 handleLineChange(line.line_id, { is_manual: event.target.checked })
                               }
+                              aria-label={`ライン ${trimmedSku || line.line_id} のmanual設定`}
                             />
                           </td>
                           <td>
-                            <input
+                            <select
                               value={line.reason}
                               onChange={(event) =>
                                 handleLineChange(line.line_id, { reason: event.target.value })
                               }
-                            />
+                            >
+                              <option value="">理由を選択</option>
+                              {reasonOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
                           </td>
                           <td>
-                            <button type="button" onClick={() => handleRemoveLine(line.line_id)}>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLine(line.line_id)}
+                              aria-label="ラインを削除"
+                            >
                               Remove
                             </button>
                           </td>
@@ -1246,12 +1538,12 @@ export default function ReallocationPage() {
           </>
         )}
         <datalist id={skuDatalistId}>
-            {skuOptions.map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.name ? `${option.code} — ${option.name}` : option.code}
-              </option>
-            ))}
-          </datalist>
+          {skuOptions.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.name ? `${option.code} — ${option.name}` : option.code}
+            </option>
+          ))}
+        </datalist>
         </section>
     </div>
   );
