@@ -199,7 +199,9 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
                 </th>
                 <td className="total-cell">{renderTotalValue(totalValue)}</td>
                 {headerColumns.map((column) => (
-                  <td key={column.key}>{renderValue(metric.key, column.key)}</td>
+                  <td key={column.key} className="matrix-value-cell">
+                    {renderValue(metric.key, column.key)}
+                  </td>
                 ))}
               </tr>
             );

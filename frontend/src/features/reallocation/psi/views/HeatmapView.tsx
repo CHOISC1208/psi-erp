@@ -148,7 +148,11 @@ export default function HeatmapView({ rows, metrics }: HeatmapViewProps) {
                     {columnKeys.map((column) => {
                       const value = getMetricValue(rowMap.get(column.key), metric.key);
                       return (
-                        <td key={column.key} style={createHeatmapStyle(value, heatmapMax)}>
+                        <td
+                          key={column.key}
+                          className="matrix-value-cell"
+                          style={createHeatmapStyle(value, heatmapMax)}
+                        >
                           {formatMetricValue(value)}
                         </td>
                       );
