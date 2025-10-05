@@ -219,6 +219,35 @@ class PSIBasePage(BaseModel):
     rows: list[PSIBaseRecord]
 
 
+class PSISummaryBaseRecord(BaseModel):
+    """Serialized ``psi_summary_base`` row."""
+
+    session_id: UUID
+    sku_code: str
+    sku_name: str | None = None
+    warehouse_name: str
+    channel: str
+    inbound_qty: Decimal | None = None
+    outbound_qty: Decimal | None = None
+    std_stock: Decimal | None = None
+    stock: Decimal | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    updated_by: UUID | None = None
+    updated_by_username: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PSISummaryBasePage(BaseModel):
+    """Paginated result set for ``psi_summary_base`` rows."""
+
+    page: int
+    size: int
+    total: int
+    rows: list[PSISummaryBaseRecord]
+
+
 class PSIBasePatchRow(BaseModel):
     """Payload describing updates for ``psi_base`` rows."""
 
@@ -265,6 +294,41 @@ class PSIBaseDeleteRequest(BaseModel):
     """Bulk delete request body."""
 
     rows: list[PSIBaseDeleteRow]
+
+
+class PSISummaryBasePatchRow(BaseModel):
+    """Payload describing updates for ``psi_summary_base`` rows."""
+
+    session_id: UUID
+    sku_code: str
+    warehouse_name: str
+    channel: str
+    sku_name: str | None = None
+    inbound_qty: Decimal | None = None
+    outbound_qty: Decimal | None = None
+    std_stock: Decimal | None = None
+    stock: Decimal | None = None
+
+
+class PSISummaryBasePatchRequest(BaseModel):
+    """Bulk patch request body for summary rows."""
+
+    rows: list[PSISummaryBasePatchRow]
+
+
+class PSISummaryBaseDeleteRow(BaseModel):
+    """Key identifying a ``psi_summary_base`` record to delete."""
+
+    session_id: UUID
+    sku_code: str
+    warehouse_name: str
+    channel: str
+
+
+class PSISummaryBaseDeleteRequest(BaseModel):
+    """Bulk delete request body for summary rows."""
+
+    rows: list[PSISummaryBaseDeleteRow]
 
 
 class PSIBaseImportResponse(BaseModel):
