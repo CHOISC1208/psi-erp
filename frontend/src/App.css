@@ -318,6 +318,172 @@ body {
   margin-bottom: 1.5rem;
 }
 
+.edits-page {
+  gap: 1.5rem;
+}
+
+.edits-page .page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.edits-page .page-header h1 {
+  margin: 0;
+}
+
+.edits-page .card {
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  box-shadow: none;
+  color: var(--text-on-panel);
+}
+
+.edits-page .card h2 {
+  margin-top: 0;
+  color: inherit;
+}
+
+.edits-page .form-field span {
+  font-weight: 600;
+}
+
+.edits-page .form-field input,
+.edits-page .form-field select {
+  background: var(--surface-input);
+  border: 1px solid var(--border-input, var(--border-default));
+  border-radius: 6px;
+  color: var(--text-primary);
+}
+
+.edits-page .form-field select {
+  min-width: 220px;
+}
+
+.edits-page .filter-form {
+  gap: 1rem;
+}
+
+.edits-page .filter-grid.single {
+  grid-template-columns: minmax(220px, 1fr);
+  max-width: 320px;
+}
+
+.edits-page .filter-actions button {
+  padding: 0.5rem 1.25rem;
+}
+
+.edits-page .table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.edits-page .table-toolbar-left {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.edits-page .table-toolbar-right {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.edits-page .table-wrapper {
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  overflow-x: auto;
+  background: var(--surface-table);
+}
+
+.edits-page .data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.edits-page .data-table th,
+.edits-page .data-table td {
+  border-bottom: 1px solid var(--border-default);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.edits-page .data-table th {
+  background: var(--surface-table-header);
+  color: var(--text-on-panel);
+}
+
+.edits-page .data-table tr:nth-of-type(2n) td {
+  background: var(--surface-table-zebra);
+}
+
+.edits-page .data-table input {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  background: var(--surface-input);
+  border: 1px solid var(--border-input, var(--border-default));
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.edits-page .row-edited td {
+  background: rgba(250, 204, 21, 0.16);
+}
+
+.edits-page .pagination {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.edits-page .pagination button {
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-default);
+  background: var(--button-neutral-bg);
+  color: var(--button-contrast-text);
+}
+
+.edits-page .pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edits-page .page-size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.edits-page .page-size select {
+  padding: 0.35rem 0.75rem;
+  background: var(--surface-input);
+  border: 1px solid var(--border-input, var(--border-default));
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.edits-page .status-message {
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.12);
+  color: #bbf7d0;
+}
+
+.edits-page .status-message.error {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.12);
+  color: #fecaca;
+}
+
+.edits-page .error-text {
+  color: #fca5a5;
+  font-weight: 600;
+}
+
 .card h2 {
   margin-top: 0;
   margin-bottom: 1rem;
