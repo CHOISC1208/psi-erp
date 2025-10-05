@@ -89,6 +89,12 @@ function ProtectedLayout() {
             </NavLink>
           </li>
           <li>
+            <NavLink to="/edits" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">✏️</span>
+              <span className="menu-label">Edits</span>
+            </NavLink>
+          </li>
+          <li>
             <NavLink
               to="/reallocation"
               className={({ isActive }) => (isActive ? "active" : undefined)}
@@ -97,26 +103,6 @@ function ProtectedLayout() {
                 ♻️
               </span>
               <span className="menu-label">Reallocation</span>
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/edits" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <span className="menu-icon" aria-hidden="true">✏️</span>
-              <span className="menu-label">Edits</span>
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/test-algo" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <span className="menu-icon" aria-hidden="true">🧪</span>
-              <span className="menu-label">Test_Algo</span>
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/docs" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <span className="menu-icon" aria-hidden="true">
-                📚
-              </span>
-              <span className="menu-label">Docs</span>
             </NavLink>
           </li>
           <li className={`has-children ${isMasterMenuOpen ? "open" : ""}`}>
@@ -129,7 +115,7 @@ function ProtectedLayout() {
               <span className="menu-icon" aria-hidden="true">
                 🧾
               </span>
-              <span className="menu-label">Masters</span>
+              <span className="menu-label">Master</span>
               <span className="submenu-icon">{isMasterMenuOpen ? "▲" : "▼"}</span>
             </button>
             <ul className="submenu">
@@ -148,6 +134,20 @@ function ProtectedLayout() {
                 </li>
               ))}
             </ul>
+          </li>
+          <li>
+            <NavLink to="/test-algo" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">🧪</span>
+              <span className="menu-label">tesatAlgo</span>
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/docs" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">
+                📚
+              </span>
+              <span className="menu-label">Docs</span>
+            </NavLink>
           </li>
         </ul>
       </nav>

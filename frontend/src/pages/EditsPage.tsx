@@ -138,7 +138,7 @@ export default function EditsPage() {
   const baseSessions = useMemo(
     () =>
       sessions.filter((session) => {
-        const mode = session.data_type ?? session.data_mode;
+        const mode = (session.data_type ?? session.data_mode)?.toLowerCase();
         return mode === "base";
       }),
     [sessions],
