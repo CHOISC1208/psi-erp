@@ -66,8 +66,8 @@ export const getMetricValue = (row: PsiRow | undefined, metric: MetricKey): numb
   switch (metric) {
     case "gap": {
       const stdStock = safeNumber(row.stdStock);
-      const stockClosing = safeNumber(row.stockClosing);
-      return stdStock - stockClosing;
+      const stockStart = safeNumber(row.stockStart);
+      return stdStock - stockStart;
     }
     case "gapAfter": {
       const gap = getMetricValue(row, "gap");
