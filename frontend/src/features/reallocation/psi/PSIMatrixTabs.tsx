@@ -34,7 +34,6 @@ type SkuSuggestion = {
 
 const MIN_SEARCH_LENGTH = 3;
 const MAX_SUGGESTION_RESULTS = 8;
-const MAX_RECENT_SKUS = 6;
 
 const copySkuCode = async (code: string) => {
   if (!code || typeof navigator === "undefined" || !navigator.clipboard) {
@@ -94,7 +93,6 @@ export function PSIMatrixTabs({
     return Math.min(Math.max(nextIndex, 0), normalizedSkuList.length - 1);
   });
   const [internalSkuSearch, setInternalSkuSearch] = useState("");
-  const [recentSkus, setRecentSkus] = useState<string[]>([]);
   const isSkuSearchControlled = typeof skuSearch === "string";
   const skuSearchValue = isSkuSearchControlled ? skuSearch : internalSkuSearch;
   const [isSuggestionsVisible, setSuggestionsVisible] = useState(false);
@@ -293,16 +291,6 @@ export function PSIMatrixTabs({
   const skuPositionLabel = safeSkuIndex === -1 ? "0 / 0" : `${safeSkuIndex + 1} / ${filteredSkuList.length}`;
 
   useEffect(() => {
-    if (!currentSku) {
-      return;
-    }
-    setRecentSkus((prev) => {
-      const next = [currentSku, ...prev.filter((item) => item !== currentSku)];
-      return next.slice(0, MAX_RECENT_SKUS);
-    });
-  }, [currentSku]);
-
-  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
         return;
@@ -385,37 +373,20 @@ export function PSIMatrixTabs({
       <div className="psi-matrix-toolbar">
         <div className="sku-navigation" role="region" aria-label="SKU navigation">
           <div className="sku-navigation-card">
-            <div className="sku-navigation-search-area">
-              <label className="sku-navigation-search">
-                <span>SKU検索</span>
-                <input
-                  type="search"
-                  value={skuSearchValue}
-                  placeholder="SKUコード・名称・カテゴリを検索"
-                  onChange={(event) => handleSkuSearchChange(event.target.value)}
-                  onFocus={() => setSuggestionsVisible(true)}
-                  onBlur={() => {
-                    // Delay hiding suggestions slightly to allow click handlers to run.
-                    setTimeout(() => setSuggestionsVisible(false), 120);
-                  }}
-                  aria-label="SKUコード・名称・カテゴリを検索"
-                />
-              </label>
-              {recentSkus.length > 0 && (
-                <div className="sku-recent-pills" aria-label="最近検索したSKU">
-                  {recentSkus.map((skuCode) => (
-                    <button
-                      key={skuCode}
-                      type="button"
-                      className="sku-recent-pill"
-                      onClick={() => setSkuIndexByCode(skuCode)}
-                      aria-label={`SKU ${skuCode} を表示`}
-                    >
-                      {skuCode}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="sku-search-row">
+              <input
+                type="search"
+                value={skuSearchValue}
+                placeholder="SKUコード・名称・カテゴリを検索"
+                onChange={(event) => handleSkuSearchChange(event.target.value)}
+                onFocus={() => setSuggestionsVisible(true)}
+                onBlur={() => {
+                  // Delay hiding suggestions slightly to allow click handlers to run.
+                  setTimeout(() => setSuggestionsVisible(false), 120);
+                }}
+                aria-label="SKUコード・名称・カテゴリを検索"
+                className="sku-search-input"
+              />
               {isSuggestionsVisible && skuSuggestions.length > 0 && (
                 <div className="sku-search-suggestions" role="listbox">
                   {skuSuggestions.map((suggestion) => (
@@ -434,45 +405,49 @@ export function PSIMatrixTabs({
                 </div>
               )}
             </div>
-            <div className="sku-navigation-summary">
-              <div className="sku-navigation-header">
-                <div className="sku-navigation-title" role="status" aria-live="polite">
-                  <span className="sku-code-badge" aria-label="SKUコード">
-                    <code>{currentSku ?? "—"}</code>
-                    {currentSku && (
-                      <button
-                        type="button"
-                        className="sku-copy-button"
-                        onClick={() => copySkuCode(currentSku)}
-                        aria-label={`${currentSku} をコピー`}
-                      >
-                        📋
-                      </button>
-                    )}
-                  </span>
-                  <span className="sku-title-text">{skuNameDisplay}</span>
-                </div>
-                <span className="sku-navigation-meta">{skuPositionLabel}</span>
+            <div className="sku-summary-row">
+              <div className="sku-summary-info" role="status" aria-live="polite">
+                <span className="sku-code-badge" aria-label="SKUコード">
+                  <code>{currentSku ?? "—"}</code>
+                  {currentSku && (
+                    <button
+                      type="button"
+                      className="sku-copy-button"
+                      onClick={() => copySkuCode(currentSku)}
+                      aria-label={`${currentSku} をコピー`}
+                    >
+                      📋
+                    </button>
+                  )}
+                </span>
+                <span className="sku-summary-text">
+                  <span className="sku-name-text">{skuNameDisplay}</span>
+                  {categoryLabel !== "—" && (
+                    <span className="sku-category-text">• {categoryLabel}</span>
+                  )}
+                </span>
               </div>
-              <div className="sku-navigation-categories">{categoryLabel}</div>
-            </div>
-            <div className="sku-navigation-actions">
-              <button
-                type="button"
-                onClick={handlePrevSku}
-                disabled={safeSkuIndex <= 0}
-                aria-label="前のSKUを表示"
-              >
-                ‹ 前のSKU
-              </button>
-              <button
-                type="button"
-                onClick={handleNextSku}
-                disabled={safeSkuIndex === -1 || safeSkuIndex >= filteredSkuList.length - 1}
-                aria-label="次のSKUを表示"
-              >
-                次のSKU ›
-              </button>
+              <div className="sku-navigation-actions">
+                <button
+                  type="button"
+                  onClick={handlePrevSku}
+                  disabled={safeSkuIndex <= 0}
+                  aria-label="前のSKUを表示"
+                >
+                  ‹ 前のSKU
+                </button>
+                <span className="sku-position" aria-live="polite">
+                  {skuPositionLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleNextSku}
+                  disabled={safeSkuIndex === -1 || safeSkuIndex >= filteredSkuList.length - 1}
+                  aria-label="次のSKUを表示"
+                >
+                  次のSKU ›
+                </button>
+              </div>
             </div>
           </div>
         </div>
