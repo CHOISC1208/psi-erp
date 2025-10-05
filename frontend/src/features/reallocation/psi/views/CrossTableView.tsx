@@ -1,211 +1,268 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import DataGrid, { type Column, type ColumnGroupDescriptor } from "react-data-grid";
 
 import type { MetricDefinition, PsiRow } from "../types";
 import {
-  buildColumnGroups,
-  formatMetricValue,
-  getMetricValue,
-  makeColumnKey,
-  safeNumber,
-} from "../utils";
+  buildChannelFirstGroups,
+  buildColumnIdList,
+  buildMetricRows,
+  buildWarehouseFirstGroups,
+  makeCollapsedGroupColumn,
+  makeValueColumn,
+  type MatrixGroupMeta,
+  type MetricRowData,
+} from "../gridUtils";
+import { PSI_GRID_CONFIG, type RowDensityMode } from "../gridLayoutConfig";
+import MatrixColumnVisibilityPanel from "../components/MatrixColumnVisibilityPanel";
+import { formatMetricValue } from "../utils";
 
 interface CrossTableViewProps {
   rows: PsiRow[];
   metrics: MetricDefinition[];
   orientation?: "warehouse-first" | "channel-first";
+  compactMode: boolean;
+  rowDensity: RowDensityMode;
 }
 
-interface HeaderColumn {
-  key: string;
-  warehouse: string;
-  channel: string;
-  label: string;
-  className: string;
-}
+const METRIC_COLUMN_KEY = "metric";
+const TOTAL_COLUMN_KEY = "total";
 
-interface HeaderGroup {
-  label: string;
-  className: string;
-  columns: HeaderColumn[];
-}
-
-const getValueClassName = (value: number | null) => {
-  if (value === null || value === 0) {
-    return "value-neutral";
-  }
-  if (value > 0) {
-    return "value-positive";
-  }
-  return "value-negative";
-};
-
-const buildHeaderGroups = (rows: PsiRow[], orientation: Required<CrossTableViewProps>["orientation"]): HeaderGroup[] => {
+const buildGroupMeta = (
+  rows: PsiRow[],
+  orientation: Required<CrossTableViewProps>["orientation"],
+): MatrixGroupMeta[] => {
   if (orientation === "channel-first") {
-    const map = new Map<string, Set<string>>();
-    rows.forEach((row) => {
-      const channel = row.channel || "-";
-      const warehouse = row.warehouse || "-";
-      const set = map.get(channel) ?? new Set<string>();
-      set.add(warehouse);
-      map.set(channel, set);
-    });
-    return Array.from(map.entries())
-      .map(([channel, warehouses]) => ({
-        label: channel,
-        className: "channel-header",
-        columns: Array.from(warehouses)
-          .sort((a, b) => a.localeCompare(b))
-          .map<HeaderColumn>((warehouse) => ({
-            key: makeColumnKey(warehouse, channel),
-            warehouse,
-            channel,
-            label: warehouse,
-            className: "warehouse-header",
-          })),
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+    return buildChannelFirstGroups(rows);
   }
-
-  return buildColumnGroups(rows).map<HeaderGroup>((group) => ({
-    label: group.warehouse,
-    className: "warehouse-header",
-    columns: group.channels.map<HeaderColumn>((channel) => ({
-      key: makeColumnKey(group.warehouse, channel),
-      warehouse: group.warehouse,
-      channel,
-      label: channel,
-      className: "channel-header",
-    })),
-  }));
+  return buildWarehouseFirstGroups(rows);
 };
 
-export default function CrossTableView({ rows, metrics, orientation = "warehouse-first" }: CrossTableViewProps) {
-  const headerGroups = useMemo(() => buildHeaderGroups(rows, orientation), [rows, orientation]);
-  const headerColumns = useMemo(
-    () => headerGroups.flatMap((group) => group.columns),
-    [headerGroups],
-  );
-  const rowMap = useMemo(() => {
-    const map = new Map<string, PsiRow>();
-    rows.forEach((row) => {
-      map.set(makeColumnKey(row.warehouse, row.channel), row);
-    });
-    return map;
-  }, [rows]);
+const buildMetricColumn = (compactMode: boolean): Column<MetricRowData> => ({
+  key: METRIC_COLUMN_KEY,
+  name: "Metric",
+  width: PSI_GRID_CONFIG.widths.metric,
+  frozen: true,
+  headerCellClass: "psi-matrix-header psi-matrix-header--metric",
+  className: compactMode
+    ? "psi-matrix-cell psi-matrix-cell--metric psi-matrix-cell--compact"
+    : "psi-matrix-cell psi-matrix-cell--metric",
+  renderCell: ({ row }) => {
+    const label = compactMode && row.metricShortLabel ? row.metricShortLabel : row.metricLabel;
+    const tooltip = row.metricTooltip ?? row.metricLabel;
+    return (
+      <span className="psi-matrix-metric-label" title={tooltip}>
+        {label}
+      </span>
+    );
+  },
+});
 
-  if (headerColumns.length === 0) {
+const buildTotalColumn = (): Column<MetricRowData> => ({
+  key: TOTAL_COLUMN_KEY,
+  name: "Total",
+  width: PSI_GRID_CONFIG.widths.total,
+  frozen: true,
+  headerCellClass: "psi-matrix-header psi-matrix-header--total",
+  className: "psi-matrix-cell psi-matrix-cell--total",
+  renderCell: ({ row }) => {
+    const value = row.totalValue;
+    const formatted = formatMetricValue(value);
+    const trendClass = value === 0 ? "value-neutral" : value > 0 ? "value-positive" : "value-negative";
+    return <span className={`psi-matrix-value ${trendClass}`}>{formatted}</span>;
+  },
+});
+
+export default function CrossTableView({
+  rows,
+  metrics,
+  orientation = "warehouse-first",
+  compactMode,
+  rowDensity,
+}: CrossTableViewProps) {
+  const columnGroups = useMemo(() => buildGroupMeta(rows, orientation), [rows, orientation]);
+  const columnIds = useMemo(() => buildColumnIdList(columnGroups), [columnGroups]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => new Set(columnIds));
+
+  useEffect(() => {
+    setVisibleColumns((previous) => {
+      const next = new Set(previous);
+      columnIds.forEach((id) => {
+        next.add(id);
+      });
+      Array.from(next).forEach((id) => {
+        if (!columnIds.includes(id)) {
+          next.delete(id);
+        }
+      });
+      return next;
+    });
+  }, [columnIds]);
+
+  useEffect(() => {
+    setCollapsedGroups((previous) => {
+      const next = new Set<string>();
+      columnGroups.forEach((group) => {
+        if (previous.has(group.id)) {
+          next.add(group.id);
+        }
+      });
+      return next;
+    });
+  }, [columnGroups]);
+
+  const metricRows = useMemo(
+    () => buildMetricRows(rows, metrics, columnIds, columnGroups),
+    [rows, metrics, columnIds, columnGroups],
+  );
+
+  const metricColumn = useMemo(() => buildMetricColumn(compactMode), [compactMode]);
+  const totalColumn = useMemo(() => buildTotalColumn(), []);
+
+  const valueColumns = useMemo(() => {
+    const columns: Column<MetricRowData>[] = [];
+    const groupDescriptors: ColumnGroupDescriptor[] = [];
+
+    columnGroups.forEach((group) => {
+      const groupColumnKeys: string[] = [];
+      if (collapsedGroups.has(group.id)) {
+        const collapsedColumn = makeCollapsedGroupColumn(group, { compactMode });
+        columns.push({ ...collapsedColumn, className: "psi-matrix-value-cell psi-matrix-value-cell--collapsed" });
+        groupColumnKeys.push(collapsedColumn.key);
+      } else {
+        group.columns.forEach((meta) => {
+          if (!visibleColumns.has(meta.id)) {
+            return;
+          }
+          const column = makeValueColumn(meta, {
+            compactMode,
+            className: compactMode
+              ? "psi-matrix-value-cell psi-matrix-value-cell--compact"
+              : "psi-matrix-value-cell",
+          });
+          columns.push(column);
+          groupColumnKeys.push(column.key);
+        });
+        if (groupColumnKeys.length === 0) {
+          const placeholder = makeCollapsedGroupColumn(group, { compactMode });
+          const placeholderKey = `${placeholder.key}::placeholder`;
+          columns.push({
+            ...placeholder,
+            key: placeholderKey,
+            renderCell: () => <span className="psi-matrix-value value-neutral">—</span>,
+          });
+          groupColumnKeys.push(placeholderKey);
+        }
+      }
+
+      if (groupColumnKeys.length > 0) {
+        groupDescriptors.push({
+          id: group.id,
+          label: compactMode ? group.shortLabel : group.fullLabel,
+          columnKeys: groupColumnKeys,
+          collapsed: collapsedGroups.has(group.id),
+          tooltip: group.tooltip,
+        });
+      }
+    });
+
+    return { columns, groupDescriptors } as const;
+  }, [columnGroups, collapsedGroups, visibleColumns, compactMode]);
+
+  const columns = useMemo(
+    () => [metricColumn, totalColumn, ...valueColumns.columns],
+    [metricColumn, totalColumn, valueColumns.columns],
+  );
+
+  const columnGroupDescriptors = valueColumns.groupDescriptors;
+
+  const handleToggleGroup = useCallback((groupId: string) => {
+    setCollapsedGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleGroupVisibility = useCallback((groupId: string, visible: boolean) => {
+    const group = columnGroups.find((item) => item.id === groupId);
+    if (!group) {
+      return;
+    }
+    setVisibleColumns((previous) => {
+      const next = new Set(previous);
+      group.columns.forEach((column) => {
+        if (visible) {
+          next.add(column.id);
+        } else {
+          next.delete(column.id);
+        }
+      });
+      return next;
+    });
+  }, [columnGroups]);
+
+  const handleToggleColumnVisibility = useCallback((columnId: string, visible: boolean) => {
+    setVisibleColumns((previous) => {
+      const next = new Set(previous);
+      if (visible) {
+        next.add(columnId);
+      } else {
+        next.delete(columnId);
+      }
+      return next;
+    });
+  }, []);
+
+  if (columns.length <= 2) {
     return <p className="psi-matrix-empty">No rows match the current filters.</p>;
   }
 
-  const totalsByMetric = useMemo(() => {
-    const totals = new Map<string, number>();
-    metrics.forEach((metric) => {
-      const total = headerColumns.reduce((sum, column) => {
-        const value = getMetricValue(rowMap.get(column.key), metric.key);
-        return sum + safeNumber(value);
-      }, 0);
-      totals.set(metric.key, total);
-    });
-    return totals;
-  }, [headerColumns, metrics, rowMap]);
+  const gridClassName = [
+    "psi-matrix-grid",
+    compactMode ? "psi-matrix-grid--compact" : null,
+    rowDensity === "fixed" ? "psi-matrix-grid--fixed" : "psi-matrix-grid--auto",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  const getMetricLabelContent = (metricKey: MetricDefinition["key"], label: string) => {
-    if (metricKey === "gap") {
-      return (
-        <span className="metric-label-text" title="Gap = Stock @ Start − Std Stock">
-          {label}
-          <span className="metric-info" aria-hidden="true">
-            i
-          </span>
-        </span>
-      );
-    }
-    if (metricKey === "gapAfter") {
-      return (
-        <span className="metric-label-text" title="Gap After = Gap + Move">
-          {label}
-          <span className="metric-info" aria-hidden="true">
-            i
-          </span>
-        </span>
-      );
-    }
-    return label;
-  };
+  const fixedRowHeight = rowDensity === "fixed"
+    ? compactMode
+      ? PSI_GRID_CONFIG.compact.rowHeight
+      : PSI_GRID_CONFIG.defaultRowHeight
+    : undefined;
 
-  const renderNumberCell = (value: number | null) => {
-    if (value === null) {
-      return <span className="psi-matrix-value value-neutral">-</span>;
-    }
-    const className = `psi-matrix-value ${getValueClassName(value)}`;
-    const isNegative = value < 0;
-    const formatted = formatMetricValue(Math.abs(value));
-    return (
-      <span className={className}>
-        {isNegative ? (
-          <>
-            <span className="visually-hidden">マイナス</span>
-            <span aria-hidden="true" className="value-prefix">
-              🔺
-            </span>
-          </>
-        ) : null}
-        <span className="value-number">{formatted}</span>
-      </span>
-    );
-  };
-
-  const renderValue = (metricKey: MetricDefinition["key"], columnKey: string) => {
-    const value = getMetricValue(rowMap.get(columnKey), metricKey);
-    return renderNumberCell(value);
-  };
-
-  const renderTotalValue = (value: number) => renderNumberCell(value);
+  const gridStyle: CSSProperties | undefined = fixedRowHeight
+    ? ({ "--psi-matrix-row-height": `${fixedRowHeight}px` } as CSSProperties)
+    : undefined;
 
   return (
-    <div className="psi-matrix-scroll">
-      <table className="psi-matrix-table">
-        <thead>
-          <tr>
-            <th rowSpan={2} className="metric-column">
-              Metric
-            </th>
-            <th rowSpan={2} className="total-column">
-              Total
-            </th>
-            {headerGroups.map((group) => (
-              <th key={group.label} colSpan={group.columns.length} className={group.className}>
-                {group.label}
-              </th>
-            ))}
-          </tr>
-          <tr>
-            {headerGroups.flatMap((group) =>
-              group.columns.map((column) => (
-                <th key={column.key} className={column.className}>
-                  {column.label}
-                </th>
-              )),
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {metrics.map((metric) => {
-            const totalValue = totalsByMetric.get(metric.key) ?? 0;
-            return (
-              <tr key={metric.key}>
-                <th scope="row" className="metric-label">
-                  {getMetricLabelContent(metric.key, metric.label)}
-                </th>
-                <td className="total-cell">{renderTotalValue(totalValue)}</td>
-                {headerColumns.map((column) => (
-                  <td key={column.key}>{renderValue(metric.key, column.key)}</td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="psi-matrix-view">
+      <MatrixColumnVisibilityPanel
+        groups={columnGroups}
+        collapsedGroups={collapsedGroups}
+        visibleColumns={visibleColumns}
+        onToggleGroupCollapse={handleToggleGroup}
+        onToggleGroupVisibility={handleToggleGroupVisibility}
+        onToggleColumnVisibility={handleToggleColumnVisibility}
+      />
+      <div className={gridClassName} style={gridStyle}>
+        <DataGrid
+          columns={columns}
+          rows={metricRows}
+          rowKeyGetter={(row) => row.id}
+          className="psi-matrix-rdg"
+          columnGroups={columnGroupDescriptors}
+          onToggleColumnGroup={handleToggleGroup}
+          headerRowHeight={compactMode ? 36 : 44}
+          groupHeaderRowHeight={compactMode ? 32 : 40}
+          defaultColumnOptions={{ width: PSI_GRID_CONFIG.widths.value }}
+        />
+      </div>
     </div>
   );
 }

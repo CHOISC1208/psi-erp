@@ -6,6 +6,7 @@ declare module "react-data-grid" {
     RowsChangeData,
     CellClickArgs,
     DataGridProps,
+    ColumnGroupDescriptor,
   } from "../vendor/react-data-grid/index.d.ts";
 
   const DataGrid: typeof import("../vendor/react-data-grid/index.d.ts")['default'];

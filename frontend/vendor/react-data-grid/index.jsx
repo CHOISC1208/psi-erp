@@ -31,6 +31,10 @@ function DataGrid({
   defaultColumnOptions,
   viewportRef,
   rowClassName,
+  columnGroups,
+  onToggleColumnGroup,
+  headerRowHeight,
+  groupHeaderRowHeight,
 }) {
   const columnWidth = defaultColumnOptions?.width ?? 140;
   const columnsWithWidth = useMemo(
@@ -47,6 +51,38 @@ function DataGrid({
     [columnsWithWidth]
   );
 
+  const columnIndexMap = useMemo(() => {
+    const map = new Map();
+    columnsWithWidth.forEach((column, index) => {
+      map.set(column.key, index);
+    });
+    return map;
+  }, [columnsWithWidth]);
+
+  const computedColumnGroups = useMemo(() => {
+    if (!columnGroups || columnGroups.length === 0) {
+      return [];
+    }
+    return columnGroups
+      .map((group) => {
+        const indices = group.columnKeys
+          .map((key) => columnIndexMap.get(key))
+          .filter((value) => typeof value === "number")
+          .sort((a, b) => a - b);
+        if (indices.length === 0) {
+          return null;
+        }
+        const startIndex = indices[0];
+        const span = indices.length;
+        return {
+          ...group,
+          startIndex,
+          span,
+        };
+      })
+      .filter(Boolean);
+  }, [columnGroups, columnIndexMap]);
+
   const frozenOffsets = useMemo(() => {
     let offset = 0;
     return columnsWithWidth.map((column) => {
@@ -62,6 +98,7 @@ function DataGrid({
   const [internalRows, setInternalRows] = useState(rows);
   const [editing, setEditing] = useState(null);
   const headerInnerRef = useRef(null);
+  const headerGroupRef = useRef(null);
   const bodyRef = useRef(null);
 
   useEffect(() => {
@@ -79,12 +116,18 @@ function DataGrid({
   useEffect(() => {
     const body = bodyRef.current;
     const headerInner = headerInnerRef.current;
-    if (!body || !headerInner) {
+    const headerGroupsEl = headerGroupRef.current;
+    if (!body || (!headerInner && !headerGroupsEl)) {
       return undefined;
     }
 
     const handleScroll = () => {
-      headerInner.style.transform = `translateX(${-body.scrollLeft}px)`;
+      if (headerInner) {
+        headerInner.style.transform = `translateX(${-body.scrollLeft}px)`;
+      }
+      if (headerGroupsEl) {
+        headerGroupsEl.style.transform = `translateX(${-body.scrollLeft}px)`;
+      }
     };
 
     body.addEventListener("scroll", handleScroll, { passive: true });
@@ -93,7 +136,7 @@ function DataGrid({
     return () => {
       body.removeEventListener("scroll", handleScroll);
     };
-  }, [templateColumns]);
+  }, [templateColumns, computedColumnGroups.length]);
 
   const startEditing = (rowIdx, column, columnIdx) => {
     if (!column.renderEditCell) {
@@ -174,7 +217,46 @@ function DataGrid({
   return (
     <div className={clsx("rdg", className)} style={style}>
       <div className="rdg-header">
-        <div className="rdg-header-row" ref={headerInnerRef} style={{ gridTemplateColumns: templateColumns }}>
+        {computedColumnGroups.length > 0 ? (
+          <div
+            className="rdg-header-row rdg-header-row--groups"
+            ref={headerGroupRef}
+            style={{
+              gridTemplateColumns: templateColumns,
+              height: groupHeaderRowHeight ?? "auto",
+            }}
+          >
+            {computedColumnGroups.map((group) => {
+              const gridColumn = `${group.startIndex + 1} / span ${group.span}`;
+              const handleToggle = () => {
+                if (onToggleColumnGroup) {
+                  onToggleColumnGroup(group.id);
+                }
+              };
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  className="rdg-header-group"
+                  style={{ gridColumn }}
+                  onClick={handleToggle}
+                  title={group.tooltip ?? group.label}
+                  aria-expanded={group.collapsed ? "false" : "true"}
+                >
+                  <span className="rdg-header-group__label">{group.label}</span>
+                  <span className="rdg-header-group__indicator" aria-hidden="true">
+                    {group.collapsed ? "▸" : "▾"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <div
+          className="rdg-header-row"
+          ref={headerInnerRef}
+          style={{ gridTemplateColumns: templateColumns, height: headerRowHeight ?? "auto" }}
+        >
           {columnsWithWidth.map((column, columnIdx) => {
             const frozenOffset = frozenOffsets[columnIdx];
             return (

@@ -53,7 +53,19 @@ export interface DataGridProps<RowType> {
   };
   viewportRef?: React.Ref<HTMLDivElement>;
   rowClassName?: (row: RowType, rowIdx: number) => string | undefined;
+  columnGroups?: readonly ColumnGroupDescriptor[];
+  onToggleColumnGroup?: (groupId: string) => void;
+  headerRowHeight?: number;
+  groupHeaderRowHeight?: number;
 }
 
 export default function DataGrid<RowType>(props: DataGridProps<RowType>): JSX.Element;
 export { DataGrid };
+
+export interface ColumnGroupDescriptor {
+  id: string;
+  label: string;
+  columnKeys: string[];
+  collapsed?: boolean;
+  tooltip?: string;
+}

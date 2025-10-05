@@ -22,6 +22,30 @@
   display: grid;
 }
 
+.rdg-header-row--groups {
+  border-bottom: 1px solid #d0d7de;
+}
+
+.rdg-header-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-right: 1px solid #d0d7de;
+  box-sizing: border-box;
+  color: inherit;
+}
+
+.rdg-header-group__indicator {
+  font-size: 0.85em;
+}
+
 .rdg-header-cell {
   padding: 8px 12px;
   font-weight: 600;

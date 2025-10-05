@@ -7,6 +7,7 @@ import BarsView from "./views/BarsView";
 import KpiView from "./views/KpiView";
 import type { PsiRow } from "./types";
 import { METRIC_DEFINITIONS, formatMetricValue, safeNumber } from "./utils";
+import { createDefaultGridState, PSI_GRID_CONFIG, type RowDensityMode } from "./gridLayoutConfig";
 import "../../../styles/psi-matrix.css";
 
 const TAB_CONFIG = [
@@ -98,6 +99,7 @@ export function PSIMatrixTabs({
   const isSkuSearchControlled = typeof skuSearch === "string";
   const skuSearchValue = isSkuSearchControlled ? skuSearch : internalSkuSearch;
   const [isSuggestionsVisible, setSuggestionsVisible] = useState(false);
+  const [gridState, setGridState] = useState(createDefaultGridState);
 
   const handleSkuSearchChange = (value: string) => {
     if (onSkuSearchChange) {
@@ -106,6 +108,20 @@ export function PSIMatrixTabs({
     if (!isSkuSearchControlled) {
       setInternalSkuSearch(value);
     }
+  };
+
+  const handleToggleCompact = () => {
+    setGridState((previous) => ({
+      ...previous,
+      compactMode: !previous.compactMode,
+    }));
+  };
+
+  const handleRowDensityChange = (value: RowDensityMode) => {
+    setGridState((previous) => ({
+      ...previous,
+      rowDensity: value,
+    }));
   };
 
   const skuMetadataMap = useMemo(() => {
@@ -358,16 +374,35 @@ export function PSIMatrixTabs({
         break;
       case "cross":
         tabContent = (
-          <CrossTableView rows={rowsForSku} metrics={METRIC_DEFINITIONS} orientation="warehouse-first" />
+          <CrossTableView
+            rows={rowsForSku}
+            metrics={METRIC_DEFINITIONS}
+            orientation="warehouse-first"
+            compactMode={gridState.compactMode}
+            rowDensity={gridState.rowDensity}
+          />
         );
         break;
       case "cross2":
         tabContent = (
-          <CrossTableView rows={rowsForSku} metrics={METRIC_DEFINITIONS} orientation="channel-first" />
+          <CrossTableView
+            rows={rowsForSku}
+            metrics={METRIC_DEFINITIONS}
+            orientation="channel-first"
+            compactMode={gridState.compactMode}
+            rowDensity={gridState.rowDensity}
+          />
         );
         break;
       case "heatmap":
-        tabContent = <HeatmapView rows={rowsForSku} metrics={METRIC_DEFINITIONS} />;
+        tabContent = (
+          <HeatmapView
+            rows={rowsForSku}
+            metrics={METRIC_DEFINITIONS}
+            compactMode={gridState.compactMode}
+            rowDensity={gridState.rowDensity}
+          />
+        );
         break;
       case "bars":
         tabContent = <BarsView rows={rowsForSku} />;
@@ -462,6 +497,22 @@ export function PSIMatrixTabs({
               </div>
             </div>
           </div>
+        </div>
+        <div className="psi-matrix-grid-controls" role="group" aria-label="グリッド表示設定">
+          <label className="psi-matrix-grid-toggle">
+            <input type="checkbox" checked={gridState.compactMode} onChange={handleToggleCompact} />
+            <span>コンパクトモード</span>
+          </label>
+          <label className="psi-matrix-grid-density">
+            <span>行の高さ</span>
+            <select
+              value={gridState.rowDensity}
+              onChange={(event) => handleRowDensityChange(event.target.value as RowDensityMode)}
+            >
+              <option value="auto">自動</option>
+              <option value="fixed">固定 ({PSI_GRID_CONFIG.compact.rowHeight}px)</option>
+            </select>
+          </label>
         </div>
       </div>
       <div className="psi-matrix-tablist" role="tablist" aria-label="PSI matrix views">

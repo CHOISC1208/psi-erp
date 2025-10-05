@@ -93,6 +93,15 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
 
    The Vite dev server runs on <http://localhost:5173>. If you open a second instance (e.g. Vite preview) it usually listens on <http://localhost:5174>. Ensure both origins are present in `ALLOWED_ORIGINS` so that cookies can be shared when using `credentials: 'include'`. When exposing the dev server over your LAN (e.g. <http://192.168.11.64:5174>), append that host to `ALLOWED_ORIGINS` as well.
 
+## PSI matrix grid controls
+
+The PSI Matrix (Reallocation › PSI Matrix tabs) now ships with a fixed-width, scrollable grid that keeps the **Metric** and **Total** columns pinned on the left and prevents value columns from auto-expanding. Use the controls above the grid to tune the display:
+
+- **Compact mode** toggles between the regular layout and a condensed view that shortens headers, applies ellipsis with tooltips, and reduces line-height for dense, multi-metric comparisons.
+- **Row height** can be left on _Auto_ (cells grow with wrapped content) or switched to _Fixed_ (28 px in compact mode) for a predictable, spreadsheet-like layout across all PSI Matrix tabs.
+- The **column visibility panel** lets you expand/collapse each warehouse/channel group and toggle whole groups or individual channels on/off. Group headers in the grid act as shortcuts for collapse/expand, and collapsed groups show a single aggregated column so totals remain visible.
+- All numeric cells are right-aligned with tabular figures, tooltips expose the full warehouse × channel label, and totals use a dedicated sticky column for quick scanning.
+
 ## Authentication API quick check
 
 1. **Login**
