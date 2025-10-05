@@ -146,7 +146,7 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
           <>
             <span className="visually-hidden">マイナス</span>
             <span aria-hidden="true" className="value-prefix">
-              ➖
+              🔺
             </span>
           </>
         ) : null}
