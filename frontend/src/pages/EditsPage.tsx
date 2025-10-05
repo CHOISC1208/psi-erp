@@ -138,23 +138,32 @@ export default function EditsPage() {
   const baseSessions = useMemo(
     () =>
       sessions.filter((session) => {
-        const mode = (session.data_type ?? session.data_mode)?.toLowerCase();
+        const mode = (session.data_mode ?? session.data_type)?.toLowerCase();
         return mode === "base";
       }),
     [sessions],
   );
 
   const filteredSessions = useMemo(() => {
+    const source = baseSessions.length > 0 ? baseSessions : sessions;
     const term = sessionSearch.trim().toLowerCase();
     if (!term) {
-      return baseSessions;
+      return source;
     }
-    return baseSessions.filter((session) =>
+    return source.filter((session) =>
       [session.title, session.description]
         .filter(Boolean)
         .some((value) => value?.toLowerCase().includes(term)),
     );
-  }, [baseSessions, sessionSearch]);
+  }, [baseSessions, sessions, sessionSearch]);
+
+  const showNoSessions =
+    !sessionsQuery.isLoading && !sessionsQuery.isError && sessions.length === 0;
+  const showMissingBaseSessionHint =
+    !sessionsQuery.isLoading &&
+    !sessionsQuery.isError &&
+    sessions.length > 0 &&
+    baseSessions.length === 0;
 
   useEffect(() => {
     if (filteredSessions.length === 0) {
@@ -466,6 +475,20 @@ export default function EditsPage() {
             </select>
           </label>
         </div>
+        {sessionsQuery.isLoading && (
+          <p className="session-hint">セッションを読み込み中です…</p>
+        )}
+        {sessionsQuery.isError && (
+          <p className="session-hint session-hint-error">セッションの取得に失敗しました。</p>
+        )}
+        {showNoSessions && (
+          <p className="session-hint">利用可能なセッションがまだありません。</p>
+        )}
+        {showMissingBaseSessionHint && (
+          <p className="session-hint">
+            Baseモードのセッションがまだありません。PSI baseデータを編集するには base モードのセッションを作成してください。
+          </p>
+        )}
       </section>
 
       {selectedSessionId && datasetsQuery.isLoading && (

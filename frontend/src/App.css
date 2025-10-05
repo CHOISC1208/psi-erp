@@ -360,6 +360,21 @@ body {
   min-width: 220px;
 }
 
+.edits-page .session-hint {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary, var(--text-primary));
+  font-size: 0.95rem;
+}
+
+.edits-page .session-hint + .session-hint {
+  margin-top: 0.35rem;
+}
+
+.edits-page .session-hint-error {
+  color: #fca5a5;
+  font-weight: 600;
+}
+
 .edits-page .filter-form {
   gap: 1rem;
 }
