@@ -59,6 +59,31 @@ class SessionRead(SessionBase):
     model_config = {"from_attributes": True}
 
 
+class DatasetColumnMetadata(BaseModel):
+    """Describe a single column within an editable dataset."""
+
+    name: str
+    label: str
+    type: Literal["string", "number", "date"] = "string"
+    editable: bool = True
+    required: bool = False
+    max_length: int | None = None
+    description: str | None = None
+
+
+class SessionDatasetMetadata(BaseModel):
+    """Metadata describing a dataset that can be edited per session."""
+
+    name: str
+    label: str
+    description: str | None = None
+    primary_key: list[str]
+    columns: list[DatasetColumnMetadata]
+    read_only_columns: list[str] = Field(default_factory=list)
+    numeric_columns: list[str] = Field(default_factory=list)
+    date_columns: list[str] = Field(default_factory=list)
+
+
 class DailyPSI(BaseModel):
     """Aggregated PSI metrics for a single day."""
 
@@ -153,6 +178,102 @@ class PSIEditRead(BaseModel):
     updated_by_username: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class PSIBaseRecord(BaseModel):
+    """Row within the ``psi_base`` table scoped to a session."""
+
+    session_id: UUID
+    sku_code: str
+    sku_name: str | None = None
+    category_1: str | None = None
+    category_2: str | None = None
+    category_3: str | None = None
+    fw_rank: str | None = None
+    ss_rank: str | None = None
+    warehouse_name: str
+    channel: str
+    date: date
+    stock_at_anchor: Decimal | None = None
+    inbound_qty: Decimal | None = None
+    outbound_qty: Decimal | None = None
+    net_flow: Decimal | None = None
+    stock_closing: Decimal | None = None
+    safety_stock: Decimal | None = None
+    movable_stock: Decimal | None = None
+    stdstock: Decimal | None = None
+    gap: Decimal | None = None
+    updated_at: datetime | None = None
+    updated_by: UUID | None = None
+    updated_by_username: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PSIBasePage(BaseModel):
+    """Paginated result set for ``psi_base`` rows."""
+
+    page: int
+    size: int
+    total: int
+    rows: list[PSIBaseRecord]
+
+
+class PSIBasePatchRow(BaseModel):
+    """Payload describing updates for ``psi_base`` rows."""
+
+    session_id: UUID
+    sku_code: str
+    warehouse_name: str
+    channel: str
+    date: date
+    sku_name: str | None = None
+    category_1: str | None = None
+    category_2: str | None = None
+    category_3: str | None = None
+    fw_rank: str | None = Field(default=None, max_length=2)
+    ss_rank: str | None = Field(default=None, max_length=2)
+    stock_at_anchor: Decimal | None = None
+    inbound_qty: Decimal | None = None
+    outbound_qty: Decimal | None = None
+    net_flow: Decimal | None = None
+    stock_closing: Decimal | None = None
+    safety_stock: Decimal | None = None
+    movable_stock: Decimal | None = None
+    stdstock: Decimal | None = None
+    gap: Decimal | None = None
+    updated_at: datetime | None = None
+
+
+class PSIBasePatchRequest(BaseModel):
+    """Bulk patch request body."""
+
+    rows: list[PSIBasePatchRow]
+
+
+class PSIBaseDeleteRow(BaseModel):
+    """Key identifying a ``psi_base`` record to delete."""
+
+    session_id: UUID
+    sku_code: str
+    warehouse_name: str
+    channel: str
+    date: date
+
+
+class PSIBaseDeleteRequest(BaseModel):
+    """Bulk delete request body."""
+
+    rows: list[PSIBaseDeleteRow]
+
+
+class PSIBaseImportResponse(BaseModel):
+    """Summary returned after importing ``psi_base`` rows."""
+
+    added: int
+    updated: int
+    deleted: int
+    warnings: list[str] = Field(default_factory=list)
 
 
 class PSISessionSummary(BaseModel):

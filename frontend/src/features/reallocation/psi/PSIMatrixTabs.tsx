@@ -56,6 +56,7 @@ interface PSIMatrixTabsProps {
   skuList: string[];
   initialSkuIndex?: number;
   onSkuChange?: (index: number) => void;
+  onSkuCodeChange?: (code: string | null) => void;
   skuSearch?: string;
   onSkuSearchChange?: (value: string) => void;
 }
@@ -65,6 +66,7 @@ export function PSIMatrixTabs({
   skuList,
   initialSkuIndex,
   onSkuChange,
+  onSkuCodeChange,
   skuSearch,
   onSkuSearchChange,
 }: PSIMatrixTabsProps) {
@@ -269,6 +271,16 @@ export function PSIMatrixTabs({
       onSkuChange(originalIndex);
     }
   }, [filteredSkuList, normalizedSkuList, onSkuChange, skuIndex]);
+
+  useEffect(() => {
+    if (onSkuCodeChange) {
+      const currentSkuCode =
+        filteredSkuList.length > 0
+          ? filteredSkuList[Math.min(Math.max(skuIndex, 0), filteredSkuList.length - 1)]
+          : null;
+      onSkuCodeChange(currentSkuCode);
+    }
+  }, [filteredSkuList, onSkuCodeChange, skuIndex]);
 
   const safeSkuIndex =
     filteredSkuList.length === 0 ? -1 : Math.min(Math.max(skuIndex, 0), filteredSkuList.length - 1);
