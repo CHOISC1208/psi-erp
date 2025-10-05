@@ -158,6 +158,25 @@ DATASET_DEFINITIONS: dict[str, DatasetDefinition] = {
 }
 
 
+def _session_supports_dataset(session: models.Session, dataset: str) -> bool:
+    """Return whether the provided session can work with the dataset."""
+
+    data_mode = (session.data_mode or "").lower()
+    if dataset == "psi_base":
+        return data_mode == "base"
+    return True
+
+
+def _ensure_session_supports_dataset(session: models.Session, dataset: str) -> None:
+    """Raise an HTTP error when the dataset is incompatible with the session."""
+
+    if not _session_supports_dataset(session, dataset):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"session does not support {dataset}",
+        )
+
+
 COLUMN_LABELS: dict[str, dict[str, str]] = {
     "psi_base": {
         "session_id": "Session ID",
@@ -526,13 +545,15 @@ def list_session_datasets(
     """Return the datasets available for editing within the session."""
 
     _ = current_user
-    _ensure_session_exists(db, session_id)
+    session = _ensure_session_exists(db, session_id)
 
     metadata: list[schemas.SessionDatasetMetadata] = []
     for table in settings.session_editable_tables:
         key = table.lower()
         definition = DATASET_DEFINITIONS.get(key)
         if not definition:
+            continue
+        if not _session_supports_dataset(session, key):
             continue
         metadata.append(_build_dataset_metadata(definition))
     return metadata
@@ -555,7 +576,8 @@ def list_session_psi_base(
 
     _ = current_user
     definition = _dataset_definition_or_404("psi_base")
-    _ensure_session_exists(db, session_id)
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_base")
 
     filter_values = _parse_filters(filters)
     conditions = _build_psibase_conditions(session_id, filter_values)
@@ -591,7 +613,8 @@ def patch_session_psi_base(
 
     _ = current_user
     definition = _dataset_definition_or_404("psi_base")
-    _ensure_session_exists(db, session_id)
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_base")
 
     if not payload.rows:
         return {"updated": 0}
@@ -701,7 +724,8 @@ def delete_session_psi_base(
 
     _ = current_user
     _dataset_definition_or_404("psi_base")
-    _ensure_session_exists(db, session_id)
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_base")
 
     if not payload.rows:
         return {"deleted": 0}
@@ -775,7 +799,8 @@ def export_session_psi_base(
 
     _ = current_user
     definition = _dataset_definition_or_404("psi_base")
-    _ensure_session_exists(db, session_id)
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_base")
 
     filter_values = _parse_filters(filters)
     conditions = _build_psibase_conditions(session_id, filter_values)
@@ -823,7 +848,8 @@ def download_psi_base_template(
 
     _ = current_user
     definition = _dataset_definition_or_404("psi_base")
-    _ensure_session_exists(db, session_id)
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_base")
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -861,7 +887,8 @@ async def import_session_psi_base(
 
     _ = current_user
     definition = _dataset_definition_or_404("psi_base")
-    _ensure_session_exists(db, session_id)
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_base")
 
     content = await file.read()
     try:
