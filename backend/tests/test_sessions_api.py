@@ -381,6 +381,52 @@ def test_list_sessions_supports_search(
     assert [item["title"] for item in by_username] == ["Gamma"]
 
 
+def test_session_datasets_respect_data_mode(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    status, _, base_session = _perform_json_request(
+        app_env.app, "POST", "/sessions", {"title": "Base session"}
+    )
+    assert status == 201
+    base_id = base_session["id"]
+
+    status, _, base_datasets = _perform_json_request(
+        app_env.app, "GET", f"/sessions/{base_id}/datasets"
+    )
+    assert status == 200
+    assert [dataset["name"] for dataset in base_datasets] == ["psi_base"]
+
+    summary_payload = {"title": "Summary session", "data_mode": "summary"}
+    status, _, summary_session = _perform_json_request(
+        app_env.app, "POST", "/sessions", summary_payload
+    )
+    assert status == 201
+    summary_id = summary_session["id"]
+
+    status, _, summary_datasets = _perform_json_request(
+        app_env.app, "GET", f"/sessions/{summary_id}/datasets"
+    )
+    assert status == 200
+    assert summary_datasets == []
+
+
+def test_psi_base_endpoints_reject_summary_sessions(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    payload = {"title": "Summary only", "data_mode": "summary"}
+    status, _, summary_session = _perform_json_request(
+        app_env.app, "POST", "/sessions", payload
+    )
+    assert status == 201
+    summary_id = summary_session["id"]
+
+    status, _, response = _perform_json_request(
+        app_env.app, "GET", f"/sessions/{summary_id}/psi_base"
+    )
+    assert status == 400
+    assert response == {"detail": "session does not support psi_base"}
+
+
 def _create_csv_payload(session_id: uuid.UUID, *, date_value: str = "2024-01-01") -> bytes:
     definition = _get_sessions_router().DATASET_DEFINITIONS["psi_base"]
     row = {column: "" for column in definition.columns}
