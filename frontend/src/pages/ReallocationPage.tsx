@@ -227,6 +227,24 @@ const BASE_REASON_OPTIONS = [
   "fill main channel (inter main)",
 ];
 
+const REASON_TOOLTIPS: Record<string, string> = {
+  "Manual adjustment": "担当者による手動調整です。緊急や例外対応のために在庫を移動します。",
+  "Demand spike": "需要急増に対応するための補充です。販売機会の損失を避けます。",
+  "Inventory balancing": "在庫偏りを是正し、各チャネルの在庫水準を均一化します。",
+  "Seasonal allocation": "季節要因に合わせて在庫配分を見直します。",
+  "fill main channel (intra)": "同一倉庫内でメインチャネルを優先的に満たします。",
+  "fill main channel (inter non-main)": "他倉庫の非メインチャネルからメインチャネルへ在庫を補填します。",
+  "fill main channel (inter main)": "他倉庫のメインチャネルからメインチャネルへ在庫を融通します。",
+};
+
+const getReasonTooltip = (reason: string) => {
+  const trimmed = reason.trim();
+  if (!trimmed) {
+    return "理由を選択してください。";
+  }
+  return REASON_TOOLTIPS[trimmed] ?? "ユーザーが追加したカスタム理由です。";
+};
+
 const formatRelativeTimeFromNow = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -1374,6 +1392,8 @@ export default function ReallocationPage() {
                       const toChannelOptions = ensureOption(toChannelBase, line.to_channel);
                       const errors = lineErrorMap.get(line.line_id) ?? {};
                       const isSelected = selectedLineIds.includes(line.line_id);
+                      const reasonTooltip = getReasonTooltip(line.reason);
+                      const reasonDescriptionId = `reason-tooltip-${line.line_id}`;
 
                       return (
                         <tr key={line.line_id} className={isSelected ? "line-selected" : undefined}>
@@ -1510,14 +1530,24 @@ export default function ReallocationPage() {
                               onChange={(event) =>
                                 handleLineChange(line.line_id, { reason: event.target.value })
                               }
+                              title={reasonTooltip}
+                              aria-describedby={reasonDescriptionId}
                             >
-                              <option value="">理由を選択</option>
-                              {reasonOptions.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
+                              <option value="" title={getReasonTooltip("")}>
+                                理由を選択
+                              </option>
+                              {reasonOptions.map((option) => {
+                                const optionTooltip = getReasonTooltip(option);
+                                return (
+                                  <option key={option} value={option} title={optionTooltip}>
+                                    {option}
+                                  </option>
+                                );
+                              })}
                             </select>
+                            <span id={reasonDescriptionId} className="visually-hidden">
+                              {reasonTooltip}
+                            </span>
                           </td>
                           <td>
                             <button
