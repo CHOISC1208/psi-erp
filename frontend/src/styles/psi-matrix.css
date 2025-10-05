@@ -325,7 +325,9 @@
   background: var(--surface-table-header-highlight, var(--surface-table-header));
   font-weight: 700;
   text-align: right;
-  min-width: 120px;
+  width: calc(6ch + 1.2rem);
+  min-width: calc(6ch + 1.2rem);
+  max-width: calc(6ch + 1.2rem);
 }
 
 .psi-matrix-table .total-cell {
@@ -334,6 +336,9 @@
   z-index: 1;
   font-weight: 600;
   background: var(--surface-table-total, rgba(59, 130, 246, 0.08));
+  width: calc(6ch + 1.2rem);
+  min-width: calc(6ch + 1.2rem);
+  max-width: calc(6ch + 1.2rem);
 }
 
 .psi-matrix-table tbody th {
@@ -354,6 +359,7 @@
   margin-right: 0.2rem;
   font-size: 0.85em;
   line-height: 1;
+  color: currentColor;
 }
 
 .psi-matrix-value.value-positive {
