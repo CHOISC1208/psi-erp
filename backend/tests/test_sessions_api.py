@@ -407,7 +407,7 @@ def test_session_datasets_respect_data_mode(
         app_env.app, "GET", f"/sessions/{summary_id}/datasets"
     )
     assert status == 200
-    assert summary_datasets == []
+    assert [dataset["name"] for dataset in summary_datasets] == ["psi_summary_base"]
 
 
 def test_psi_base_endpoints_reject_summary_sessions(
@@ -425,6 +425,176 @@ def test_psi_base_endpoints_reject_summary_sessions(
     )
     assert status == 400
     assert response == {"detail": "session does not support psi_base"}
+
+
+def test_psi_summary_endpoints_reject_base_sessions(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    status, _, base_session = _perform_json_request(
+        app_env.app, "POST", "/sessions", {"title": "Base session"}
+    )
+    assert status == 201
+    base_id = base_session["id"]
+
+    status, _, response = _perform_json_request(
+        app_env.app, "GET", f"/sessions/{base_id}/psi_summary_base"
+    )
+    assert status == 400
+    assert response == {"detail": "session does not support psi_summary_base"}
+
+
+def test_list_session_psi_summary_base(app_env: SimpleNamespace, auth_user) -> None:
+    status, _, summary_session = _perform_json_request(
+        app_env.app,
+        "POST",
+        "/sessions",
+        {"title": "Summary session", "data_mode": "summary"},
+    )
+    assert status == 201
+    summary_id = summary_session["id"]
+    summary_uuid = uuid.UUID(summary_id)
+
+    with app_env.SessionLocal() as db:
+        db.execute(app_env.models.PSISummaryBase.__table__.delete())
+        db.add(
+            app_env.models.PSISummaryBase(
+                session_id=summary_uuid,
+                sku_code="SKU-100",
+                sku_name="Summary Widget",
+                warehouse_name="Main",
+                channel="ONLINE",
+                inbound_qty=Decimal("5"),
+                outbound_qty=Decimal("2"),
+                std_stock=Decimal("3"),
+                stock=Decimal("4"),
+            )
+        )
+        db.commit()
+
+    status, _, payload = _perform_json_request(
+        app_env.app,
+        "GET",
+        f"/sessions/{summary_id}/psi_summary_base",
+        query_params={"page": 1, "size": 50},
+    )
+    assert status == 200
+    assert payload["total"] == 1
+    row = payload["rows"][0]
+    assert row["sku_code"] == "SKU-100"
+    assert row["sku_name"] == "Summary Widget"
+    assert Decimal(str(row["inbound_qty"])) == Decimal("5")
+
+
+def test_patch_session_psi_summary_base(app_env: SimpleNamespace, auth_user) -> None:
+    status, _, summary_session = _perform_json_request(
+        app_env.app,
+        "POST",
+        "/sessions",
+        {"title": "Summary session", "data_mode": "summary"},
+    )
+    assert status == 201
+    summary_id = summary_session["id"]
+    summary_uuid = uuid.UUID(summary_id)
+
+    with app_env.SessionLocal() as db:
+        db.execute(app_env.models.PSISummaryBase.__table__.delete())
+        db.add(
+            app_env.models.PSISummaryBase(
+                session_id=summary_uuid,
+                sku_code="SKU-200",
+                warehouse_name="Main",
+                channel="ONLINE",
+                inbound_qty=Decimal("1"),
+                stock=Decimal("2"),
+            )
+        )
+        db.commit()
+
+    patch_payload = {
+        "rows": [
+            {
+                "session_id": summary_id,
+                "sku_code": "SKU-200",
+                "warehouse_name": "Main",
+                "channel": "ONLINE",
+                "inbound_qty": "10",
+                "stock": "25",
+            }
+        ]
+    }
+
+    status, _, response = _perform_json_request(
+        app_env.app,
+        "PATCH",
+        f"/sessions/{summary_id}/psi_summary_base",
+        patch_payload,
+    )
+    assert status == 200
+    assert response == {"updated": 1}
+
+    with app_env.SessionLocal() as check_session:
+        stored = check_session.scalars(
+            select(app_env.models.PSISummaryBase).where(
+                app_env.models.PSISummaryBase.session_id == summary_uuid,
+                app_env.models.PSISummaryBase.sku_code == "SKU-200",
+            )
+        ).one()
+        assert stored.inbound_qty == Decimal("10")
+        assert stored.stock == Decimal("25")
+
+
+def test_delete_session_psi_summary_base(app_env: SimpleNamespace, auth_user) -> None:
+    status, _, summary_session = _perform_json_request(
+        app_env.app,
+        "POST",
+        "/sessions",
+        {"title": "Summary session", "data_mode": "summary"},
+    )
+    assert status == 201
+    summary_id = summary_session["id"]
+    summary_uuid = uuid.UUID(summary_id)
+
+    with app_env.SessionLocal() as db:
+        db.execute(app_env.models.PSISummaryBase.__table__.delete())
+        db.add(
+            app_env.models.PSISummaryBase(
+                session_id=summary_uuid,
+                sku_code="SKU-300",
+                warehouse_name="Main",
+                channel="ONLINE",
+                inbound_qty=Decimal("1"),
+            )
+        )
+        db.commit()
+
+    delete_payload = {
+        "rows": [
+            {
+                "session_id": summary_id,
+                "sku_code": "SKU-300",
+                "warehouse_name": "Main",
+                "channel": "ONLINE",
+            }
+        ]
+    }
+
+    status, _, response = _perform_json_request(
+        app_env.app,
+        "DELETE",
+        f"/sessions/{summary_id}/psi_summary_base",
+        delete_payload,
+    )
+    assert status == 200
+    assert response == {"deleted": 1}
+
+    with app_env.SessionLocal() as check_session:
+        remaining = check_session.scalars(
+            select(app_env.models.PSISummaryBase).where(
+                app_env.models.PSISummaryBase.session_id == summary_uuid,
+                app_env.models.PSISummaryBase.sku_code == "SKU-300",
+            )
+        ).first()
+        assert remaining is None
 
 
 def _create_csv_payload(session_id: uuid.UUID, *, date_value: str = "2024-01-01") -> bytes:

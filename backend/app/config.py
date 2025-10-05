@@ -128,7 +128,9 @@ class Settings(BaseModel):
         default_factory=lambda: _env_flag("EXPOSE_AUDIT_FIELDS", default=False)
     )
     session_editable_tables_raw: str = Field(
-        default_factory=lambda: os.getenv("SESSION_EDITABLE_TABLES", "psi_base")
+        default_factory=lambda: os.getenv(
+            "SESSION_EDITABLE_TABLES", "psi_base,psi_summary_base"
+        )
     )
 
     @field_validator("database_url", mode="before")

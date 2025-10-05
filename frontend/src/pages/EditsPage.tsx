@@ -1,6 +1,7 @@
 import {
   ChangeEvent,
   FormEvent,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -10,16 +11,11 @@ import axios from "axios";
 
 import api from "../lib/api";
 import { useSessionsQuery } from "../hooks/usePsiQueries";
-import type {
-  PsiBasePage,
-  PsiBaseRecord,
-  Session,
-  SessionDatasetMetadata,
-} from "../types";
+import type { Session, SessionDatasetMetadata } from "../types";
 
 type StatusMessage = { type: "success" | "error"; text: string };
 
-interface PsiBaseFilters {
+interface DatasetFilters {
   sku_code: string;
   warehouse_name: string;
   channel: string;
@@ -29,7 +25,7 @@ interface PsiBaseFilters {
   date_end: string;
 }
 
-const defaultFilters = (): PsiBaseFilters => ({
+const defaultFilters = (): DatasetFilters => ({
   sku_code: "",
   warehouse_name: "",
   channel: "",
@@ -43,10 +39,17 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 const ROW_KEY_DELIMITER = "\u0000";
 
-const makeRowKey = (row: Pick<PsiBaseRecord, "sku_code" | "warehouse_name" | "channel" | "date">) =>
-  [row.sku_code, row.warehouse_name, row.channel, row.date].join(
-    ROW_KEY_DELIMITER,
-  );
+type DatasetRow = Record<string, unknown> & { session_id: string };
+
+interface DatasetPage {
+  page: number;
+  size: number;
+  total: number;
+  rows: DatasetRow[];
+}
+
+const makeRowKey = (row: DatasetRow, primaryKey: string[]) =>
+  primaryKey.map((column) => String(row[column] ?? "")).join(ROW_KEY_DELIMITER);
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (axios.isAxiosError(error)) {
@@ -78,12 +81,31 @@ const fetchDatasets = async (sessionId: string): Promise<SessionDatasetMetadata[
   return data;
 };
 
-const fetchPsiBasePage = async (
+const DATASET_ENDPOINTS: Record<string, string> = {
+  psi_base: "psi_base",
+  psi_summary_base: "psi_summary_base",
+};
+
+const DATASET_FILTER_KEYS: Record<string, (keyof DatasetFilters)[]> = {
+  psi_base: [
+    "sku_code",
+    "warehouse_name",
+    "channel",
+    "fw_rank",
+    "ss_rank",
+    "date_start",
+    "date_end",
+  ],
+  psi_summary_base: ["sku_code", "warehouse_name", "channel"],
+};
+
+const fetchDatasetPage = async (
   sessionId: string,
+  datasetName: string,
   filters: Record<string, string>,
   page: number,
   size: number,
-): Promise<PsiBasePage> => {
+): Promise<DatasetPage> => {
   const params: Record<string, string> = {
     page: String(page),
     size: String(size),
@@ -91,29 +113,49 @@ const fetchPsiBasePage = async (
   if (Object.keys(filters).length > 0) {
     params.filters = JSON.stringify(filters);
   }
-  const { data } = await api.get<PsiBasePage>(
-    `/sessions/${sessionId}/psi_base`,
+  const endpoint = DATASET_ENDPOINTS[datasetName];
+  if (!endpoint) {
+    throw new Error(`Unsupported dataset: ${datasetName}`);
+  }
+  const { data } = await api.get<DatasetPage>(
+    `/sessions/${sessionId}/${endpoint}`,
     { params },
   );
   return data;
 };
 
-const savePsiBaseEdits = async (
+const saveDatasetEdits = async (
   sessionId: string,
+  datasetName: string,
   rows: Record<string, unknown>[],
 ) => {
-  await api.patch(`/sessions/${sessionId}/psi_base`, { rows });
+  const endpoint = DATASET_ENDPOINTS[datasetName];
+  if (!endpoint) {
+    throw new Error(`Unsupported dataset: ${datasetName}`);
+  }
+  await api.patch(`/sessions/${sessionId}/${endpoint}`, { rows });
 };
 
-const deletePsiBaseRows = async (
+const deleteDatasetRows = async (
   sessionId: string,
-  rows: Pick<PsiBaseRecord, "session_id" | "sku_code" | "warehouse_name" | "channel" | "date">[],
+  datasetName: string,
+  rows: Record<string, unknown>[],
 ) => {
-  await api.delete(`/sessions/${sessionId}/psi_base`, { data: { rows } });
+  const endpoint = DATASET_ENDPOINTS[datasetName];
+  if (!endpoint) {
+    throw new Error(`Unsupported dataset: ${datasetName}`);
+  }
+  await api.delete(`/sessions/${sessionId}/${endpoint}`, { data: { rows } });
 };
 
-const sanitizeFilters = (filters: PsiBaseFilters): Record<string, string> => {
+const sanitizeFilters = (
+  filters: DatasetFilters,
+  datasetName?: string,
+): Record<string, string> => {
+  const allowed = DATASET_FILTER_KEYS[datasetName ?? "psi_base"] ?? [];
+  const allowedSet = new Set<keyof DatasetFilters>(allowed);
   const entries = Object.entries(filters)
+    .filter(([key]) => (allowedSet.size === 0 ? true : allowedSet.has(key as keyof DatasetFilters)))
     .map(([key, value]) => [key, value.trim()] as const)
     .filter(([, value]) => value.length > 0);
   return Object.fromEntries(entries);
@@ -129,8 +171,8 @@ export default function EditsPage() {
 
   const [sessionSearch, setSessionSearch] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-  const [tableFilters, setTableFilters] = useState<PsiBaseFilters>(defaultFilters);
-  const [pendingFilters, setPendingFilters] = useState<PsiBaseFilters>(defaultFilters);
+  const [tableFilters, setTableFilters] = useState<DatasetFilters>(defaultFilters);
+  const [pendingFilters, setPendingFilters] = useState<DatasetFilters>(defaultFilters);
   const [pageSize, setPageSize] = useState<number>(50);
   const [page, setPage] = useState<number>(1);
   const [status, setStatus] = useState<StatusMessage | null>(null);
@@ -145,17 +187,16 @@ export default function EditsPage() {
   );
 
   const filteredSessions = useMemo(() => {
-    const source = baseSessions.length > 0 ? baseSessions : sessions;
     const term = sessionSearch.trim().toLowerCase();
     if (!term) {
-      return source;
+      return sessions;
     }
-    return source.filter((session) =>
+    return sessions.filter((session) =>
       [session.title, session.description]
         .filter(Boolean)
         .some((value) => value?.toLowerCase().includes(term)),
     );
-  }, [baseSessions, sessions, sessionSearch]);
+  }, [sessions, sessionSearch]);
 
   const showNoSessions =
     !sessionsQuery.isLoading && !sessionsQuery.isError && sessions.length === 0;
@@ -203,42 +244,51 @@ export default function EditsPage() {
     return baseDataset ?? datasets[0];
   }, [datasets]);
 
+  const datasetPrimaryKey = useMemo(
+    () => (selectedDataset ? [...selectedDataset.primary_key] : []),
+    [selectedDataset],
+  );
+
+  const getRowKey = useCallback(
+    (row: DatasetRow) => makeRowKey(row, datasetPrimaryKey),
+    [datasetPrimaryKey],
+  );
+
   const sanitizedFilters = useMemo(
-    () => sanitizeFilters(tableFilters),
-    [tableFilters],
+    () => sanitizeFilters(tableFilters, selectedDataset?.name),
+    [tableFilters, selectedDataset?.name],
   );
 
   const tableQuery = useQuery({
     queryKey: [
-      "session-psi-base",
+      "session-dataset",
       selectedSessionId,
       selectedDataset?.name,
-      sanitizedFilters.sku_code ?? "",
-      sanitizedFilters.warehouse_name ?? "",
-      sanitizedFilters.channel ?? "",
-      sanitizedFilters.fw_rank ?? "",
-      sanitizedFilters.ss_rank ?? "",
-      sanitizedFilters.date_start ?? "",
-      sanitizedFilters.date_end ?? "",
+      JSON.stringify(sanitizedFilters),
       page,
       pageSize,
     ],
     queryFn: () =>
-      fetchPsiBasePage(selectedSessionId, sanitizedFilters, page, pageSize),
-    enabled:
-      Boolean(selectedSessionId) && selectedDataset?.name === "psi_base",
+      fetchDatasetPage(
+        selectedSessionId,
+        selectedDataset!.name,
+        sanitizedFilters,
+        page,
+        pageSize,
+      ),
+    enabled: Boolean(selectedSessionId && selectedDataset),
   });
 
   const originalRows = tableQuery.data?.rows ?? [];
   const originalRowMap = useMemo(() => {
-    const map = new Map<string, PsiBaseRecord>();
+    const map = new Map<string, DatasetRow>();
     originalRows.forEach((row) => {
-      map.set(makeRowKey(row), row);
+      map.set(getRowKey(row), row);
     });
     return map;
-  }, [originalRows]);
+  }, [getRowKey, originalRows]);
 
-  const [localRows, setLocalRows] = useState<PsiBaseRecord[]>([]);
+  const [localRows, setLocalRows] = useState<DatasetRow[]>([]);
   const [edits, setEdits] = useState<Map<string, Record<string, string>>>(
     () => new Map(),
   );
@@ -281,7 +331,7 @@ export default function EditsPage() {
 
   const handleFilterChange = (
     event: ChangeEvent<HTMLInputElement>,
-    field: keyof PsiBaseFilters,
+    field: keyof DatasetFilters,
   ) => {
     const value = event.target.value;
     setPendingFilters((prev) => ({ ...prev, [field]: value }));
@@ -305,7 +355,7 @@ export default function EditsPage() {
   ) => {
     setLocalRows((prev) =>
       prev.map((row) =>
-        makeRowKey(row) === rowKey ? { ...row, [field]: value } : row,
+        getRowKey(row) === rowKey ? { ...row, [field]: value } : row,
       ),
     );
     setEdits((prev) => {
@@ -313,9 +363,7 @@ export default function EditsPage() {
       const original = originalRowMap.get(rowKey);
       const base = next.get(rowKey) ?? {};
       const normalizedValue = value;
-      const originalValue = original
-        ? (original[field as keyof PsiBaseRecord] ?? "")
-        : "";
+      const originalValue = original ? (original[field] as unknown) : "";
       const normalizedOriginal =
         originalValue === null || originalValue === undefined
           ? ""
@@ -349,7 +397,7 @@ export default function EditsPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedSessionId || edits.size === 0) {
+      if (!selectedSessionId || edits.size === 0 || !selectedDataset) {
         return;
       }
       const rows: Record<string, unknown>[] = [];
@@ -358,13 +406,17 @@ export default function EditsPage() {
         if (!original) {
           return;
         }
-        const payload: Record<string, unknown> = {
-          session_id: selectedSessionId,
-          sku_code: original.sku_code,
-          warehouse_name: original.warehouse_name,
-          channel: original.channel,
-          date: original.date,
-        };
+        const payload: Record<string, unknown> = {};
+        datasetPrimaryKey.forEach((column) => {
+          if (column === "session_id") {
+            payload[column] = selectedSessionId;
+          } else {
+            payload[column] = original[column];
+          }
+        });
+        if (!("session_id" in payload)) {
+          payload.session_id = selectedSessionId;
+        }
         Object.entries(changes).forEach(([field, rawValue]) => {
           if (!editableColumns.has(field)) {
             return;
@@ -382,12 +434,12 @@ export default function EditsPage() {
       if (rows.length === 0) {
         return;
       }
-      await savePsiBaseEdits(selectedSessionId, rows);
+      await saveDatasetEdits(selectedSessionId, selectedDataset.name, rows);
     },
     onSuccess: () => {
       setStatus({ type: "success", text: "Changes saved." });
       setEdits(new Map());
-      void queryClient.invalidateQueries({ queryKey: ["session-psi-base"] });
+      void queryClient.invalidateQueries({ queryKey: ["session-dataset"] });
     },
     onError: (error) => {
       setStatus({ type: "error", text: getErrorMessage(error, "Failed to save changes.") });
@@ -396,29 +448,36 @@ export default function EditsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedSessionId || selectedRowKeys.size === 0) {
+      if (!selectedSessionId || selectedRowKeys.size === 0 || !selectedDataset) {
         return;
       }
       const rows = Array.from(selectedRowKeys)
         .map((key) => originalRowMap.get(key))
-        .filter((row): row is PsiBaseRecord => Boolean(row))
-        .map((row) => ({
-          session_id: selectedSessionId,
-          sku_code: row.sku_code,
-          warehouse_name: row.warehouse_name,
-          channel: row.channel,
-          date: row.date,
-        }));
+        .filter((row): row is DatasetRow => Boolean(row))
+        .map((row) => {
+          const payload: Record<string, unknown> = {};
+          datasetPrimaryKey.forEach((column) => {
+            if (column === "session_id") {
+              payload[column] = selectedSessionId;
+            } else {
+              payload[column] = row[column];
+            }
+          });
+          if (!("session_id" in payload)) {
+            payload.session_id = selectedSessionId;
+          }
+          return payload;
+        });
       if (rows.length === 0) {
         return;
       }
-      await deletePsiBaseRows(selectedSessionId, rows);
+      await deleteDatasetRows(selectedSessionId, selectedDataset.name, rows);
     },
     onSuccess: () => {
       setStatus({ type: "success", text: "Rows deleted." });
       setSelectedRowKeys(new Set());
       setEdits(new Map());
-      void queryClient.invalidateQueries({ queryKey: ["session-psi-base"] });
+      void queryClient.invalidateQueries({ queryKey: ["session-dataset"] });
     },
     onError: (error) => {
       setStatus({ type: "error", text: getErrorMessage(error, "Failed to delete rows.") });
@@ -433,14 +492,21 @@ export default function EditsPage() {
 
   const totalRows = tableQuery.data?.total ?? 0;
   const totalPages = totalRows === 0 ? 1 : Math.max(1, Math.ceil(totalRows / pageSize));
-  const canEditPsiBase = Boolean(selectedSessionId && selectedDataset?.name === "psi_base");
+  const canEditDataset = Boolean(selectedSessionId && selectedDataset);
+  const datasetLabel = selectedDataset?.label ?? "PSI data";
+  const datasetDescription =
+    selectedDataset?.name === "psi_summary_base"
+      ? "PSI summaryデータ"
+      : selectedDataset?.name === "psi_base"
+      ? "PSI baseデータ"
+      : "PSIデータ";
 
   return (
     <div className="page edits-page">
       <header className="page-header">
         <div>
           <h1>Edits</h1>
-          <p>セッションのPSI baseデータを検索して、画面上で直接編集できます。</p>
+          <p>セッションの{datasetDescription}を検索して、画面上で直接編集できます。</p>
         </div>
       </header>
 
@@ -493,28 +559,28 @@ export default function EditsPage() {
 
       {selectedSessionId && datasetsQuery.isLoading && (
         <section className="card">
-          <h2>PSI base</h2>
+          <h2>{datasetLabel}</h2>
           <p>Loading dataset metadata…</p>
         </section>
       )}
 
       {selectedSessionId && datasetsQuery.isError && (
         <section className="card">
-          <h2>PSI base</h2>
+          <h2>{datasetLabel}</h2>
           <p className="error-text">Failed to load dataset metadata.</p>
         </section>
       )}
 
-      {selectedSessionId && !datasetsQuery.isLoading && selectedDataset?.name !== "psi_base" && (
+      {selectedSessionId && !datasetsQuery.isLoading && !selectedDataset && (
         <section className="card">
-          <h2>PSI base</h2>
-          <p>このセッションではPSI baseデータの編集が利用できません。</p>
+          <h2>PSI data</h2>
+          <p>このセッションでは編集可能なPSIデータセットがありません。</p>
         </section>
       )}
 
-      {canEditPsiBase && selectedDataset && (
+      {canEditDataset && selectedDataset && (
         <section className="card">
-          <h2>PSI base</h2>
+          <h2>{datasetLabel}</h2>
 
           <form className="filter-form" onSubmit={handleFilterSubmit}>
             <div className="filter-grid single">
@@ -612,7 +678,7 @@ export default function EditsPage() {
                   </tr>
                 )}
                 {localRows.map((row) => {
-                  const rowKey = makeRowKey(row);
+                  const rowKey = getRowKey(row);
                   const isEdited = edits.has(rowKey);
                   const isSelected = selectedRowKeys.has(rowKey);
                   return (
@@ -625,7 +691,7 @@ export default function EditsPage() {
                         />
                       </td>
                       {selectedDataset.columns.map((column) => {
-                        const cellValue = row[column.name as keyof PsiBaseRecord];
+                        const cellValue = row[column.name];
                         const displayValue =
                           cellValue === null || cellValue === undefined ? "" : String(cellValue);
                         if (!editableColumns.has(column.name)) {

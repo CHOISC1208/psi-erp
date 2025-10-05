@@ -467,7 +467,6 @@ export default function ReallocationPage() {
     };
     setLines((prev) => {
       const next = [...prev, newLine];
-      setPlanLinesPage(Math.max(1, Math.ceil(next.length / PLAN_LINES_PAGE_SIZE)));
       return next;
     });
     setPlanDirty(true);

@@ -253,6 +253,29 @@ export interface PsiBasePage {
   rows: PsiBaseRecord[];
 }
 
+export interface PsiSummaryBaseRecord {
+  session_id: string;
+  sku_code: string;
+  sku_name?: string | null;
+  warehouse_name: string;
+  channel: string;
+  inbound_qty?: string | number | null;
+  outbound_qty?: string | number | null;
+  std_stock?: string | number | null;
+  stock?: string | number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+  updated_by_username?: string | null;
+}
+
+export interface PsiSummaryBasePage {
+  page: number;
+  size: number;
+  total: number;
+  rows: PsiSummaryBaseRecord[];
+}
+
 export interface PsiBaseImportResponse {
   added: number;
   updated: number;

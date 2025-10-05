@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -48,6 +48,8 @@ NUMERIC_ZERO_DEFAULT = {
     "stock_closing",
     "safety_stock",
     "movable_stock",
+    "std_stock",
+    "stock",
 }
 
 
@@ -58,7 +60,7 @@ class DatasetDefinition:
     name: str
     label: str
     description: str
-    model: type[models.PSIBase]
+    model: type[models.PSIBase | models.PSISummaryBase]
     primary_key: tuple[str, ...]
     columns: tuple[str, ...]
     editable_columns: tuple[str, ...]
@@ -155,6 +157,29 @@ DATASET_DEFINITIONS: dict[str, DatasetDefinition] = {
         read_only_columns=PSI_BASE_READ_ONLY_COLUMNS,
         default_order=PSI_BASE_DEFAULT_ORDER,
     ),
+    "psi_summary_base": DatasetDefinition(
+        name="psi_summary_base",
+        label="PSI Summary Base",
+        description="Aggregated PSI summary data scoped to a session.",
+        model=models.PSISummaryBase,
+        primary_key=("session_id", "sku_code", "warehouse_name", "channel"),
+        columns=(
+            "session_id",
+            "sku_code",
+            "sku_name",
+            "warehouse_name",
+            "channel",
+            "inbound_qty",
+            "outbound_qty",
+            "std_stock",
+            "stock",
+        ),
+        editable_columns=("sku_name", "inbound_qty", "outbound_qty", "std_stock", "stock"),
+        numeric_columns=("inbound_qty", "outbound_qty", "std_stock", "stock"),
+        date_columns=(),
+        read_only_columns=(),
+        default_order=("sku_code", "warehouse_name", "channel"),
+    ),
 }
 
 
@@ -164,6 +189,8 @@ def _session_supports_dataset(session: models.Session, dataset: str) -> bool:
     data_mode = (session.data_mode or "").lower()
     if dataset == "psi_base":
         return data_mode == "base"
+    if dataset == "psi_summary_base":
+        return data_mode == "summary"
     return True
 
 
@@ -299,6 +326,12 @@ def _ensure_session_exists(db: DBSession, session_id: UUID) -> models.Session:
     return session
 
 
+def _ensure_summary_dataset_table(db: DBSession) -> None:
+    bind = db.get_bind()
+    if bind is not None:
+        models.ensure_psi_summary_base_table(bind)
+
+
 def _raise_validation_errors(errors: Iterable[RowValidationError]) -> None:
     collected = list(errors)
     if not collected:
@@ -351,6 +384,194 @@ def _serialize_psibase(row: models.PSIBase) -> schemas.PSIBaseRecord:
         updated_by=None,
         updated_by_username=None,
     )
+
+
+def _serialize_psisummary(row: models.PSISummaryBase) -> schemas.PSISummaryBaseRecord:
+    return schemas.PSISummaryBaseRecord(
+        session_id=row.session_id,
+        sku_code=row.sku_code,
+        sku_name=row.sku_name,
+        warehouse_name=row.warehouse_name,
+        channel=row.channel,
+        inbound_qty=row.inbound_qty,
+        outbound_qty=row.outbound_qty,
+        std_stock=row.std_stock,
+        stock=row.stock,
+        created_at=row.created_at,
+        updated_at=None,
+        updated_by=None,
+        updated_by_username=None,
+    )
+
+
+def _query_dataset_rows(
+    definition: DatasetDefinition,
+    session_id: UUID,
+    filter_values: dict[str, Any],
+    page: int,
+    size: int,
+    db: DBSession,
+    *,
+    condition_builder: Callable[[UUID, dict[str, Any]], list[Any]],
+    serializer: Callable[[Any], Any],
+) -> tuple[int, list[Any]]:
+    conditions = condition_builder(session_id, filter_values)
+
+    base_query = select(definition.model).where(and_(*conditions))
+    order_columns = [getattr(definition.model, column) for column in definition.default_order]
+    query = base_query.order_by(*order_columns)
+
+    total = db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
+
+    offset = (page - 1) * size
+    rows = db.scalars(query.offset(offset).limit(size)).all()
+
+    return total, [serializer(row) for row in rows]
+
+
+def _patch_session_dataset(
+    definition: DatasetDefinition,
+    session_id: UUID,
+    rows: Iterable[Any],
+    db: DBSession,
+) -> int:
+    if not rows:
+        return 0
+
+    validation_errors: list[RowValidationError] = []
+    updates: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    for index, row in enumerate(rows, start=1):
+        row_session_id = getattr(row, "session_id", None)
+        if row_session_id != session_id:
+            validation_errors.append(
+                RowValidationError(row=index, field="session_id", message="session mismatch"),
+            )
+
+        key_data: dict[str, Any] = {}
+        for field in definition.primary_key:
+            value = getattr(row, field, None)
+            key_data[field] = value
+            if value is None or (isinstance(value, str) and not value.strip()):
+                validation_errors.append(
+                    RowValidationError(row=index, field=field, message="is required"),
+                )
+
+        row_dict = row.model_dump(exclude_unset=True)
+
+        for read_only in definition.read_only_columns:
+            if read_only in row_dict and row_dict[read_only] is not None:
+                validation_errors.append(
+                    RowValidationError(row=index, field=read_only, message="field is read-only"),
+                )
+
+        update_data: dict[str, Any] = {}
+        for column in definition.editable_columns:
+            if column not in row_dict:
+                continue
+            value = row_dict[column]
+            if column in definition.numeric_columns:
+                normalized = _normalize_decimal(value, column, errors=validation_errors, row_index=index)
+            else:
+                if isinstance(value, str):
+                    normalized = value.strip() or None
+                else:
+                    normalized = value
+                if column in {"fw_rank", "ss_rank"} and normalized:
+                    value_str = str(normalized)
+                    if len(value_str) > 2:
+                        validation_errors.append(
+                            RowValidationError(
+                                row=index,
+                                field=column,
+                                message="must be at most 2 characters",
+                            ),
+                        )
+            update_data[column] = normalized
+
+        updates.append((key_data, update_data))
+
+    _raise_validation_errors(validation_errors)
+
+    updated = 0
+    post_validation: list[RowValidationError] = []
+
+    for index, (key_data, update_values) in enumerate(updates, start=1):
+        if not update_values:
+            continue
+        conditions = [
+            getattr(definition.model, column) == key_data[column]
+            for column in definition.primary_key
+        ]
+        stmt = update(definition.model).where(*conditions).values(**update_values)
+        result = db.execute(stmt)
+        if result.rowcount == 0:
+            post_validation.append(
+                RowValidationError(row=index, field="key", message="record not found"),
+            )
+        else:
+            updated += int(result.rowcount)
+
+    if post_validation:
+        db.rollback()
+        _raise_validation_errors(post_validation)
+
+    db.commit()
+    return updated
+
+
+def _delete_session_dataset(
+    definition: DatasetDefinition,
+    session_id: UUID,
+    rows: Iterable[Any],
+    db: DBSession,
+) -> int:
+    if not rows:
+        return 0
+
+    errors: list[RowValidationError] = []
+    keys: list[dict[str, Any]] = []
+
+    for index, row in enumerate(rows, start=1):
+        row_session_id = getattr(row, "session_id", None)
+        if row_session_id != session_id:
+            errors.append(
+                RowValidationError(row=index, field="session_id", message="session mismatch"),
+            )
+
+        key_data: dict[str, Any] = {}
+        for field in definition.primary_key:
+            value = getattr(row, field, None)
+            key_data[field] = value
+            if value is None or (isinstance(value, str) and not value.strip()):
+                errors.append(RowValidationError(row=index, field=field, message="is required"))
+        keys.append(key_data)
+
+    _raise_validation_errors(errors)
+
+    deleted = 0
+    missing: list[RowValidationError] = []
+
+    for index, key_data in enumerate(keys, start=1):
+        conditions = [
+            getattr(definition.model, column) == key_data[column]
+            for column in definition.primary_key
+        ]
+        stmt = delete(definition.model).where(*conditions).execution_options(
+            synchronize_session=False
+        )
+        result = db.execute(stmt)
+        if result.rowcount == 0:
+            missing.append(RowValidationError(row=index, field="key", message="record not found"))
+        else:
+            deleted += int(result.rowcount)
+
+    if missing:
+        db.rollback()
+        _raise_validation_errors(missing)
+
+    db.commit()
+    return deleted
 
 
 def _format_csv_value(value: Any) -> str:
@@ -422,6 +643,27 @@ def _build_psibase_conditions(session_id: UUID, filter_values: dict[str, Any]) -
     )
     if end_date is not None:
         conditions.append(models.PSIBase.date <= end_date)
+
+    return conditions
+
+
+def _build_psisummary_conditions(session_id: UUID, filter_values: dict[str, Any]) -> list[Any]:
+    conditions: list[Any] = [models.PSISummaryBase.session_id == session_id]
+
+    sku_code = filter_values.get("sku_code")
+    if isinstance(sku_code, str) and sku_code.strip():
+        lowered = f"%{sku_code.strip().lower()}%"
+        conditions.append(func.lower(models.PSISummaryBase.sku_code).like(lowered))
+
+    warehouse_name = filter_values.get("warehouse_name")
+    if isinstance(warehouse_name, str) and warehouse_name.strip():
+        lowered = f"%{warehouse_name.strip().lower()}%"
+        conditions.append(func.lower(models.PSISummaryBase.warehouse_name).like(lowered))
+
+    channel = filter_values.get("channel")
+    if isinstance(channel, str) and channel.strip():
+        lowered = f"%{channel.strip().lower()}%"
+        conditions.append(func.lower(models.PSISummaryBase.channel).like(lowered))
 
     return conditions
 
@@ -580,23 +822,18 @@ def list_session_psi_base(
     _ensure_session_supports_dataset(session, "psi_base")
 
     filter_values = _parse_filters(filters)
-    conditions = _build_psibase_conditions(session_id, filter_values)
-
-    base_query = select(models.PSIBase).where(and_(*conditions))
-    order_columns = [getattr(models.PSIBase, column) for column in definition.default_order]
-    query = base_query.order_by(*order_columns)
-
-    total = db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
-
-    offset = (page - 1) * size
-    rows = db.scalars(query.offset(offset).limit(size)).all()
-
-    return schemas.PSIBasePage(
-        page=page,
-        size=size,
-        total=total,
-        rows=[_serialize_psibase(row) for row in rows],
+    total, rows = _query_dataset_rows(
+        definition,
+        session_id,
+        filter_values,
+        page,
+        size,
+        db,
+        condition_builder=_build_psibase_conditions,
+        serializer=_serialize_psibase,
     )
+
+    return schemas.PSIBasePage(page=page, size=size, total=total, rows=rows)
 
 
 @router.patch(
@@ -616,94 +853,7 @@ def patch_session_psi_base(
     session = _ensure_session_exists(db, session_id)
     _ensure_session_supports_dataset(session, "psi_base")
 
-    if not payload.rows:
-        return {"updated": 0}
-
-    validation_errors: list[RowValidationError] = []
-    updates: list[tuple[dict[str, Any], dict[str, Any]]] = []
-
-    for index, row in enumerate(payload.rows, start=1):
-        if row.session_id != session_id:
-            validation_errors.append(
-                RowValidationError(row=index, field="session_id", message="session mismatch"),
-            )
-
-        key_data = {
-            field: getattr(row, field)
-            for field in definition.primary_key
-        }
-        for field_name, value in key_data.items():
-            if value is None or (isinstance(value, str) and not value.strip()):
-                validation_errors.append(
-                    RowValidationError(row=index, field=field_name, message="is required"),
-                )
-
-        row_dict = row.model_dump(exclude_unset=True)
-
-        for read_only in definition.read_only_columns:
-            if read_only in row_dict and row_dict[read_only] is not None:
-                validation_errors.append(
-                    RowValidationError(row=index, field=read_only, message="field is read-only"),
-                )
-
-        update_data: dict[str, Any] = {}
-        for column in definition.editable_columns:
-            if column not in row_dict:
-                continue
-            value = row_dict[column]
-            if column in definition.numeric_columns:
-                normalized = _normalize_decimal(value, column, errors=validation_errors, row_index=index)
-            else:
-                if isinstance(value, str):
-                    normalized = value.strip() or None
-                else:
-                    normalized = value
-                if column in {"fw_rank", "ss_rank"} and normalized:
-                    value_str = str(normalized)
-                    if len(value_str) > 2:
-                        validation_errors.append(
-                            RowValidationError(
-                                row=index,
-                                field=column,
-                                message="must be at most 2 characters",
-                            ),
-                        )
-            update_data[column] = normalized
-
-        updates.append((key_data, update_data))
-
-    _raise_validation_errors(validation_errors)
-
-    updated = 0
-    post_validation: list[RowValidationError] = []
-
-    for index, (key_data, update_values) in enumerate(updates, start=1):
-        if not update_values:
-            continue
-        stmt = (
-            update(models.PSIBase)
-            .where(
-                models.PSIBase.session_id == key_data["session_id"],
-                models.PSIBase.sku_code == key_data["sku_code"],
-                models.PSIBase.warehouse_name == key_data["warehouse_name"],
-                models.PSIBase.channel == key_data["channel"],
-                models.PSIBase.date == key_data["date"],
-            )
-            .values(**update_values)
-        )
-        result = db.execute(stmt)
-        if result.rowcount == 0:
-            post_validation.append(
-                RowValidationError(row=index, field="key", message="record not found"),
-            )
-        else:
-            updated += int(result.rowcount)
-
-    if post_validation:
-        db.rollback()
-        _raise_validation_errors(post_validation)
-
-    db.commit()
+    updated = _patch_session_dataset(definition, session_id, payload.rows, db)
     if updated:
         invalidate_reallocation_cache(session_id)
 
@@ -723,59 +873,97 @@ def delete_session_psi_base(
     """Delete psi_base rows in bulk."""
 
     _ = current_user
-    _dataset_definition_or_404("psi_base")
+    definition = _dataset_definition_or_404("psi_base")
     session = _ensure_session_exists(db, session_id)
     _ensure_session_supports_dataset(session, "psi_base")
 
-    if not payload.rows:
-        return {"deleted": 0}
+    deleted = _delete_session_dataset(definition, session_id, payload.rows, db)
+    if deleted:
+        invalidate_reallocation_cache(session_id)
 
-    errors: list[RowValidationError] = []
-    keys: list[dict[str, Any]] = []
+    return {"deleted": deleted}
 
-    for index, row in enumerate(payload.rows, start=1):
-        if row.session_id != session_id:
-            errors.append(RowValidationError(row=index, field="session_id", message="session mismatch"))
-        key_data = {
-            "session_id": row.session_id,
-            "sku_code": row.sku_code,
-            "warehouse_name": row.warehouse_name,
-            "channel": row.channel,
-            "date": row.date,
-        }
-        for field_name, value in key_data.items():
-            if value is None or (isinstance(value, str) and not value.strip()):
-                errors.append(RowValidationError(row=index, field=field_name, message="is required"))
-        keys.append(key_data)
 
-    _raise_validation_errors(errors)
+@router.get(
+    "/{session_id}/psi_summary_base",
+    response_model=schemas.PSISummaryBasePage,
+    response_model_exclude_none=True,
+)
+def list_session_psi_summary_base(
+    session_id: UUID,
+    filters: str | None = Query(default=None, description="JSON encoded filter object"),
+    page: int = Query(1, ge=1),
+    size: int = Query(100, ge=1, le=500),
+    db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PSISummaryBasePage:
+    """Return paginated psi_summary_base rows scoped to the session."""
 
-    deleted = 0
-    missing: list[RowValidationError] = []
+    _ = current_user
+    _ensure_summary_dataset_table(db)
+    definition = _dataset_definition_or_404("psi_summary_base")
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_summary_base")
 
-    for index, key_data in enumerate(keys, start=1):
-        stmt = (
-            delete(models.PSIBase)
-            .where(
-                models.PSIBase.session_id == key_data["session_id"],
-                models.PSIBase.sku_code == key_data["sku_code"],
-                models.PSIBase.warehouse_name == key_data["warehouse_name"],
-                models.PSIBase.channel == key_data["channel"],
-                models.PSIBase.date == key_data["date"],
-            )
-            .execution_options(synchronize_session=False)
-        )
-        result = db.execute(stmt)
-        if result.rowcount == 0:
-            missing.append(RowValidationError(row=index, field="key", message="record not found"))
-        else:
-            deleted += int(result.rowcount)
+    filter_values = _parse_filters(filters)
+    total, rows = _query_dataset_rows(
+        definition,
+        session_id,
+        filter_values,
+        page,
+        size,
+        db,
+        condition_builder=_build_psisummary_conditions,
+        serializer=_serialize_psisummary,
+    )
 
-    if missing:
-        db.rollback()
-        _raise_validation_errors(missing)
+    return schemas.PSISummaryBasePage(page=page, size=size, total=total, rows=rows)
 
-    db.commit()
+
+@router.patch(
+    "/{session_id}/psi_summary_base",
+    response_model=dict[str, int],
+)
+def patch_session_psi_summary_base(
+    session_id: UUID,
+    payload: schemas.PSISummaryBasePatchRequest,
+    db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, int]:
+    """Apply bulk updates to psi_summary_base rows."""
+
+    _ = current_user
+    _ensure_summary_dataset_table(db)
+    definition = _dataset_definition_or_404("psi_summary_base")
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_summary_base")
+
+    updated = _patch_session_dataset(definition, session_id, payload.rows, db)
+    if updated:
+        invalidate_reallocation_cache(session_id)
+
+    return {"updated": updated}
+
+
+@router.delete(
+    "/{session_id}/psi_summary_base",
+    response_model=dict[str, int],
+)
+def delete_session_psi_summary_base(
+    session_id: UUID,
+    payload: schemas.PSISummaryBaseDeleteRequest,
+    db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, int]:
+    """Delete psi_summary_base rows in bulk."""
+
+    _ = current_user
+    _ensure_summary_dataset_table(db)
+    definition = _dataset_definition_or_404("psi_summary_base")
+    session = _ensure_session_exists(db, session_id)
+    _ensure_session_supports_dataset(session, "psi_summary_base")
+
+    deleted = _delete_session_dataset(definition, session_id, payload.rows, db)
     if deleted:
         invalidate_reallocation_cache(session_id)
 
