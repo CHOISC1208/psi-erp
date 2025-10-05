@@ -750,13 +750,13 @@ export default function ReallocationPage() {
       if (!latestEntry) {
         return;
       }
-      const stockClosing = Number(latestEntry.stock_closing ?? 0);
-      const stdStock = Number(latestEntry.stdstock ?? 0);
-      const stockAtAnchor = Number(latestEntry.stock_at_anchor ?? stockClosing);
+      const stockAtAnchor = Number(latestEntry.stock_at_anchor ?? 0);
       const inboundQty = Number(latestEntry.inbound_qty ?? 0);
       const outboundQty = Number(latestEntry.outbound_qty ?? 0);
-      const gapValue =
-        typeof latestEntry.gap === "number" ? Number(latestEntry.gap) : stdStock - stockClosing;
+      const moveValue = Number(latestEntry.channel_move ?? 0);
+      const stdStock = Number(latestEntry.stdstock ?? 0);
+      const stockClosing = stockAtAnchor + inboundQty - outboundQty + moveValue;
+      const gapValue = stdStock - stockAtAnchor;
       rows.push({
         sku_code: channel.sku_code,
         sku_name: channel.sku_name ?? null,
@@ -771,7 +771,7 @@ export default function ReallocationPage() {
         stock_closing: stockClosing,
         stdstock: stdStock,
         gap: gapValue,
-        move: 0,
+        move: moveValue,
         stock_fin: stockClosing,
       });
     });
@@ -815,13 +815,13 @@ export default function ReallocationPage() {
       const savedMove = baselineMoveMap.get(key) ?? 0;
       const draftMove = draftMoveMap.get(key) ?? 0;
       const move = usingSummaryMatrix ? baseMove + draftMove : baseMove - savedMove + draftMove;
-      const stock_closing = baseRow?.stock_closing ?? 0;
-      const stock_fin = stock_closing + move;
       const stock_at_anchor = baseRow?.stock_at_anchor ?? 0;
       const inbound_qty = baseRow?.inbound_qty ?? 0;
       const outbound_qty = baseRow?.outbound_qty ?? 0;
       const stdstock = baseRow?.stdstock ?? 0;
-      const gap = stdstock - stock_closing;
+      const gap = stdstock - stock_at_anchor;
+      const stock_closing = stock_at_anchor + inbound_qty - outbound_qty + move;
+      const stock_fin = stock_closing;
       const sku_name = baseRow?.sku_name ?? skuNameMap.get(sku_code) ?? null;
       const category_1 = baseRow?.category_1 ?? null;
       const category_2 = baseRow?.category_2 ?? null;
@@ -1041,10 +1041,12 @@ export default function ReallocationPage() {
     () =>
       simulatedMatrixRows.map((row) => {
         const stockStart = row.stock_at_anchor ?? 0;
+        const inbound = row.inbound_qty ?? 0;
+        const outbound = row.outbound_qty ?? 0;
         const stdStock = row.stdstock ?? 0;
-        const stockClosing = row.stock_closing ?? 0;
         const move = row.move ?? 0;
-        const gap = stdStock - stockClosing;
+        const stockClosing = stockStart + inbound - outbound + move;
+        const gap = stdStock - stockStart;
         const gapAfter = gap + move;
         return {
           sku: row.sku_code,
@@ -1057,11 +1059,11 @@ export default function ReallocationPage() {
           stockStart: row.stock_at_anchor,
           inbound: row.inbound_qty,
           outbound: row.outbound_qty,
-          stockClosing: row.stock_closing,
+          stockClosing,
           stdStock: row.stdstock,
           gap,
           move: row.move,
-          stockFinal: row.stock_fin,
+          stockFinal: stockClosing,
           gapAfter,
         };
       }),

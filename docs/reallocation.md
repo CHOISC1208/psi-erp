@@ -4,20 +4,11 @@
 
 ### 1. Gap・Gap After と PSI 指標の算出
 
-- **バックエンド集計**：`fetch_matrix_rows` が PSI 行を生成し、`gap = stock_at_anchor - stdstock`、`stock_fin = stock_closing + move` を計算。【F:backend/app/services/transfer_plans.py†L175-L199】
-- **フロント合成**：再配置画面ではサーバー返却行とローカルドラフトの差分を `move = baseMove - savedMove + draftMove` で再構成し、`stock_fin = stock_closing + move` を再計算する。【F:frontend/src/pages/ReallocationPage.tsx†L489-L534】
-- **Gap 値の利用**：シミュレート行の `gap` は `stdstock - stock_closing`（=期末基準）で一時的に再計算されるため、サーバー値（期首基準）と符号規約が乖離している。【F:frontend/src/pages/ReallocationPage.tsx†L489-L534】
-- **PSI 行へのマッピング**：UI へ渡す直前に `gap = stockStart - stdStock`、`gapAfter = stockStart + move - stdStock` を求め、`Gap After = Gap + Move` が成り立つ実装。ただし Gap 自体が `Std - Start` ではなく `Start - Std` になっている。【F:frontend/src/pages/ReallocationPage.tsx†L665-L689】
-- **KPI/ビューの参照**：`PSIMatrixTabs` 系コンポーネントは `METRIC_DEFINITIONS` の順序（Start → Inbound → Outbound → Closing → Move → Final → Std → Gap → Gap After）を共通利用し、`getMetricValue` も `Gap = stockStart - stdStock`、`Gap After = stockStart + move - stdStock` を返却する。【F:frontend/src/features/reallocation/psi/utils.ts†L1-L72】
-
-> **Gap・Gap After の符号まとめ**
->
-> | 状態 | 望ましい定義 | 現実装の振る舞い |
-> | --- | --- | --- |
-> | Gap | `Std - Stock @ Start`（不足で正） | `Stock @ Start - Std`（不足で負）
-> | Gap After | `Gap + Move` | `Gap + Move`（ただし Gap の符号が逆転）
->
-> ダミーデータ（Std=4.55, Stock@Start=4, Move=1）でのトレース：望ましい仕様では `Gap=+0.55`, `GapAfter=+1.55`; 現実装は `Gap=-0.55`, `GapAfter=+0.45`。
+- **バックエンド入力**：`fetch_matrix_rows` は `stock_at_anchor`（期首在庫）、`inbound_qty`、`outbound_qty`、`stdstock`、`move` を返却するが、`stock_closing` はそのままでは不足分を表せない値（0 あるいは未設定）で送られてくるケースがある。【F:backend/app/services/transfer_plans.py†L175-L199】
+- **フロント合成**：再配置画面ではサーバー返却行とローカルドラフトの差分を `move = baseMove - savedMove + draftMove`（サマリー表示時は `baseMove + draftMove`）で再構成し、`stock_closing = stock_at_anchor + inbound_qty - outbound_qty + move`、`stock_fin = stock_closing` を導出する。【F:frontend/src/pages/ReallocationPage.tsx†L802-L858】
+- **Gap 値の利用**：`gap` は常に `stdstock - stock_at_anchor` を再計算し、`gap_after = gap + move` を保持することで不足が正値で表現される。【F:frontend/src/pages/ReallocationPage.tsx†L820-L846】
+- **PSI 行へのマッピング**：UI に渡す段階でも同じ式で `stockClosing`、`stockFinal`、`gap`、`gapAfter` を再計算してから `PSIMatrixTabs` に供給する。【F:frontend/src/pages/ReallocationPage.tsx†L1042-L1072】
+- **KPI/ビューの参照**：`getMetricValue` も `Gap = Std − Stock @ Start`、`Gap After = Gap + Move` を返すため、カード・表・ヒートマップで基準が統一された。【F:frontend/src/features/reallocation/psi/utils.ts†L56-L85】
 
 ### 2. ドラフト合成・クエリキー・再フェッチ
 
@@ -71,14 +62,13 @@ for each sku:
 ### 3. 出力と算定式
 
 - **Move 行形式**：`{ sku, from_warehouse, from_channel, to_warehouse, to_channel, qty, reason }`（現行 API と互換）。【F:backend/app/services/transfer_logic.py†L131-L177】
-- **Gap After**：各セルで `GapAfter = (Std − Stock@Start) + MoveNet`。Move は入庫なら正、出庫なら負として Gap に加算する（UI 再計算も同式を明記）。【F:frontend/src/pages/ReallocationPage.tsx†L665-L689】
+- **Gap After**：各セルで `GapAfter = (Std − Stock@Start) + MoveNet`。Move は入庫なら正、出庫なら負として Gap に加算する（UI 再計算も同式を明記）。【F:frontend/src/pages/ReallocationPage.tsx†L1044-L1069】
 - **在庫下限**：`available_surplus` 判定で `stock_at_anchor - allocated_out` を超過しないことを保証。必要に応じて別安全在庫しきい値を掛けられる旨を注記。【F:backend/app/services/transfer_logic.py†L61-L73】
 
 ## C. 不整合と改善提案
 
-1. **Gap 基準の混在是正**
-   - バックエンドとフロント双方で `Gap = Std − Stock @ Start` へ符号統一。`fetch_matrix_rows` と UI マッピング、`getMetricValue` の式を修正し、`Gap` を参照する KPI の符号も揃える。
-   - `simulatedMatrixRows` で `gap` を `stdstock - stock_closing` に再計算している箇所を削除し、サーバー算出値（期首基準）をそのまま保持すると整合が取れる。
+1. **Gap 基準の混在是正（対応済み）**
+   - `Gap = Std − Stock @ Start` へ統一し、`simulatedMatrixRows`・`PSIMatrixTabs`・`getMetricValue` が同じ基準で再計算するよう修正済み。【F:frontend/src/pages/ReallocationPage.tsx†L802-L858】【F:frontend/src/pages/ReallocationPage.tsx†L1042-L1072】【F:frontend/src/features/reallocation/psi/utils.ts†L56-L85】
 
 2. **UI 明示**
    - KPI カード・ツールチップに「Gap は Std vs Stock @ Start（期首基準）」と記載することで利用者に基準点を提示。
@@ -88,6 +78,13 @@ for each sku:
 
 4. **大規模 SKU 対応**
    - React Query キーに SKU フィルタ署名を含めているため、SKU 単位のタブ切替時にキャッシュヒットする。さらに検索／倉庫フィルタを API パラメータに昇格させれば不要な全件再計算を抑制可能。【F:frontend/src/hooks/useTransferPlans.ts†L34-L70】
+
+## D. データ受け渡しと UI 変換フロー
+
+1. **API 応答（MatrixRow）**：`/api/psi/matrix` は SKU × 倉庫 × チャネル行を返し、`stock_at_anchor`（期首在庫）、`inbound_qty`、`outbound_qty`、`stdstock`、`move` などの基礎数値を含む。`stock_closing` は未設定でもよく、フロントで派生させる。【F:frontend/src/types.ts†L116-L132】
+2. **移動量の合成**：保存済みプラン行とドラフト行を SKU × 倉庫 × チャネル軸でマージし、既存 move とドラフト move を統合した `move` を得て `simulatedMatrixRows` を構築する。【F:frontend/src/pages/ReallocationPage.tsx†L802-L858】
+3. **派生指標の算出**：各行で `stock_closing = stock_start + inbound - outbound + move`、`stock_fin = stock_closing`、`gap = stdstock - stock_start`、`gap_after = gap + move` を再計算し、欠損を補完する。【F:frontend/src/pages/ReallocationPage.tsx†L820-L846】
+4. **UI へのマッピング**：テーブル描画前に同じ式で `stockClosing` や `gapAfter` を埋め込み、`PSIMatrixTabs` と `getMetricValue` でも `Gap = Std − Start` と `Gap After = Gap + Move` を共有する。【F:frontend/src/pages/ReallocationPage.tsx†L1042-L1072】【F:frontend/src/features/reallocation/psi/utils.ts†L56-L85】
 
 ---
 
