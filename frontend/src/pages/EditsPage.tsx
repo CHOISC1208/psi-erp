@@ -11,7 +11,6 @@ import axios from "axios";
 import api from "../lib/api";
 import { useSessionsQuery } from "../hooks/usePsiQueries";
 import type {
-  PsiBaseImportResponse,
   PsiBasePage,
   PsiBaseRecord,
   Session,
@@ -113,57 +112,6 @@ const deletePsiBaseRows = async (
   await api.delete(`/sessions/${sessionId}/psi_base`, { data: { rows } });
 };
 
-const exportPsiBase = async (
-  sessionId: string,
-  filters: Record<string, string>,
-  includeAll: boolean,
-  page: number,
-  size: number,
-) => {
-  const params: Record<string, string> = {
-    all: includeAll ? "true" : "false",
-    page: String(page),
-    size: String(size),
-  };
-  if (Object.keys(filters).length > 0) {
-    params.filters = JSON.stringify(filters);
-  }
-  const response = await api.get<Blob>(
-    `/sessions/${sessionId}/psi_base/export`,
-    {
-      params,
-      responseType: "blob",
-    },
-  );
-  return response;
-};
-
-const downloadTemplate = async (sessionId: string) => {
-  const response = await api.get<Blob>(
-    `/sessions/${sessionId}/psi_base/template`,
-    { responseType: "blob" },
-  );
-  return response;
-};
-
-const importPsiBase = async (
-  sessionId: string,
-  mode: "replace" | "upsert",
-  file: File,
-): Promise<PsiBaseImportResponse> => {
-  const formData = new FormData();
-  formData.append("file", file);
-  const { data } = await api.post<PsiBaseImportResponse>(
-    `/sessions/${sessionId}/psi_base/import`,
-    formData,
-    {
-      params: { mode },
-      headers: { "Content-Type": "multipart/form-data" },
-    },
-  );
-  return data;
-};
-
 const sanitizeFilters = (filters: PsiBaseFilters): Record<string, string> => {
   const entries = Object.entries(filters)
     .map(([key, value]) => [key, value.trim()] as const)
@@ -181,43 +129,53 @@ export default function EditsPage() {
 
   const [sessionSearch, setSessionSearch] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-  const [selectedDatasetName, setSelectedDatasetName] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"table" | "csv">("table");
   const [tableFilters, setTableFilters] = useState<PsiBaseFilters>(defaultFilters);
   const [pendingFilters, setPendingFilters] = useState<PsiBaseFilters>(defaultFilters);
   const [pageSize, setPageSize] = useState<number>(50);
   const [page, setPage] = useState<number>(1);
   const [status, setStatus] = useState<StatusMessage | null>(null);
-  const [importMode, setImportMode] = useState<"replace" | "upsert">("replace");
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importResult, setImportResult] = useState<PsiBaseImportResponse | null>(null);
+
+  const baseSessions = useMemo(
+    () =>
+      sessions.filter((session) => {
+        const mode = session.data_type ?? session.data_mode;
+        return mode === "base";
+      }),
+    [sessions],
+  );
 
   const filteredSessions = useMemo(() => {
     const term = sessionSearch.trim().toLowerCase();
     if (!term) {
-      return sessions;
+      return baseSessions;
     }
-    return sessions.filter((session) =>
+    return baseSessions.filter((session) =>
       [session.title, session.description]
         .filter(Boolean)
         .some((value) => value?.toLowerCase().includes(term)),
     );
-  }, [sessionSearch, sessions]);
+  }, [baseSessions, sessionSearch]);
 
   useEffect(() => {
-    if (!selectedSessionId && filteredSessions.length > 0) {
+    if (filteredSessions.length === 0) {
+      setSelectedSessionId("");
+      return;
+    }
+    if (!selectedSessionId) {
+      setSelectedSessionId(filteredSessions[0].id);
+      return;
+    }
+    const exists = filteredSessions.some((session) => session.id === selectedSessionId);
+    if (!exists) {
       setSelectedSessionId(filteredSessions[0].id);
     }
   }, [filteredSessions, selectedSessionId]);
 
   useEffect(() => {
-    setSelectedDatasetName("");
     setTableFilters(defaultFilters());
     setPendingFilters(defaultFilters());
     setPage(1);
     setStatus(null);
-    setImportFile(null);
-    setImportResult(null);
   }, [selectedSessionId]);
 
   const datasetsQuery = useQuery({
@@ -228,25 +186,13 @@ export default function EditsPage() {
 
   const datasets = datasetsQuery.data ?? [];
 
-  useEffect(() => {
+  const selectedDataset = useMemo(() => {
     if (datasets.length === 0) {
-      setSelectedDatasetName("");
-      return;
+      return null;
     }
-    if (!selectedDatasetName) {
-      setSelectedDatasetName(datasets[0].name);
-      return;
-    }
-    const exists = datasets.some((dataset) => dataset.name === selectedDatasetName);
-    if (!exists) {
-      setSelectedDatasetName(datasets[0].name);
-    }
-  }, [datasets, selectedDatasetName]);
-
-  const selectedDataset = useMemo(
-    () => datasets.find((dataset) => dataset.name === selectedDatasetName) ?? null,
-    [datasets, selectedDatasetName],
-  );
+    const baseDataset = datasets.find((dataset) => dataset.name === "psi_base");
+    return baseDataset ?? datasets[0];
+  }, [datasets]);
 
   const sanitizedFilters = useMemo(
     () => sanitizeFilters(tableFilters),
@@ -272,7 +218,6 @@ export default function EditsPage() {
       fetchPsiBasePage(selectedSessionId, sanitizedFilters, page, pageSize),
     enabled:
       Boolean(selectedSessionId) && selectedDataset?.name === "psi_base",
-    placeholderData: (previous) => previous ?? undefined,
   });
 
   const originalRows = tableQuery.data?.rows ?? [];
@@ -471,127 +416,29 @@ export default function EditsPage() {
     },
   });
 
-  const importMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedSessionId || !importFile) {
-        throw new Error("ファイルを選択してください");
-      }
-      return importPsiBase(selectedSessionId, importMode, importFile);
-    },
-    onSuccess: (result) => {
-      setImportResult(result);
-      setImportFile(null);
-      setStatus({
-        type: "success",
-        text: `Import completed. Added ${result.added}, updated ${result.updated}, deleted ${result.deleted}.`,
-      });
-      void queryClient.invalidateQueries({ queryKey: ["session-psi-base"] });
-    },
-    onError: (error) => {
-      setStatus({ type: "error", text: getErrorMessage(error, "Failed to import CSV.") });
-    },
-  });
-
   const handleDiscard = () => {
     setLocalRows(originalRows);
     setEdits(new Map());
     setStatus(null);
   };
 
-  const handleDownloadCsv = async (includeAll: boolean) => {
-    if (!selectedSessionId) {
-      return;
-    }
-    try {
-      const response = await exportPsiBase(
-        selectedSessionId,
-        sanitizedFilters,
-        includeAll,
-        page,
-        pageSize,
-      );
-      const blob = new Blob(["\ufeff", response.data], {
-        type: response.headers["content-type"] ?? "text/csv;charset=utf-8",
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      const disposition = response.headers["content-disposition"];
-      const match =
-        typeof disposition === "string"
-          ? disposition.match(/filename="?([^";]+)"?/i)
-          : null;
-      link.download = match?.[1] ?? `psi-base-${selectedSessionId}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      setStatus({ type: "success", text: "CSV download started." });
-    } catch (error) {
-      setStatus({ type: "error", text: getErrorMessage(error, "Failed to download CSV.") });
-    }
-  };
-
-  const handleDownloadTemplate = async () => {
-    if (!selectedSessionId) {
-      return;
-    }
-    try {
-      const response = await downloadTemplate(selectedSessionId);
-      const blob = new Blob(["\ufeff", response.data], {
-        type: response.headers["content-type"] ?? "text/csv;charset=utf-8",
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `psi-base-template-${selectedSessionId}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      setStatus({ type: "error", text: getErrorMessage(error, "Failed to download template.") });
-    }
-  };
-
-  const handleImportSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setStatus(null);
-    setImportResult(null);
-    try {
-      await importMutation.mutateAsync();
-    } catch (error) {
-      setStatus({
-        type: "error",
-        text: getErrorMessage(error, "Failed to import CSV."),
-      });
-    }
-  };
-
   const totalRows = tableQuery.data?.total ?? 0;
   const totalPages = totalRows === 0 ? 1 : Math.max(1, Math.ceil(totalRows / pageSize));
+  const canEditPsiBase = Boolean(selectedSessionId && selectedDataset?.name === "psi_base");
 
   return (
-    <div className="page transfer-page">
+    <div className="page edits-page">
       <header className="page-header">
         <div>
           <h1>Edits</h1>
-          <p>Manage session scoped PSI datasets with inline edits or CSV uploads.</p>
+          <p>セッションのPSI baseデータを検索して、画面上で直接編集できます。</p>
         </div>
-        <a
-          className="button"
-          href="/reallocation"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Reallocationへ
-        </a>
       </header>
 
       {status && <div className={`status-message ${status.type}`}>{status.text}</div>}
 
       <section className="card">
-        <h2>Step 1: Select session</h2>
+        <h2>Session</h2>
         <div className="form-row">
           <label className="form-field">
             <span>検索</span>
@@ -621,240 +468,143 @@ export default function EditsPage() {
         </div>
       </section>
 
-      <section className="card">
-        <h2>Step 2: Choose dataset</h2>
-        {datasetsQuery.isLoading && <p>Loading datasets…</p>}
-        {datasetsQuery.isError && <p className="error-text">Failed to load dataset list.</p>}
-        {datasets.length === 0 && !datasetsQuery.isLoading && (
-          <p>No editable datasets are configured for this session.</p>
-        )}
-        {datasets.length > 0 && (
-          <div className="dataset-selector">
-            {datasets.map((dataset) => (
-              <label key={dataset.name} className="dataset-option">
-                <input
-                  type="radio"
-                  name="dataset"
-                  value={dataset.name}
-                  checked={dataset.name === selectedDatasetName}
-                  onChange={(event) => setSelectedDatasetName(event.target.value)}
-                />
-                <span className="dataset-label">{dataset.label}</span>
-                {dataset.description && (
-                  <span className="dataset-description">{dataset.description}</span>
-                )}
-              </label>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {selectedDataset?.name === "psi_base" && (
+      {selectedSessionId && datasetsQuery.isLoading && (
         <section className="card">
-          <h2>Step 3: Edit data</h2>
-          <div className="tab-header">
-            <button
-              type="button"
-              className={activeTab === "table" ? "active" : ""}
-              onClick={() => setActiveTab("table")}
-            >
-              Table editor
-            </button>
-            <button
-              type="button"
-              className={activeTab === "csv" ? "active" : ""}
-              onClick={() => setActiveTab("csv")}
-            >
-              CSV import/export
-            </button>
+          <h2>PSI base</h2>
+          <p>Loading dataset metadata…</p>
+        </section>
+      )}
+
+      {selectedSessionId && datasetsQuery.isError && (
+        <section className="card">
+          <h2>PSI base</h2>
+          <p className="error-text">Failed to load dataset metadata.</p>
+        </section>
+      )}
+
+      {selectedSessionId && !datasetsQuery.isLoading && selectedDataset?.name !== "psi_base" && (
+        <section className="card">
+          <h2>PSI base</h2>
+          <p>このセッションではPSI baseデータの編集が利用できません。</p>
+        </section>
+      )}
+
+      {canEditPsiBase && selectedDataset && (
+        <section className="card">
+          <h2>PSI base</h2>
+
+          <form className="filter-form" onSubmit={handleFilterSubmit}>
+            <div className="filter-grid single">
+              <label>
+                <span>SKU</span>
+                <input
+                  type="search"
+                  value={pendingFilters.sku_code}
+                  onChange={(event) => handleFilterChange(event, "sku_code")}
+                  placeholder="SKU code"
+                />
+              </label>
+            </div>
+            <div className="filter-actions">
+              <button type="submit">検索</button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  const defaults = defaultFilters();
+                  setPendingFilters(defaults);
+                  setTableFilters(defaults);
+                  setPage(1);
+                  setStatus(null);
+                }}
+              >
+                リセット
+              </button>
+            </div>
+          </form>
+
+          <div className="table-toolbar">
+            <div className="table-toolbar-left">
+              <span>
+                {tableQuery.isLoading
+                  ? "Loading rows…"
+                  : `Showing ${localRows.length} / ${totalRows} rows`}
+              </span>
+              <span className="edit-indicator">
+                {hasEdits ? "Unsaved changes" : "All changes saved"}
+              </span>
+            </div>
+            <div className="table-toolbar-right">
+              <button
+                type="button"
+                onClick={() => {
+                  void saveMutation.mutateAsync();
+                }}
+                disabled={!hasEdits || saveMutation.isPending}
+              >
+                {saveMutation.isPending ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={handleDiscard}
+                disabled={!hasEdits}
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  void deleteMutation.mutateAsync();
+                }}
+                disabled={selectedRowKeys.size === 0 || deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? "Deleting…" : "Delete selected"}
+              </button>
+            </div>
           </div>
 
-          {activeTab === "table" && (
-            <div className="tab-panel">
-              <form className="filter-form" onSubmit={handleFilterSubmit}>
-                <div className="filter-grid">
-                  <label>
-                    <span>SKU</span>
-                    <input
-                      type="search"
-                      value={pendingFilters.sku_code}
-                      onChange={(event) => handleFilterChange(event, "sku_code")}
-                      placeholder="SKU code"
-                    />
-                  </label>
-                  <label>
-                    <span>Warehouse</span>
-                    <input
-                      type="search"
-                      value={pendingFilters.warehouse_name}
-                      onChange={(event) => handleFilterChange(event, "warehouse_name")}
-                      placeholder="Warehouse"
-                    />
-                  </label>
-                  <label>
-                    <span>Channel</span>
-                    <input
-                      type="search"
-                      value={pendingFilters.channel}
-                      onChange={(event) => handleFilterChange(event, "channel")}
-                      placeholder="Channel"
-                    />
-                  </label>
-                  <label>
-                    <span>FW rank</span>
-                    <input
-                      type="search"
-                      value={pendingFilters.fw_rank}
-                      onChange={(event) => handleFilterChange(event, "fw_rank")}
-                      placeholder="FW"
-                    />
-                  </label>
-                  <label>
-                    <span>SS rank</span>
-                    <input
-                      type="search"
-                      value={pendingFilters.ss_rank}
-                      onChange={(event) => handleFilterChange(event, "ss_rank")}
-                      placeholder="SS"
-                    />
-                  </label>
-                  <label>
-                    <span>Date start</span>
-                    <input
-                      type="date"
-                      value={pendingFilters.date_start}
-                      onChange={(event) => handleFilterChange(event, "date_start")}
-                    />
-                  </label>
-                  <label>
-                    <span>Date end</span>
-                    <input
-                      type="date"
-                      value={pendingFilters.date_end}
-                      onChange={(event) => handleFilterChange(event, "date_end")}
-                    />
-                  </label>
-                </div>
-                <div className="filter-actions">
-                  <button type="submit">Apply filters</button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => {
-                      const defaults = defaultFilters();
-                      setPendingFilters(defaults);
-                      setTableFilters(defaults);
-                      setPage(1);
-                      setStatus(null);
-                    }}
-                  >
-                    Reset
-                  </button>
-                </div>
-              </form>
-
-              <div className="table-toolbar">
-                <div className="table-toolbar-left">
-                  <span>
-                    {tableQuery.isLoading
-                      ? "Loading rows…"
-                      : `Showing ${localRows.length} / ${totalRows} rows`}
-                  </span>
-                  <span className="edit-indicator">
-                    {hasEdits ? "Unsaved changes" : "All changes saved"}
-                  </span>
-                </div>
-                <div className="table-toolbar-right">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void saveMutation.mutateAsync();
-                    }}
-                    disabled={!hasEdits || saveMutation.isPending}
-                  >
-                    {saveMutation.isPending ? "Saving…" : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={handleDiscard}
-                    disabled={!hasEdits}
-                  >
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => {
-                      void deleteMutation.mutateAsync();
-                    }}
-                    disabled={selectedRowKeys.size === 0 || deleteMutation.isPending}
-                  >
-                    {deleteMutation.isPending ? "Deleting…" : "Delete selected"}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => handleDownloadCsv(false)}
-                    disabled={tableQuery.isLoading}
-                  >
-                    CSV (current page)
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => handleDownloadCsv(true)}
-                    disabled={tableQuery.isLoading}
-                  >
-                    CSV (all results)
-                  </button>
-                </div>
-              </div>
-
-              <div className="table-wrapper">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="select-column">選択</th>
-                      {selectedDataset.columns.map((column) => (
-                        <th key={column.name}>{column.label}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tableQuery.isLoading && (
-                      <tr>
-                        <td colSpan={selectedDataset.columns.length + 1}>Loading…</td>
-                      </tr>
-                    )}
-                    {!tableQuery.isLoading && localRows.length === 0 && (
-                      <tr>
-                        <td colSpan={selectedDataset.columns.length + 1}>
-                          No rows found for the applied filters.
-                        </td>
-                      </tr>
-                    )}
-                    {localRows.map((row) => {
-                      const rowKey = makeRowKey(row);
-                      const isEdited = edits.has(rowKey);
-                      const isSelected = selectedRowKeys.has(rowKey);
-                      return (
-                        <tr key={rowKey} className={isEdited ? "row-edited" : undefined}>
-                          <td className="select-column">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={(event) =>
-                                handleRowSelection(rowKey, event.target.checked)
-                              }
-                            />
-                          </td>
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th className="select-column">選択</th>
+                  {selectedDataset.columns.map((column) => (
+                    <th key={column.name}>{column.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tableQuery.isLoading && (
+                  <tr>
+                    <td colSpan={selectedDataset.columns.length + 1}>Loading…</td>
+                  </tr>
+                )}
+                {!tableQuery.isLoading && localRows.length === 0 && (
+                  <tr>
+                    <td colSpan={selectedDataset.columns.length + 1}>
+                      No rows found for the applied filters.
+                    </td>
+                  </tr>
+                )}
+                {localRows.map((row) => {
+                  const rowKey = makeRowKey(row);
+                  const isEdited = edits.has(rowKey);
+                  const isSelected = selectedRowKeys.has(rowKey);
+                  return (
+                    <tr key={rowKey} className={isEdited ? "row-edited" : undefined}>
+                      <td className="select-column">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(event) => handleRowSelection(rowKey, event.target.checked)}
+                        />
+                      </td>
                       {selectedDataset.columns.map((column) => {
                         const cellValue = row[column.name as keyof PsiBaseRecord];
                         const displayValue =
-                          cellValue === null || cellValue === undefined
-                            ? ""
-                            : String(cellValue);
+                          cellValue === null || cellValue === undefined ? "" : String(cellValue);
                         if (!editableColumns.has(column.name)) {
                           return <td key={column.name}>{displayValue}</td>;
                         }
@@ -876,115 +626,37 @@ export default function EditsPage() {
                 })}
               </tbody>
             </table>
-              </div>
+          </div>
 
-              <div className="pagination">
-                <button
-                  type="button"
-                  onClick={() => handlePageChange(Math.max(1, page - 1))}
-                  disabled={page <= 1}
-                >
-                  ‹ Prev
-                </button>
-                <span>
-                  Page {page} / {totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
-                  disabled={page >= totalPages}
-                >
-                  Next ›
-                </button>
-                <label className="page-size">
-                  <span>Rows per page</span>
-                  <select value={pageSize} onChange={handlePageSizeChange}>
-                    {PAGE_SIZE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "csv" && (
-            <div className="tab-panel csv-panel">
-              <div className="csv-actions">
-                <button type="button" onClick={handleDownloadTemplate}>
-                  Download template
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => handleDownloadCsv(true)}
-                >
-                  Export current dataset
-                </button>
-              </div>
-              <form className="import-form" onSubmit={handleImportSubmit}>
-                <label className="form-field">
-                  <span>CSV file</span>
-                  <input
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={(event) => {
-                      const [file] = event.target.files ?? [];
-                      setImportFile(file ?? null);
-                    }}
-                  />
-                </label>
-                <div className="form-field">
-                  <span>Import mode</span>
-                  <label className="radio">
-                    <input
-                      type="radio"
-                      name="import-mode"
-                      value="replace"
-                      checked={importMode === "replace"}
-                      onChange={() => setImportMode("replace")}
-                    />
-                    <span>Replace (truncate and reload)</span>
-                  </label>
-                  <label className="radio">
-                    <input
-                      type="radio"
-                      name="import-mode"
-                      value="upsert"
-                      checked={importMode === "upsert"}
-                      onChange={() => setImportMode("upsert")}
-                    />
-                    <span>Upsert (update existing, insert new)</span>
-                  </label>
-                </div>
-                <button type="submit" disabled={!importFile || importMutation.isPending}>
-                  {importMutation.isPending ? "Importing…" : "Run import"}
-                </button>
-              </form>
-              {importResult && (
-                <div className="import-summary">
-                  <h3>Last import summary</h3>
-                  <ul>
-                    <li>Added: {importResult.added}</li>
-                    <li>Updated: {importResult.updated}</li>
-                    <li>Deleted: {importResult.deleted}</li>
-                  </ul>
-                  {importResult.warnings.length > 0 && (
-                    <details>
-                      <summary>Warnings</summary>
-                      <ul>
-                        {importResult.warnings.map((warning, index) => (
-                          <li key={index}>{warning}</li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="pagination">
+            <button
+              type="button"
+              onClick={() => handlePageChange(Math.max(1, page - 1))}
+              disabled={page <= 1}
+            >
+              ‹ Prev
+            </button>
+            <span>
+              Page {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
+              disabled={page >= totalPages}
+            >
+              Next ›
+            </button>
+            <label className="page-size">
+              <span>Rows per page</span>
+              <select value={pageSize} onChange={handlePageSizeChange}>
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </section>
       )}
     </div>
