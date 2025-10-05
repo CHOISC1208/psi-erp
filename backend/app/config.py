@@ -127,6 +127,9 @@ class Settings(BaseModel):
     expose_audit_fields: bool = Field(
         default_factory=lambda: _env_flag("EXPOSE_AUDIT_FIELDS", default=False)
     )
+    session_editable_tables_raw: str = Field(
+        default_factory=lambda: os.getenv("SESSION_EDITABLE_TABLES", "psi_base")
+    )
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -174,6 +177,16 @@ class Settings(BaseModel):
             return default_origins
 
         return origins
+
+    @property
+    def session_editable_tables(self) -> list[str]:
+        """Return the list of session-scoped tables that can be edited."""
+
+        raw = self.session_editable_tables_raw.strip()
+        if not raw:
+            return ["psi_base"]
+        tables = [part.strip() for part in raw.split(",") if part.strip()]
+        return tables or ["psi_base"]
 
     @property
     def csrf_header(self) -> str:

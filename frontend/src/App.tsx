@@ -100,6 +100,12 @@ function ProtectedLayout() {
             </NavLink>
           </li>
           <li>
+            <NavLink to="/edits" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              <span className="menu-icon" aria-hidden="true">✏️</span>
+              <span className="menu-label">Edits</span>
+            </NavLink>
+          </li>
+          <li>
             <NavLink to="/test-algo" className={({ isActive }) => (isActive ? "active" : undefined)}>
               <span className="menu-icon" aria-hidden="true">🧪</span>
               <span className="menu-label">Test_Algo</span>

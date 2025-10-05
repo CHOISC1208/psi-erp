@@ -199,6 +199,67 @@ export interface TransferPlanLine {
   reason?: string | null;
 }
 
+export interface DatasetColumnMetadata {
+  name: string;
+  label: string;
+  type: "string" | "number" | "date";
+  editable: boolean;
+  required: boolean;
+  max_length?: number | null;
+  description?: string | null;
+}
+
+export interface SessionDatasetMetadata {
+  name: string;
+  label: string;
+  description?: string | null;
+  primary_key: string[];
+  columns: DatasetColumnMetadata[];
+  read_only_columns: string[];
+  numeric_columns: string[];
+  date_columns: string[];
+}
+
+export interface PsiBaseRecord {
+  session_id: string;
+  sku_code: string;
+  sku_name?: string | null;
+  category_1?: string | null;
+  category_2?: string | null;
+  category_3?: string | null;
+  fw_rank?: string | null;
+  ss_rank?: string | null;
+  warehouse_name: string;
+  channel: string;
+  date: string;
+  stock_at_anchor?: string | null;
+  inbound_qty?: string | null;
+  outbound_qty?: string | null;
+  net_flow?: string | null;
+  stock_closing?: string | null;
+  safety_stock?: string | null;
+  movable_stock?: string | null;
+  stdstock?: string | null;
+  gap?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+  updated_by_username?: string | null;
+}
+
+export interface PsiBasePage {
+  page: number;
+  size: number;
+  total: number;
+  rows: PsiBaseRecord[];
+}
+
+export interface PsiBaseImportResponse {
+  added: number;
+  updated: number;
+  deleted: number;
+  warnings: string[];
+}
+
 export interface TransferPlanWithLines {
   plan: TransferPlan;
   lines: TransferPlanLine[];

@@ -291,6 +291,7 @@ export default function ReallocationPage() {
   const [hasAutoLoadedPlan, setHasAutoLoadedPlan] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [skuSearch, setSkuSearch] = useState("");
+  const [currentSkuCode, setCurrentSkuCode] = useState<string | null>(null);
   const [planLinesPage, setPlanLinesPage] = useState(1);
   const [planSearchTerm, setPlanSearchTerm] = useState("");
   const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
@@ -451,10 +452,11 @@ export default function ReallocationPage() {
     if (!plan) {
       return;
     }
+    const defaultSku = currentSkuCode?.trim() ?? "";
     const newLine: LineDraft = {
       line_id: generateId(),
       plan_id: plan.plan_id,
-      sku_code: "",
+      sku_code: defaultSku,
       from_warehouse: "",
       from_channel: "",
       to_warehouse: "",
@@ -463,8 +465,11 @@ export default function ReallocationPage() {
       is_manual: true,
       reason: "",
     };
-    setLines((prev) => [...prev, newLine]);
-    setPlanLinesPage(Math.max(1, Math.ceil((lines.length + 1) / PLAN_LINES_PAGE_SIZE)));
+    setLines((prev) => {
+      const next = [...prev, newLine];
+      setPlanLinesPage(Math.max(1, Math.ceil(next.length / PLAN_LINES_PAGE_SIZE)));
+      return next;
+    });
     setPlanDirty(true);
   };
 
@@ -1243,6 +1248,7 @@ export default function ReallocationPage() {
             skuList={skuList}
             skuSearch={skuSearch}
             onSkuSearchChange={setSkuSearch}
+            onSkuCodeChange={setCurrentSkuCode}
           />
         )}
       </section>
@@ -1257,6 +1263,9 @@ export default function ReallocationPage() {
               aria-live="polite"
             >
               {planDirty ? "Unsaved changes" : "Saved"}
+            </span>
+            <span className="current-sku-display">
+              Current SKU: <code>{currentSkuCode ?? "—"}</code>
             </span>
           </div>
           <div className="plan-actions">

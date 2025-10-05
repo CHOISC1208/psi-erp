@@ -2,19 +2,32 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import json
 import os
 import sys
 import uuid
+from decimal import Decimal
+from functools import lru_cache
+from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlencode
 
 import pytest
+from fastapi import HTTPException, UploadFile
+from sqlalchemy import select
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+@lru_cache(maxsize=1)
+def _get_sessions_router():
+    from backend.app.routers import sessions as sessions_router
+
+    return sessions_router
 
 
 def _perform_request(
@@ -148,10 +161,12 @@ def app_env(tmp_path_factory: pytest.TempPathFactory) -> SimpleNamespace:
     assert settings.db_schema == ""
 
     with engine.begin() as connection:
+        models.PSIBase.__table__.drop(bind=connection, checkfirst=True)
         models.Session.__table__.drop(bind=connection, checkfirst=True)
         models.User.__table__.drop(bind=connection, checkfirst=True)
         models.User.__table__.create(bind=connection, checkfirst=True)
         models.Session.__table__.create(bind=connection, checkfirst=True)
+        models.PSIBase.__table__.create(bind=connection, checkfirst=True)
 
     asyncio.run(app.router.startup())
 
@@ -168,6 +183,7 @@ def app_env(tmp_path_factory: pytest.TempPathFactory) -> SimpleNamespace:
 @pytest.fixture(autouse=True)
 def clear_database(app_env: SimpleNamespace) -> None:
     with app_env.engine.begin() as connection:
+        connection.execute(app_env.models.PSIBase.__table__.delete())
         connection.execute(app_env.models.Session.__table__.delete())
         connection.execute(app_env.models.User.__table__.delete())
     yield
@@ -363,3 +379,105 @@ def test_list_sessions_supports_search(
     )
     assert status == 200
     assert [item["title"] for item in by_username] == ["Gamma"]
+
+
+def _create_csv_payload(session_id: uuid.UUID, *, date_value: str = "2024-01-01") -> bytes:
+    definition = _get_sessions_router().DATASET_DEFINITIONS["psi_base"]
+    row = {column: "" for column in definition.columns}
+    row.update(
+        {
+            "session_id": str(session_id),
+            "sku_code": "SKU-001",
+            "sku_name": "Widget",
+            "warehouse_name": "Main",
+            "channel": "ONLINE",
+            "date": date_value,
+            "stock_at_anchor": "5",
+            "inbound_qty": "3",
+            "outbound_qty": "2",
+            "safety_stock": "4",
+            "movable_stock": "1",
+        }
+    )
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(definition.columns)
+    writer.writerow([row[column] for column in definition.columns])
+    return buffer.getvalue().encode("utf-8")
+
+
+def _invoke_import(
+    session_id: uuid.UUID,
+    csv_bytes: bytes,
+    *,
+    app_env: SimpleNamespace,
+    current_user,
+) -> object:
+    router = _get_sessions_router()
+    upload = UploadFile(filename="psi_base.csv", file=BytesIO(csv_bytes))
+    upload.file.seek(0)
+    with app_env.SessionLocal() as db_session:
+        return asyncio.run(
+            router.import_session_psi_base(
+                session_id=session_id,
+                file=upload,
+                mode="replace",
+                db=db_session,
+                current_user=current_user,
+            )
+        )
+
+
+def test_import_psi_base_blank_numeric_defaults_to_zero(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    status, _, created = _perform_json_request(
+        app_env.app, "POST", "/sessions", {"title": "Import"}
+    )
+    assert status == 201
+    session_id = uuid.UUID(created["id"])
+
+    response = _invoke_import(
+        session_id,
+        _create_csv_payload(session_id),
+        app_env=app_env,
+        current_user=auth_user,
+    )
+    assert response.added == 1
+    assert response.updated == 0
+    assert response.deleted == 0
+
+    with app_env.SessionLocal() as check_session:
+        stored = check_session.scalars(select(app_env.models.PSIBase)).one()
+        assert stored.net_flow == Decimal("0")
+        assert stored.stock_closing == Decimal("0")
+
+
+def test_import_psi_base_invalid_date_reports_row_error(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    status, _, created = _perform_json_request(
+        app_env.app, "POST", "/sessions", {"title": "Import"}
+    )
+    assert status == 201
+    session_id = uuid.UUID(created["id"])
+
+    invalid_csv = _create_csv_payload(session_id, date_value="20240101")
+
+    with pytest.raises(HTTPException) as exc_info:
+        _invoke_import(
+            session_id,
+            invalid_csv,
+            app_env=app_env,
+            current_user=auth_user,
+        )
+
+    error = exc_info.value
+    assert error.status_code == 400
+    assert error.detail["message"] == "Validation failed"
+    assert error.detail["errors"] == [
+        {"row": 2, "field": "date", "message": "must use YYYY-MM-DD"}
+    ]
+
+    with app_env.SessionLocal() as check_session:
+        assert check_session.scalars(select(app_env.models.PSIBase)).first() is None
