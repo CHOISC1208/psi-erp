@@ -139,24 +139,18 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
       return <span className="psi-matrix-value value-neutral">-</span>;
     }
     const className = `psi-matrix-value ${getValueClassName(value)}`;
-    const icon = value > 0 ? "▲" : value < 0 ? "▼" : "◆";
     return (
       <span className={className}>
-        <span aria-hidden className="value-icon">
-          {icon}
-        </span>
-        <span className="value-number">{formatMetricValue(value)}</span>
+        <span className="value-number">{formatMetricValue(Math.abs(value))}</span>
       </span>
     );
   };
 
   const renderTotalValue = (value: number) => {
     const className = `psi-matrix-value ${getValueClassName(value)}`;
-    const icon = value > 0 ? "▲" : value < 0 ? "▼" : "◆";
     return (
       <span className={className}>
-        <span aria-hidden className="value-icon">{icon}</span>
-        <span className="value-number">{formatMetricValue(value)}</span>
+        <span className="value-number">{formatMetricValue(Math.abs(value))}</span>
       </span>
     );
   };

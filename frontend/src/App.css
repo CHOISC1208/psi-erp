@@ -816,6 +816,23 @@ body {
   outline-offset: 1px;
 }
 
+.reallocation-page .plan-lines-section .data-table {
+  font-size: 0.9em;
+}
+
+.reallocation-page .plan-lines-section .data-table th {
+  font-size: 0.95em;
+}
+
+.reallocation-page .plan-lines-section .data-table td {
+  font-size: 0.9em;
+}
+
+.reallocation-page .plan-lines-section .data-table input,
+.reallocation-page .plan-lines-section .data-table select {
+  font-size: 0.9em;
+}
+
 .table-container {
   border: 1px solid var(--border-subtle, #d1d5db);
   border-radius: 0.75rem;
