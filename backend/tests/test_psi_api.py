@@ -428,6 +428,89 @@ def test_upload_persists_stdstock_and_gap(
     assert first_row.gap == Decimal("5")
 
 
+def test_upload_allows_thousand_separators(
+    app_env: SimpleNamespace, auth_user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.app.routers import psi as psi_router
+
+    user = auth_user
+    session = _create_session(app_env, user)
+
+    with app_env.engine.begin() as connection:
+        app_env.models.PSIBase.__table__.drop(bind=connection, checkfirst=True)
+        app_env.models.PSIBase.__table__.create(bind=connection, checkfirst=True)
+
+    monkeypatch.setattr(
+        "backend.app.routers.psi._ensure_channel_transfer_table", lambda db: None
+    )
+
+    rows = [
+        [
+            "sku_code",
+            "category_1",
+            "category_2",
+            "category_3",
+            "sku_name",
+            "warehouse_name",
+            "channel",
+            "fw_rank",
+            "ss_rank",
+            "date",
+            "stock_at_anchor",
+            "inbound_qty",
+            "outbound_qty",
+            "net_flow",
+            "stock_closing",
+            "safety_stock",
+            "movable_stock",
+            "stdstock",
+            "gap",
+        ],
+        [
+            "SKU-001",
+            "CatA",
+            "CatB",
+            "CatC",
+            "Item",
+            "Tokyo",
+            "直営店",
+            "A",
+            "B",
+            "2025/10/02",
+            "1,000",
+            "2,500",
+            "3,750",
+            "-1,000",
+            "2,500",
+            "250",
+            "100",
+            "400",
+            "-50",
+        ],
+    ]
+    csv_text = "\n".join("\t".join(str(value) for value in row) for row in rows)
+
+    upload_file = UploadFile(
+        filename="psi_base.tsv", file=io.BytesIO(csv_text.encode("utf-8"))
+    )
+
+    with app_env.SessionLocal() as db:
+        result = asyncio.run(
+            psi_router.upload_csv_for_session(session_id=session.id, file=upload_file, db=db)
+        )
+        assert result.ok is True
+        assert result.mode == schemas.SessionDataType.BASE
+        assert result.rows == 1
+        assert result.rows_imported == 1
+        assert result.warnings == []
+
+        stored_row = db.scalar(select(app_env.models.PSIBase))
+
+    assert stored_row.stock_at_anchor == Decimal("1000")
+    assert stored_row.inbound_qty == Decimal("2500")
+    assert stored_row.outbound_qty == Decimal("3750")
+
+
 def test_upload_summary_mode_persists_rows_with_warnings(
     app_env: SimpleNamespace, auth_user
 ) -> None:
