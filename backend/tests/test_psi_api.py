@@ -481,6 +481,76 @@ def test_upload_summary_mode_persists_rows_with_warnings(
     assert second_row.std_stock == Decimal("1")
 
 
+def test_upload_summary_accepts_alias_headers(
+    app_env: SimpleNamespace, auth_user
+) -> None:
+    from backend.app.routers import psi as psi_router
+
+    user = auth_user
+    session = _create_session(app_env, user, data_mode="summary")
+
+    rows = [
+        [
+            "sku_code",
+            "SKU 名",
+            "warehouse_name",
+            "channel",
+            "inbound",
+            "outbound",
+            "std_stock",
+            "stock",
+        ],
+        [
+            "SKU-ALIAS-1",
+            "Alias Item",
+            "Tokyo",
+            "online",
+            "3",
+            "1",
+            "0",
+            "4",
+        ],
+        [
+            "SKU-ALIAS-2",
+            "",
+            "Osaka",
+            "retail",
+            "0",
+            "0",
+            "5",
+            "6",
+        ],
+    ]
+    csv_text = "\n".join(",".join(str(value) for value in row) for row in rows)
+    upload_file = UploadFile(
+        filename="summary_alias.csv", file=io.BytesIO(csv_text.encode("utf-8"))
+    )
+
+    with app_env.SessionLocal() as db:
+        result = asyncio.run(
+            psi_router.upload_csv_for_session(
+                session_id=session.id, file=upload_file, db=db
+            )
+        )
+        assert result.ok is True
+        assert result.rows_imported == 2
+
+        stored_rows = db.scalars(
+            select(app_env.models.PSISummaryBase).order_by(
+                app_env.models.PSISummaryBase.id.asc()
+            )
+        ).all()
+
+    assert [row.sku_code for row in stored_rows] == [
+        "SKU-ALIAS-1",
+        "SKU-ALIAS-2",
+    ]
+    assert stored_rows[0].sku_name == "Alias Item"
+    assert stored_rows[1].sku_name is None
+    assert stored_rows[0].inbound_qty == Decimal("3")
+    assert stored_rows[1].std_stock == Decimal("5")
+
+
 def test_upload_summary_rejects_duplicates(
     app_env: SimpleNamespace, auth_user
 ) -> None:

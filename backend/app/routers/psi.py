@@ -204,7 +204,9 @@ def _normalise_header(header: str) -> str:
     normalised = header.strip().lower().replace(" ", "_")
     alias_map = {
         "sku名": "sku_name",
+        "sku_名": "sku_name",
         "sku__名": "sku_name",
+        "sku　名": "sku_name",
         "inbound": "inbound_qty",
         "outbound": "outbound_qty",
         "std_stock": "stdstock",
