@@ -258,8 +258,11 @@ def _parse_decimal(raw_value: str | None, column: str) -> Decimal | None:
     if not stripped:
         return None
 
+    # Accept simple thousands separators that may appear in spreadsheets.
+    normalized = stripped.replace(",", "")
+
     try:
-        return Decimal(stripped)
+        return Decimal(normalized)
     except (InvalidOperation, ValueError) as exc:  # pragma: no cover - defensive safety
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
