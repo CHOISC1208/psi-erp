@@ -29,9 +29,20 @@ export default function OriginView({ rows }: OriginViewProps) {
         <tbody>
           {rows.map((row) => {
             const stockStartValue = safeNumber(row.stockStart);
+            const inboundValue = safeNumber(row.inbound);
+            const outboundValue = safeNumber(row.outbound);
             const moveValue = safeNumber(row.move);
             const stdStockValue = safeNumber(row.stdStock);
-            const gapAfter = row.gapAfter ?? stockStartValue + moveValue - stdStockValue;
+            const stockClosingValue =
+              typeof row.stockClosing === "number" && Number.isFinite(row.stockClosing)
+                ? row.stockClosing
+                : stockStartValue + inboundValue - outboundValue;
+            const stockFinalValue =
+              typeof row.stockFinal === "number" && Number.isFinite(row.stockFinal)
+                ? row.stockFinal
+                : stockClosingValue + moveValue;
+            const gapValue = row.gap ?? stockFinalValue - stdStockValue;
+            const gapAfter = row.gapAfter ?? gapValue + moveValue;
             return (
               <tr key={`${row.sku}|${row.warehouse}|${row.channel}`}>
                 <td>{row.sku}</td>
@@ -43,9 +54,9 @@ export default function OriginView({ rows }: OriginViewProps) {
                 <td>{formatMetricValue(row.outbound)}</td>
                 <td>{formatMetricValue(row.stockClosing)}</td>
                 <td>{formatMetricValue(row.stdStock)}</td>
-                <td>{formatMetricValue(row.gap)}</td>
+                <td>{formatMetricValue(gapValue)}</td>
                 <td>{formatMetricValue(row.move)}</td>
-                <td>{formatMetricValue(row.stockFinal)}</td>
+                <td>{formatMetricValue(stockFinalValue)}</td>
                 <td style={{ color: gapAfter < 0 ? "#c0392b" : undefined }}>
                   {formatMetricValue(gapAfter)}
                 </td>

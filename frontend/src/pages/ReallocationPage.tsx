@@ -811,17 +811,15 @@ export default function ReallocationPage() {
     keys.forEach((key) => {
       const baseRow = baseMap.get(key);
       const [sku_code, warehouse_name, channel] = key.split(MATRIX_KEY_DELIMITER);
-      const baseMove = baseRow?.move ?? 0;
-      const savedMove = baselineMoveMap.get(key) ?? 0;
       const draftMove = draftMoveMap.get(key) ?? 0;
-      const move = usingSummaryMatrix ? baseMove + draftMove : baseMove - savedMove + draftMove;
       const stock_at_anchor = baseRow?.stock_at_anchor ?? 0;
       const inbound_qty = baseRow?.inbound_qty ?? 0;
       const outbound_qty = baseRow?.outbound_qty ?? 0;
       const stdstock = baseRow?.stdstock ?? 0;
-      const gap = stdstock - stock_at_anchor;
-      const stock_closing = stock_at_anchor + inbound_qty - outbound_qty + move;
-      const stock_fin = stock_closing;
+      const stock_closing = stock_at_anchor + inbound_qty - outbound_qty;
+      const move = draftMove;
+      const stock_fin = stock_closing + move;
+      const gap = stock_fin - stdstock;
       const sku_name = baseRow?.sku_name ?? skuNameMap.get(sku_code) ?? null;
       const category_1 = baseRow?.category_1 ?? null;
       const category_2 = baseRow?.category_2 ?? null;
@@ -853,7 +851,7 @@ export default function ReallocationPage() {
       }
       return a.channel.localeCompare(b.channel);
     });
-  }, [baseMatrixRows, baselineMoveMap, draftMoveMap, skuNameMap, usingSummaryMatrix]);
+  }, [baseMatrixRows, baselineMoveMap, draftMoveMap, skuNameMap]);
 
   const skuOptions = useMemo(() => {
     const optionMap = new Map<string, string | null>();
@@ -1045,8 +1043,9 @@ export default function ReallocationPage() {
         const outbound = row.outbound_qty ?? 0;
         const stdStock = row.stdstock ?? 0;
         const move = row.move ?? 0;
-        const stockClosing = stockStart + inbound - outbound + move;
-        const gap = stdStock - stockStart;
+        const stockClosing = stockStart + inbound - outbound;
+        const stockFinal = stockClosing + move;
+        const gap = stockFinal - stdStock;
         const gapAfter = gap + move;
         return {
           sku: row.sku_code,
@@ -1062,8 +1061,8 @@ export default function ReallocationPage() {
           stockClosing,
           stdStock: row.stdstock,
           gap,
-          move: row.move,
-          stockFinal: stockClosing,
+          move,
+          stockFinal,
           gapAfter,
         };
       }),

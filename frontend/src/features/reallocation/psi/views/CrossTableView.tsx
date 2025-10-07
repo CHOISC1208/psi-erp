@@ -112,7 +112,7 @@ export default function CrossTableView({ rows, metrics, orientation = "warehouse
   const getMetricLabelContent = (metricKey: MetricDefinition["key"], label: string) => {
     if (metricKey === "gap") {
       return (
-        <span className="metric-label-text" title="Gap = Stock @ Start − Std Stock">
+        <span className="metric-label-text" title="Gap = Stock Final − Std Stock">
           {label}
           <span className="metric-info" aria-hidden="true">
             i
