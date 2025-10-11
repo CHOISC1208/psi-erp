@@ -456,7 +456,7 @@ class ChannelTransfer(Base, SchemaMixin, TimestampMixin, UserTrackingMixin):
             "to_channel",
             name="uq_channel_transfers_key",
         ),
-        {"schema": settings.db_schema or "public"},
+        SchemaMixin.__table_args__ if SchemaMixin.__table_args__ else {},
     )
 
     session_id: Mapped[uuid.UUID] = mapped_column(
@@ -552,7 +552,7 @@ def channel_transfer_table_exists(bind: Engine | Connection) -> bool:
     """Return whether the channel transfer table is available on the bind."""
 
     inspector = inspect(bind)
-    schema = settings.db_schema or "public"
+    schema = (settings.db_schema.strip() if settings.db_schema else "") or None
 
     if bind.dialect.name == "sqlite":
         return inspector.has_table("channel_transfers")
