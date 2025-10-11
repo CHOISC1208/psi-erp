@@ -5,28 +5,12 @@ from collections.abc import Generator
 import uuid
 
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from . import models
-from .config import normalize_database_url, settings
+from .config import settings
+from .db import SessionLocal, engine
 from .security import load_session, session_signature_from_hash
-
-connect_args = (
-    {"options": f"-c search_path={settings.db_schema},public"}
-    if settings.db_schema
-    else {}
-)
-
-db_url = normalize_database_url(settings.database_url)
-
-engine = create_engine(
-    db_url,
-    pool_pre_ping=True,
-    future=True,
-    connect_args=connect_args,
-)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
 def get_db() -> Generator[Session, None, None]:

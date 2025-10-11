@@ -1,4 +1,4 @@
-"""Expose commonly used application models for Alembic autogeneration."""
+"""Expose commonly used application models for external consumers."""
 
 from .models import (
     Base,

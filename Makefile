@@ -1,13 +1,6 @@
-ALEMBIC = alembic -c backend/alembic.ini
-REV ?= head
+PYTHON ?= python
 
-.PHONY: migrate stamp downgrade
+.PHONY: init-db
 
-migrate:
-	$(ALEMBIC) upgrade head
-
-stamp:
-	$(ALEMBIC) stamp $(REV)
-
-downgrade:
-	$(ALEMBIC) downgrade $(REV)
+init-db:
+	$(PYTHON) -m backend.app.init_db

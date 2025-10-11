@@ -1,6 +1,6 @@
 # PSI Mini ERP
 
-A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with FastAPI, SQLAlchemy, Alembic and a Vite + React SPA. The backend speaks PostgreSQL (schema `psi` by default) and now ships with a hardened username/password login that issues signed session cookies suitable for Heroku deployments.
+A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with FastAPI, SQLAlchemy and a Vite + React SPA. The backend speaks PostgreSQL (schema `psi` by default) and now ships with a hardened username/password login that issues signed session cookies suitable for Heroku deployments.
 
 ## What's inside
 
@@ -8,7 +8,6 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
 - `GET /auth/me` + `POST /auth/logout` endpoints and a React login form that persists authentication state via `credentials: 'include'` requests.
 - Session CRUD with leader designation, PSI table editing APIs and master data endpoints.
 - React + Vite + TypeScript frontend using axios and React Query.
-- Alembic migrations living under `backend/alembic/versions`.
 
 ## Prerequisites
 
@@ -49,10 +48,10 @@ A minimal GEN-like PSI (Production, Sales, Inventory) ERP prototype built with F
    pip install -r app/requirements.txt
    ```
 
-3. **Run database migrations**
+3. **Initialise the database schema**
 
    ```bash
-   alembic upgrade head
+   python -m backend.app.init_db
    ```
 
 4. **Create an initial user (no UI)**
@@ -141,7 +140,7 @@ The suite provisions a throwaway SQLite database and covers happy-path login + `
   | `SESSION_COOKIE_SECURE` | `true` (default) |
 
 - Deploy the frontend build artefacts (`frontend/dist`) to `backend/static` (or configure a CDN) so the SPA is served alongside the API.
-- Apply database migrations on release: `heroku run alembic upgrade head` (already wired via the `release` process type).
+- Ensure the database schema exists on release: `heroku run python -m backend.app.init_db`.
 
 ## CSV format reminder
 
