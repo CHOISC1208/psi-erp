@@ -383,6 +383,14 @@ export default function SessionsPage() {
                 onChange={handleDataModeChange}
               />
               Summary (aggregated)
+              {" "}
+              <a
+                href="https://prod-apnortheast-a.online.tableau.com/#/site/tential/views/psi_erp_data_v4/psi_erp_data_v4?:iid=1"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Raw_data_link
+              </a>
             </label>
           </fieldset>
           <button type="submit" disabled={createSession.isPending}>
