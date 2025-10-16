@@ -5,10 +5,10 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
   { key: "inbound", label: "Inbound", shortLabel: "Inbound" },
   { key: "outbound", label: "Outbound", shortLabel: "Outbound" },
   { key: "stockClosing", label: "Stock Closing", shortLabel: "Closing" },
-  { key: "move", label: "Move", shortLabel: "Move" },
-  { key: "stockFinal", label: "Stock Final", shortLabel: "Final" },
   { key: "stdStock", label: "Std Stock", shortLabel: "Std" },
   { key: "gap", label: "Gap", shortLabel: "Gap" },
+  { key: "move", label: "Move", shortLabel: "Move" },
+  { key: "stockFinal", label: "Stock Final", shortLabel: "Final" },
   { key: "gapAfter", label: "Gap After", shortLabel: "Gap After" },
 ];
 
