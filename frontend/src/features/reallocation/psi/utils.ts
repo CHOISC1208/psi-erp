@@ -1,4 +1,11 @@
-import type { ColumnGroup, ColumnKey, MetricDefinition, MetricKey, PsiRow } from "./types";
+import type {
+  ColumnGroup,
+  ColumnKey,
+  MetricDefinition,
+  MetricKey,
+  PsiRow,
+} from "./types";
+import type { PSIMetricDefinition } from "../../../types";
 
 export const METRIC_DEFINITIONS: MetricDefinition[] = [
   { key: "stockStart", label: "Stock @ Start", shortLabel: "Start" },
@@ -24,6 +31,70 @@ export const KPI_CARD_METRICS: Array<{ key: MetricKey; label: string; emphasize?
 ];
 
 export const DEFAULT_HEATMAP_METRICS: MetricKey[] = ["gap", "gapAfter"];
+
+const MASTER_METRIC_NAME_MAP: Partial<Record<string, MetricKey>> = {
+  "stock_at_anchor": "stockStart",
+  "stock start": "stockStart",
+  "stock_start": "stockStart",
+  inbound: "inbound",
+  "inbound_qty": "inbound",
+  "inbound qty": "inbound",
+  outbound: "outbound",
+  "outbound_qty": "outbound",
+  "outbound qty": "outbound",
+  "stock_closing": "stockClosing",
+  "stock closing": "stockClosing",
+  "stock_close": "stockClosing",
+  move: "move",
+  "stock_fin": "stockFinal",
+  "stock final": "stockFinal",
+  "stock_final": "stockFinal",
+  stdstock: "stdStock",
+  "std stock": "stdStock",
+  "std_stock": "stdStock",
+  gap: "gap",
+  "gap_after": "gapAfter",
+  "gap after": "gapAfter",
+};
+
+export const orderMetricsByDisplayOrder = (
+  baseMetrics: MetricDefinition[],
+  masterMetrics?: PSIMetricDefinition[],
+): MetricDefinition[] => {
+  if (!masterMetrics?.length) {
+    return baseMetrics;
+  }
+
+  const definitionsByKey = new Map<MetricKey, MetricDefinition>();
+  baseMetrics.forEach((definition) => {
+    definitionsByKey.set(definition.key, definition);
+  });
+
+  const seen = new Set<MetricKey>();
+  const ordered: MetricDefinition[] = [];
+
+  for (const master of masterMetrics) {
+    const normalizedName = master.name.trim().toLowerCase();
+    const metricKey = MASTER_METRIC_NAME_MAP[normalizedName];
+    if (!metricKey || seen.has(metricKey)) {
+      continue;
+    }
+    const definition = definitionsByKey.get(metricKey);
+    if (!definition) {
+      continue;
+    }
+    ordered.push(definition);
+    seen.add(metricKey);
+  }
+
+  baseMetrics.forEach((definition) => {
+    if (!seen.has(definition.key)) {
+      ordered.push(definition);
+    }
+  });
+
+  return ordered;
+};
 
 export const makeColumnKey = (warehouse: string, channel: string) => `${warehouse}｜${channel}`;
 
