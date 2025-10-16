@@ -6,7 +6,13 @@ import HeatmapView from "./views/HeatmapView";
 import BarsView from "./views/BarsView";
 import KpiView from "./views/KpiView";
 import type { PsiRow } from "./types";
-import { METRIC_DEFINITIONS, formatMetricValue, safeNumber } from "./utils";
+import { usePSIMetricsQuery } from "../../../hooks/usePSIMetrics";
+import {
+  METRIC_DEFINITIONS,
+  formatMetricValue,
+  orderMetricsByDisplayOrder,
+  safeNumber,
+} from "./utils";
 import "../../../styles/psi-matrix.css";
 
 const TAB_CONFIG = [
@@ -70,6 +76,12 @@ export function PSIMatrixTabs({
   skuSearch,
   onSkuSearchChange,
 }: PSIMatrixTabsProps) {
+  const { data: masterMetrics } = usePSIMetricsQuery();
+  const metricDefinitions = useMemo(
+    () => orderMetricsByDisplayOrder(METRIC_DEFINITIONS, masterMetrics),
+    [masterMetrics],
+  );
+
   const normalizedSkuList = useMemo(() => {
     if (skuList.length > 0) {
       return skuList;
@@ -358,16 +370,16 @@ export function PSIMatrixTabs({
         break;
       case "cross":
         tabContent = (
-          <CrossTableView rows={rowsForSku} metrics={METRIC_DEFINITIONS} orientation="warehouse-first" />
+          <CrossTableView rows={rowsForSku} metrics={metricDefinitions} orientation="warehouse-first" />
         );
         break;
       case "cross2":
         tabContent = (
-          <CrossTableView rows={rowsForSku} metrics={METRIC_DEFINITIONS} orientation="channel-first" />
+          <CrossTableView rows={rowsForSku} metrics={metricDefinitions} orientation="channel-first" />
         );
         break;
       case "heatmap":
-        tabContent = <HeatmapView rows={rowsForSku} metrics={METRIC_DEFINITIONS} />;
+        tabContent = <HeatmapView rows={rowsForSku} metrics={metricDefinitions} />;
         break;
       case "bars":
         tabContent = <BarsView rows={rowsForSku} />;
