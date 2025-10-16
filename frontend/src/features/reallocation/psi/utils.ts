@@ -6,6 +6,7 @@ import type {
   PsiRow,
 } from "./types";
 import type { PSIMetricDefinition } from "../../../types";
+import { orderMetrics } from "../../../utils/metrics";
 
 export const METRIC_DEFINITIONS: MetricDefinition[] = [
   { key: "stockStart", label: "Stock @ Start", shortLabel: "Start" },
@@ -73,7 +74,9 @@ export const orderMetricsByDisplayOrder = (
   const seen = new Set<MetricKey>();
   const ordered: MetricDefinition[] = [];
 
-  for (const master of masterMetrics) {
+  const sortedMasters = orderMetrics(masterMetrics);
+
+  for (const master of sortedMasters) {
     const normalizedName = master.name.trim().toLowerCase();
     const metricKey = MASTER_METRIC_NAME_MAP[normalizedName];
     if (!metricKey || seen.has(metricKey)) {

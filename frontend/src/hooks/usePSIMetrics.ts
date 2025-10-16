@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import api from "../lib/api";
 import type { PSIMetricDefinition } from "../types";
+import { orderMetrics } from "../utils/metrics";
 
 export const PSI_METRICS_QUERY_KEY = ["psi-metrics"] as const;
 
@@ -17,4 +18,5 @@ export const usePSIMetricsQuery = () =>
   useQuery({
     queryKey: PSI_METRICS_QUERY_KEY,
     queryFn: fetchPSIMetrics,
+    select: orderMetrics,
   });

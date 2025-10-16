@@ -14,9 +14,20 @@ import {
 interface HeatmapViewProps {
   rows: PsiRow[];
   metrics: MetricDefinition[];
+  initialSelection?: MetricKey[];
 }
 
-const buildInitialSelection = (metrics: MetricDefinition[]) => {
+const buildInitialSelection = (metrics: MetricDefinition[], initialSelection?: MetricKey[]) => {
+  if (initialSelection?.length) {
+    const allowed = new Set(initialSelection);
+    const normalized = metrics
+      .map((metric) => metric.key)
+      .filter((metricKey) => allowed.has(metricKey));
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+
   const defaults = metrics.filter((metric) => DEFAULT_HEATMAP_METRICS.includes(metric.key));
   if (defaults.length > 0) {
     return defaults.map((metric) => metric.key);
@@ -35,8 +46,14 @@ const createHeatmapStyle = (value: number | null, maxAbs: number) => {
   return { backgroundColor, color: textColor };
 };
 
-export default function HeatmapView({ rows, metrics }: HeatmapViewProps) {
-  const [selectedMetrics, setSelectedMetrics] = useState(() => buildInitialSelection(metrics));
+export default function HeatmapView({ rows, metrics, initialSelection }: HeatmapViewProps) {
+  const [selectedMetricSet, setSelectedMetricSet] = useState(
+    () => new Set<MetricKey>(buildInitialSelection(metrics, initialSelection)),
+  );
+  const selectedMetrics = useMemo(
+    () => metrics.filter((metric) => selectedMetricSet.has(metric.key)).map((metric) => metric.key),
+    [metrics, selectedMetricSet],
+  );
   const columnGroups = useMemo(() => buildColumnGroups(rows), [rows]);
   const columnKeys = useMemo(() => columnKeysFromGroups(columnGroups), [columnGroups]);
   const rowMap = useMemo(() => {
@@ -61,20 +78,23 @@ export default function HeatmapView({ rows, metrics }: HeatmapViewProps) {
   }, [selectedMetrics, columnKeys, rowMap]);
 
   const handleToggleMetric = (metricKey: MetricKey) => {
-    setSelectedMetrics((prev) => {
-      if (prev.includes(metricKey)) {
-        return prev.filter((item) => item !== metricKey);
+    setSelectedMetricSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(metricKey)) {
+        next.delete(metricKey);
+      } else {
+        next.add(metricKey);
       }
-      return [...prev, metricKey];
+      return next;
     });
   };
 
   const handleSelectAll = () => {
-    setSelectedMetrics(metrics.map((metric) => metric.key));
+    setSelectedMetricSet(new Set(metrics.map((metric) => metric.key)));
   };
 
   const handleReset = () => {
-    setSelectedMetrics(buildInitialSelection(metrics));
+    setSelectedMetricSet(new Set(buildInitialSelection(metrics, initialSelection)));
   };
 
   if (columnKeys.length === 0) {
@@ -97,7 +117,7 @@ export default function HeatmapView({ rows, metrics }: HeatmapViewProps) {
             <label key={metric.key} className="psi-heatmap-checkbox">
               <input
                 type="checkbox"
-                checked={selectedMetrics.includes(metric.key)}
+                checked={selectedMetricSet.has(metric.key)}
                 onChange={() => handleToggleMetric(metric.key)}
               />
               <span>{metric.label}</span>
